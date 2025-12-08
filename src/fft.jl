@@ -17,28 +17,29 @@ const NO_TIMELIMIT = FFTW.NO_TIMELIMIT
 # ---------------- #
 # transform object #
 # ---------------- #
-struct FFTPlans{DIM, T, ORDER, PLAN, IPLAN}
+struct FFTPlans{DIM, T, ORDER, DEALIAS, PLAN, IPLAN}
     plan::PLAN
     iplan::IPLAN
     cache::Array{Complex{T}, DIM}
-    norm::Int
+    norm::T
 
     function FFTPlans(shape::Dims{DIM},
                       order::NTuple{H, Int},
                            ::Type{T}=Float64;
+                    dealias::Bool   =true,
                       flags::UInt32 =EXHAUSTIVE,
                   timelimit::Real   =NO_TIMELIMIT) where {DIM, H, T}
         # create arrays
-        shape = _get_padded_shape(shape, order)
+        shape = dealias ? _get_padded_shape(shape, order) : shape
         spectral_array = zeros(Complex{T}, _get_transform_shape(shape, order[1]))
         physical_array = zeros(T, shape)
-        norm = 1/prod(shape[collect(order)])
+        norm = T(1/prod(shape[collect(order)]))
 
         # construct plans
         plan  = FFTW.plan_rfft( physical_array,                  order, flags=flags, timelimit=timelimit)
         iplan = FFTW.plan_brfft(spectral_array, shape[order[1]], order, flags=flags, timelimit=timelimit)
 
-        new{DIM, T, order, typeof(plan), typeof(iplan)}(plan, iplan, spectral_array, norm)
+        new{DIM, T, order, dealias, typeof(plan), typeof(iplan)}(plan, iplan, spectral_array, norm)
     end
 end
 
@@ -47,36 +48,49 @@ end
 # in-place transformations #
 # ------------------------ #
 # physical -> spectral fields
-function (f::FFTPlans{DIM, T})(û::VectorField{N, P},
-                               u::VectorField{N, S},
-                             add::Bool=true) where {DIM, T, N, S<:AbstractScalarField{DIM, Complex{T}}, P<:AbstractScalarField{DIM, T}}
+function (f::FFTPlans{DIM, T})(û::VectorField{N, S},
+                               u::VectorField{N, P},
+                             add::Bool=false) where {DIM, T, N, S<:AbstractScalarField{DIM, Complex{T}}, P<:AbstractScalarField{DIM, T}}
     for n in 1:N
         f(û[n], u[n], add)
     end
     return û
 end
 
-(f::FFTPlans{DIM, T})(û::AbstractScalarField{DIM, Complex{T}},
-                      u::AbstractScalarField{DIM,         T},
-                    add::Bool) where {DIM, T} = add ? _add_forward_transform!(û, u, f) : _forward_transform!(û, u, f)
+(f::FFTPlans{DIM, T, ORDER, DEALIAS})(û::AbstractScalarField{DIM, Complex{T}},
+                                      u::AbstractScalarField{DIM,         T},
+                                    add::Bool=false) where {DIM, T, ORDER, DEALIAS} = add ? _add_forward_transform!(û, u, f, Val(DEALIAS)) : _forward_transform!(û, u, f, Val(DEALIAS))
 
-function _forward_transform(û, u, f::FFTPlans{DIM, T, ORDER}) where {DIM, T, ORDER}
-    FFTW.unsafe_execute!(f.plan, parent(u), f.spectral_cache, DIM, ORDEr)
-    _copy_from_padded!(parent(û), f.spectral_cache)
+function _forward_transform!(û, u, f::FFTPlans{DIM, T, ORDER}, ::Val{true}) where {DIM, T, ORDER}
+    FFTW.unsafe_execute!(f.plan, parent(u), f.cache)
+    _copy_from_padded!(parent(û), f.cache, DIM, ORDER)
     parent(û) .*= f.norm
     return û
 end
 
-function _add_forward_transform!(û, u, f::FFTPlans{DIM, T, ORDER}) where {DIM, T, ORDER}
-    FFTW.unsafe_execute!(f.plan, parent(u), f.spectral_cache)
-    f.spectral_cache .*= f.norm
-    _add_from_padded!(parent(û), f.spectral_cache, DIM, ORDER)
+function _add_forward_transform!(û, u, f::FFTPlans{DIM, T, ORDER}, ::Val{true}) where {DIM, T, ORDER}
+    FFTW.unsafe_execute!(f.plan, parent(u), f.cache)
+    f.cache .*= f.norm
+    _add_from_padded!(parent(û), f.cache, DIM, ORDER)
+    return û
+end
+
+function _forward_transform!(û, u, f::FFTPlans{DIM, T, ORDER}, ::Val{false}) where {DIM, T, ORDER}
+    FFTW.unsafe_execute!(f.plan, parent(u), parent(û))
+    parent(û) .*= f.norm
+    return û
+end
+
+function _add_forward_transform!(û, u, f::FFTPlans{DIM, T, ORDER}, ::Val{false}) where {DIM, T, ORDER}
+    FFTW.unsafe_execute!(f.plan, parent(u), f.cache)
+    f.cache .*= f.norm
+    parent(û) .+= f.cache
     return û
 end
 
 # spectral -> physical fields
-function (f::FFTPlans{DIM, T})(u::VectorField{N, S},
-                               û::VectorField{N, P},
+function (f::FFTPlans{DIM, T})(u::VectorField{N, P},
+                               û::VectorField{N, S},
                             safe::Bool=true) where {DIM, T, N, S<:AbstractScalarField{DIM, Complex{T}}, P<:AbstractScalarField{DIM, T}}
     for n in 1:N
         f(u[n], û[n], safe)
@@ -84,12 +98,25 @@ function (f::FFTPlans{DIM, T})(u::VectorField{N, S},
     return u
 end
 
-(f::FFTPlans{DIM, T})(u::AbstractScalarField{DIM, T},
-                      û::AbstractScalarField{DIM, Complex{T}}) where {DIM, T} = _backward_transform!(u, û, f)
+(f::FFTPlans{DIM, T, ORDER, DEALIAS})(u::AbstractScalarField{DIM,         T},
+                                      û::AbstractScalarField{DIM, Complex{T}},
+                                   safe::Bool=true) where {DIM, T, ORDER, DEALIAS} = safe ? _backward_transform!(u, û, f, Val(DEALIAS)) : _unsafe_backward_transform!(u, û, f, Val(DEALIAS))
 
-function _backward_transform!(u, û, f::FFTPlans{DIM, T, ORDER}) where {DIM, T, ORDER}
-    _copy_to_padded!(_apply_mask!(f.spectral_cache), parent(û), DIM, ORDER)
-    FFTW.unsafe_execute!(f.iplan, f.spectral_cache, parent(u))
+function _backward_transform!(u, û, f::FFTPlans{DIM, T, ORDER}, ::Val{true}) where {DIM, T, ORDER}
+    _copy_to_padded!(_apply_mask!(f.cache), parent(û), DIM, ORDER)
+    FFTW.unsafe_execute!(f.iplan, f.cache, parent(u))
+    return u
+end
+_unsafe_backward_transform!(u, û, f, ::Val{true}) = _backward_transform!(u, û, f, Val(true))
+
+function _backward_transform!(u, û, f::FFTPlans{DIM, T, ORDER}, ::Val{false}) where {DIM, T, ORDER}
+    f.cache .= parent(û)
+    FFTW.unsafe_execute!(f.iplan, f.cache, parent(u))
+    return u
+end
+
+function _unsafe_backward_transform!(u, û, f::FFTPlans{DIM, T, ORDER}, ::Val{false}) where {DIM, T, ORDER}
+    FFTW.unsafe_execute!(f.iplan, parent(û), parent(u))
     return u
 end
 
@@ -113,7 +140,7 @@ function _get_transform_shape(shape, dim)
     new_shape = zeros(Int, length(shape))
     for (i, s) in enumerate(shape)
         if i == dim
-            _newshape[i] = (s >> 1) + 1
+            new_shape[i] = (s >> 1) + 1
         else
             new_shape[i] = s
         end
@@ -128,18 +155,19 @@ for name in [:_copy_from_padded!, :_add_from_padded!, :_copy_to_padded!]
     blk_src, blk_dst = name ∈ [:_copy_from_padded!, :_add_from_padded!] ? (:blk_c, :blk_u) : (:blk_u, :blk_c)
     op = name ∈ [:_copy_from_padded!, :_copy_to_padded!] ? ((x, y)->x) : +
 
+    # create functions
     @eval begin
         function $name($dst, $src, dim, ::NTuple{1})
             # copy non-negative frequencies
             blk = ntuple(i->1:size(u, i), dim)
-            broadcast!($op, @view($dst[blk...]), @view($src[blk...]), @view($src[blk...]))
+            broadcast!($op, @view($dst[blk...]), @view($src[blk...]), @view($dst[blk...]))
             return $dst
         end
 
         function $name($dst, $src, dim, order::NTuple{2})
             # copy non-negative frequencies in both directions
             blk = ntuple(i->i == order[2] ? (1:(size(u, i) >> 1) + 1) : (1:size(u, i)), dim)
-            broadcast!($op, @view($dst[blk...]), @view($src[blk...]), @view($src[blk...]))
+            broadcast!($op, @view($dst[blk...]), @view($src[blk...]), @view($dst[blk...]))
 
             # get positive and negative frequency lengths
             npos = (size(u, order[2]) >> 1) + 1
@@ -149,7 +177,7 @@ for name in [:_copy_from_padded!, :_add_from_padded!, :_copy_to_padded!]
             # copy negative frequencies in second direction
             blk_u = ntuple(i->i ∈ order[2] ? (npos+1:size(u, i))                    : (1:size(u, i)), dim)
             blk_c = ntuple(i->i ∈ order[2] ? (size(cache, i)-nneg+1:size(cache, i)) : (1:size(u, i)), dim)
-            broadcast!($op, @view($dst[$blk_dst...]), @view($src[$blk_src...]), @view($src[$blk_src...]))
+            broadcast!($op, @view($dst[$blk_dst...]), @view($src[$blk_src...]), @view($dst[$blk_dst...]))
 
             return $dst
         end
@@ -157,7 +185,7 @@ for name in [:_copy_from_padded!, :_add_from_padded!, :_copy_to_padded!]
         function $name($dst, $src, dim, order::NTuple{3})
             # copy non-negative frequencies in both directions
             blk = ntuple(i->i ∈ order[2:3] ? (1:(size(u, i) >> 1) + 1) : (1:size(u, i)), dim)
-            broadcast!($op, @view($dst[blk...]), @view($src[blk...]), @view($src[blk...]))
+            broadcast!($op, @view($dst[blk...]), @view($src[blk...]), @view($dst[blk...]))
 
             for d in order[2:end]
                 # get positive and negative frequency lengths
@@ -170,13 +198,13 @@ for name in [:_copy_from_padded!, :_add_from_padded!, :_copy_to_padded!]
                 blk_c = ntuple(i->i ∈ order[2:end] ? (i == d ? (size(cache, d)-nneg+1:size(cache, d)) : (1:(size(u, i) >> 1)+1)) : (1:size(u, i)), dim)
 
                 # do copy
-                broadcast!($op, @view($dst[$blk_dst...]), @view($src[$blk_src...]), @view($src[$blk_src...]))
+                broadcast!($op, @view($dst[$blk_dst...]), @view($src[$blk_src...]), @view($dst[$blk_dst...]))
             end
 
             # copy final block corner
             blk_u = ntuple(i->i ∈ order[2:end] ? ((size(u, i) >> 1)+2:size(u, i))               : (1:size(u, i)), dim)
             blk_c = ntuple(i->i ∈ order[2:end] ? (size(cache, i)-size(u, i)+(size(u, i) >> 1)+2:size(cache, i)) : (1:size(u, i)), dim)
-            broadcast!($op, @view($dst[$blk_dst...]), @view($src[$blk_src...]), @view($src[$blk_src...]))
+            broadcast!($op, @view($dst[$blk_dst...]), @view($src[$blk_src...]), @view($dst[$blk_dst...]))
 
             return $dst
         end

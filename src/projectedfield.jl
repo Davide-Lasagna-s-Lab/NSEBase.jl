@@ -7,14 +7,14 @@ struct ProjectedField{S, T, D, A} <: AbstractArray{T, D}
     data::Array{T, D}
     modes::A
 
-    function ProjectedField(::S, data::Array{T, D}, modes::A) where {S<:AbstractScalarField, T, D, A}
+    function ProjectedField(::Type{S}, data::Array{T, D}, modes::A) where {S<:AbstractScalarField, T, D, A}
         size(data) == size(modes)[2:end] || throw(ArgumentError("number of modes available not compatible with data"))
         length(size(modes)) - 1 == D || throw(ArgumentError("dimension of data and modes are not compatible"))
         new{S, T, D, A}(data, modes)
     end
 end
-ProjectedField(u::S,                 modes) where {S}    = ProjectedField(u, zeros(eltype(u), size(modes, 2), hsize(u)...), modes)
-ProjectedField(u::VectorField{N, S}, modes) where {S, N} = ProjectedField(u, zeros(eltype(u), size(modes, 2), hsize(u)...), modes)
+ProjectedField(u::S,                 modes) where {S}    = ProjectedField(S, zeros(eltype(u), size(modes, 2), hsize(u)...), modes)
+ProjectedField(u::VectorField{N, S}, modes) where {S, N} = ProjectedField(S, zeros(eltype(u), size(modes, 2), hsize(u)...), modes)
 
 
 # --------------- #
@@ -26,14 +26,14 @@ modes(a::ProjectedField) = a.modes
 # ----------------- #
 # interface methods #
 # ----------------- #
-Base.IndexStyle(::Type{<:ProjectedField})                      = Base.IndexLinear()
-Base.parent(a::ProjectedField)                                 = a.data
-Base.eltype(::ProjectedField{G, T}) where {G, T}               = T
-Base.size(a::ProjectedField)                                   = size(parent(a))
-Base.similar(a::ProjectedField, ::Type{T}=eltype(a)) where {T} = ProjectedField(similar(parent(a), T), modes(a))
-Base.copy(a::ProjectedField)                                   = ProjectedField(copy(parent(a)), modes(a))
-Base.zero(a::ProjectedField)                                   = ProjectedField(zero(parent(a)), modes(a))
-Base.abs(a::ProjectedField)                                    = (b = zero(a); b .= abs.(a); return b)
+Base.IndexStyle(::Type{<:ProjectedField})                            = Base.IndexLinear()
+Base.parent(a::ProjectedField)                                       = a.data
+Base.eltype(::ProjectedField{G, T}) where {G, T}                     = T
+Base.size(a::ProjectedField)                                         = size(parent(a))
+Base.similar(a::ProjectedField{S}, ::Type{T}=eltype(a)) where {S, T} = ProjectedField(S, similar(parent(a), T), modes(a))
+Base.copy(a::ProjectedField{S}) where {S}                            = ProjectedField(S, copy(parent(a)), modes(a))
+Base.zero(a::ProjectedField{S}) where {S}                            = ProjectedField(S, zero(parent(a)), modes(a))
+Base.abs(a::ProjectedField{S}) where {S}                             = (b = zero(a); b .= abs.(a); return b)
 
 
 # ---------------- #
@@ -55,9 +55,7 @@ end
 # ------------------- #
 # dot product methods #
 # ------------------- #
-function LinearAlgebra.dot(a::ProjectedField{S}, b::ProjectedField{S}) where {S}
-    
-end
+LinearAlgebra.dot(a::ProjectedField, b::ProjectedField) = throw(NotImplementedError(a, b))
 LinearAlgebra.norm(a::ProjectedField) = sqrt(dot(a, a))
 
 

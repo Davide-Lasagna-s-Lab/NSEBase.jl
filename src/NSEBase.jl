@@ -5,7 +5,7 @@ using LinearAlgebra, FFTW
 export AbstractScalarField
 export VectorField
 export FFTPlans
-export ProjectedField
+export ProjectedField, modes, expand!, project!, project
 export NSE, LNSE
 export ProjectedNSE
 

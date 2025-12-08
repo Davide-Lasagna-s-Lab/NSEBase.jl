@@ -25,8 +25,8 @@ Base.similar(u::AbstractScalarField, ::Type{T}) where {T} = throw(NotImplemented
 Base.size(u::AbstractScalarField) = size(parent(u))
 Base.IndexStyle(::Type{<:AbstractScalarField}) = Base.IndexLinear()
 Base.copy(u::AbstractScalarField) = (v = similar(u); v .= u; return v)
-Base.zero(u::AbstractScalarField{D, T}) where {D, T} = (v = similar(u); v .= zero{T}; return v)
-Base.abs(u::AbstractScalarField) = (v = zero(u); v.= abs.(u); return v)
+Base.zero(u::AbstractScalarField{D, T}) where {D, T} = (v = similar(u); v .= zero(T); return v)
+Base.abs(u::AbstractScalarField) = (v = zero(u); v .= abs.(u); return v)
 
 Base.@propagate_inbounds function Base.getindex(u::AbstractScalarField, i)
     @boundscheck checkbounds(parent(u), i)
