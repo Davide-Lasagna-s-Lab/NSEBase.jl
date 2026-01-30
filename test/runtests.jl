@@ -2,16 +2,18 @@ using Test
 
 using NSEBase
 
-# --------------------- #
-# fake type for testing #
-# --------------------- #
-struct MyField <: AbstractScalarField{2, Float64}
-    data::Matrix{Float64}
-end
-Base.parent(u::MyField) = u.date
-Base.similar(u::MyField, ::Type{T}=Float64) = MyField(similar(parent(u)))
-NSEBase.hsize(u::MyField) = size(parent(u), 2)
-
-
+# The purpose of these tests to assess that the if a subtype of AbstractScalarField behaves as expected.
+# This can be assessed by testing:
+#   - derived methods output the correct types
+#   - derived types have well-defined behaviour (all methods output as expected)
+#   - large collection/cache types and operators behave as expected
+# 
+# I also need to add some good comprehensive tests for the FFT methods, since these are constructed
+# concretely and should work for N-dimensional arrays with up to 3D transformations.
 
 include("test_notimplementederror.jl")
+# include("test_abstractscalarfield.jl")
+# include("test_vectorfield.jl")
+# include("test_fft.jl")
+# include("test_projectedfield.jl")
+# include("test_projectednse.jl")

@@ -28,6 +28,7 @@ Base.copy(u::AbstractScalarField) = (v = similar(u); v .= u; return v)
 Base.zero(u::AbstractScalarField{D, T}) where {D, T} = (v = similar(u); v .= zero(T); return v)
 Base.abs(u::AbstractScalarField) = (v = zero(u); v .= abs.(u); return v)
 
+# linear indexing
 Base.@propagate_inbounds function Base.getindex(u::AbstractScalarField, i)
     @boundscheck checkbounds(parent(u), i)
     @inbounds v = parent(u)[i]
@@ -39,6 +40,17 @@ Base.@propagate_inbounds function Base.setindex!(u::AbstractScalarField, v, i)
     @inbounds parent(u)[i] = v
     return v
 end
+
+# coordinate indexing
+struct Index{DIM}
+    I::NTuple{DIM, Int}
+end
+
+# ! required !
+Base.getindex(u::AbstractScalarField{T, DIM}, idx::Index{DIM}) where {T, DIM} = throw(NotImplementedError(u, idx))
+Base.setindex!(u::AbstractScalarField{T, DIM}, v, idx::Index{DIM}) where {T, DIM} = throw(NotImplementedError(u, idx))
+
+# TODO: define how a loop over field of dimensions DIM works
 
 
 # ------------ #

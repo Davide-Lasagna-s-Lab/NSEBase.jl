@@ -14,6 +14,7 @@ struct VectorField{N, S} <: AbstractVector{S}
     end
 end
 
+hsize(u::VectorField) = hsize(u[1])
 
 # ! required !
 add_base!(u::VectorField, base) = throw(NotImplementedError(u, base))
@@ -43,5 +44,5 @@ Base.zero(q::VectorField{N}) where {N}                               = VectorFie
 # ------------ #
 # norm methods #
 # ------------ #
-LinearAlgebra.dot(q::VectorField{N}, p::VectorField{N}) where {N} = sum(dot(q[i], p[i]) for i in 1:N) # TODO: check output type is same as underlying data type
+LinearAlgebra.dot(q::VectorField{N}, p::VectorField{N}) where {N} = sum(dot(q[i], p[i]) for i in 1:N)
 LinearAlgebra.norm(q::VectorField) = sqrt(dot(q, q))

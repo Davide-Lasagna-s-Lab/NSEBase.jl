@@ -13,8 +13,8 @@ struct ProjectedField{S, T, D, A} <: AbstractArray{T, D}
         new{S, T, D, A}(data, modes)
     end
 end
-ProjectedField(u::S,                 modes) where {S}    = ProjectedField(S, zeros(eltype(u), size(modes, 2), hsize(u)...), modes)
-ProjectedField(u::VectorField{N, S}, modes) where {S, N} = ProjectedField(S, zeros(eltype(u), size(modes, 2), hsize(u)...), modes)
+ProjectedField(u::S,                 modes) where {S}    = ProjectedField(S, zeros(eltype(u),    size(modes, 2), hsize(u)...), modes)
+ProjectedField(u::VectorField{N, S}, modes) where {S, N} = ProjectedField(S, zeros(eltype(u[1]), size(modes, 2), hsize(u)...), modes)
 
 
 # --------------- #
@@ -64,7 +64,7 @@ LinearAlgebra.norm(a::ProjectedField) = sqrt(dot(a, a))
 # ---------------- #
 # ! required !
 project!(a::ProjectedField, u::VectorField) = throw(NotImplementedError(a, u))
-project(u::VectorField, modes) = project!(ProjectedField(u, modes, eltype(modes)), u)
+project(u::VectorField, modes) = project!(ProjectedField(u, modes), u)
 
 # ! required !
 expand!(u::VectorField, a::ProjectedField) = throw(NotImplementedError(u, a))

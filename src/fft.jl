@@ -57,34 +57,47 @@ function (f::FFTPlans{DIM, T})(û::VectorField{N, S},
     return û
 end
 
-(f::FFTPlans{DIM, T, ORDER, DEALIAS})(û::AbstractScalarField{DIM, Complex{T}},
-                                      u::AbstractScalarField{DIM,         T},
-                                    add::Bool=false) where {DIM, T, ORDER, DEALIAS} = add ? _add_forward_transform!(û, u, f, Val(DEALIAS)) : _forward_transform!(û, u, f, Val(DEALIAS))
+(f::FFTPlans{DIM, T})(û::AbstractScalarField{DIM, Complex{T}},
+                      u::AbstractScalarField{DIM,         T},
+                    add::Bool=false,
+              use_cache::Bool=false) where {DIM, T} = (f(parent(û), parent(u), add, use_cache); return û)
 
-function _forward_transform!(û, u, f::FFTPlans{DIM, T, ORDER}, ::Val{true}) where {DIM, T, ORDER}
-    FFTW.unsafe_execute!(f.plan, parent(u), f.cache)
-    _copy_from_padded!(parent(û), f.cache, DIM, ORDER)
-    parent(û) .*= f.norm
+(f::FFTPlans{DIM, T, ORDER, DEALIAS})(û::AbstractArray{Complex{T}},
+                                      u::AbstractArray{        T},
+                                    add::Bool,
+                              use_cache::Bool) where {DIM, T, ORDER, DEALIAS} = add ? _add_forward_transform!(û, u, f, Val(DEALIAS)) : _forward_transform!(û, u, f, Val(DEALIAS), Val(use_cache))
+
+function _forward_transform!(û, u, f::FFTPlans{DIM, T, ORDER}, ::Val{true}, ::Val) where {DIM, T, ORDER}
+    FFTW.unsafe_execute!(f.plan, u, f.cache)
+    _copy_from_padded!(û, f.cache, DIM, ORDER)
+    û .*= f.norm
     return û
 end
 
 function _add_forward_transform!(û, u, f::FFTPlans{DIM, T, ORDER}, ::Val{true}) where {DIM, T, ORDER}
-    FFTW.unsafe_execute!(f.plan, parent(u), f.cache)
+    FFTW.unsafe_execute!(f.plan, u, f.cache)
     f.cache .*= f.norm
-    _add_from_padded!(parent(û), f.cache, DIM, ORDER)
+    _add_from_padded!(û, f.cache, DIM, ORDER)
     return û
 end
 
-function _forward_transform!(û, u, f::FFTPlans{DIM, T, ORDER}, ::Val{false}) where {DIM, T, ORDER}
-    FFTW.unsafe_execute!(f.plan, parent(u), parent(û))
-    parent(û) .*= f.norm
+function _forward_transform!(û, u, f::FFTPlans{DIM, T, ORDER}, ::Val{false}, ::Val{false}) where {DIM, T, ORDER}
+    FFTW.unsafe_execute!(f.plan, u, û)
+    û .*= f.norm
+    return û
+end
+
+function _forward_transform!(û, u, f::FFTPlans{DIM, T, ORDER}, ::Val{false}, ::Val{true}) where {DIM, T, ORDER}
+    FFTW.unsafe_execute!(f.plan, u, f.cache)
+    f.cache .*= f.norm
+    û .= f.cache
     return û
 end
 
 function _add_forward_transform!(û, u, f::FFTPlans{DIM, T, ORDER}, ::Val{false}) where {DIM, T, ORDER}
-    FFTW.unsafe_execute!(f.plan, parent(u), f.cache)
+    FFTW.unsafe_execute!(f.plan, u, f.cache)
     f.cache .*= f.norm
-    parent(û) .+= f.cache
+    û .+= f.cache
     return û
 end
 
@@ -98,25 +111,37 @@ function (f::FFTPlans{DIM, T})(u::VectorField{N, P},
     return u
 end
 
-(f::FFTPlans{DIM, T, ORDER, DEALIAS})(u::AbstractScalarField{DIM,         T},
-                                      û::AbstractScalarField{DIM, Complex{T}},
-                                   safe::Bool=true) where {DIM, T, ORDER, DEALIAS} = safe ? _backward_transform!(u, û, f, Val(DEALIAS)) : _unsafe_backward_transform!(u, û, f, Val(DEALIAS))
+(f::FFTPlans{DIM, T})(u::AbstractScalarField{DIM,         T},
+                      û::AbstractScalarField{DIM, Complex{T}},
+                   safe::Bool=true,
+              use_cache::Bool=false) where {DIM, T} = (f(parent(u), parent(û), safe, use_cache); return u)
+
+(f::FFTPlans{DIM, T, ORDER, DEALIAS})(u::AbstractArray{        T},
+                                      û::AbstractArray{Complex{T}},
+                                   safe::Bool,
+                              use_cache::Bool) where {DIM, T, ORDER, DEALIAS} = safe ? _backward_transform!(u, û, f, Val(DEALIAS)) : _unsafe_backward_transform!(u, û, f, Val(DEALIAS), Val(use_cache))
 
 function _backward_transform!(u, û, f::FFTPlans{DIM, T, ORDER}, ::Val{true}) where {DIM, T, ORDER}
-    _copy_to_padded!(_apply_mask!(f.cache), parent(û), DIM, ORDER)
-    FFTW.unsafe_execute!(f.iplan, f.cache, parent(u))
+    _copy_to_padded!(_apply_mask!(f.cache), û, DIM, ORDER)
+    FFTW.unsafe_execute!(f.iplan, f.cache, u)
     return u
 end
-_unsafe_backward_transform!(u, û, f, ::Val{true}) = _backward_transform!(u, û, f, Val(true))
+_unsafe_backward_transform!(u, û, f, ::Val{true}, ::Val) = _backward_transform!(u, û, f, Val(true))
 
 function _backward_transform!(u, û, f::FFTPlans{DIM, T, ORDER}, ::Val{false}) where {DIM, T, ORDER}
-    f.cache .= parent(û)
-    FFTW.unsafe_execute!(f.iplan, f.cache, parent(u))
+    f.cache .= û
+    FFTW.unsafe_execute!(f.iplan, f.cache, u)
     return u
 end
 
-function _unsafe_backward_transform!(u, û, f::FFTPlans{DIM, T, ORDER}, ::Val{false}) where {DIM, T, ORDER}
-    FFTW.unsafe_execute!(f.iplan, parent(û), parent(u))
+function _unsafe_backward_transform!(u, û, f::FFTPlans{DIM, T, ORDER}, ::Val{false}, ::Val{false}) where {DIM, T, ORDER}
+    FFTW.unsafe_execute!(f.iplan, û, u)
+    return u
+end
+
+function _unsafe_backward_transform!(u, û, f::FFTPlans{DIM, T, ORDER}, ::Val{false}, ::Val{true}) where {DIM, T, ORDER}
+    f.cache .= û
+    FFTW.unsafe_execute!(f.iplan, f.cache, u)
     return u
 end
 

@@ -18,6 +18,7 @@ include("broadcasting.jl")
 include("nse.jl")
 include("projectednse.jl")
 
-# TODO: make a dependency for OpenChannelFlow.jl!!!
+# TODO: somehow define a generic indexing interface for abstract scalar fields which will allow looping over modenumbers and thus more generic implementations here
+# TODO: move vectorfield tests here
 
 end
