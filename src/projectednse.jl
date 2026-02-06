@@ -1,17 +1,17 @@
 # Wrapper for the Navier-Stokes equation that includes the project-expand steps
 # required for wall-bounded variational optimisation.
 
-struct ProjectedNSE{T, EQ, LEQ, B, N, S}
+struct ProjectedNSE{EQ, LEQ, B, N, S}
        nl::EQ
        ln::LEQ
      base::B
     cache::NTuple{2, VectorField{N, S}}
 
-    function ProjectedNSE(u::S, nl::NSE{S}, ln::LNSE{S}, base::B, ::Type{T}=Float64) where {S<:AbstractScalarField, B, T}
+    function ProjectedNSE(u::S, nl::NSE{S}, ln::LNSE{S}, base::B) where {S<:AbstractScalarField, B}
         # construct cache
-        cache = ntuple(_->VectorField(u, T, N=ndim(nl)), 2)
+        cache = ntuple(_->VectorField(u, N=ndim(nl)), 2)
 
-        new{T, typeof(nl), typeof(ln), B, ndim(nl), eltype(cache[1])}(nl, ln, base, cache)
+        new{typeof(nl), typeof(ln), B, ndim(nl), eltype(cache[1])}(nl, ln, base, cache)
     end
 end
 
