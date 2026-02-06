@@ -23,7 +23,7 @@ add_base!(u::VectorField, base) = throw(NotImplementedError(u, base))
 # ------------------- #
 # constructor methods #
 # ------------------- #
-VectorField(u::S, ::Type{T}=Float64; N::Int=3) where {S, T} = VectorField([similar(u) for _ in 1:N]...)
+VectorField(u::S, ::Type{T}=eltype(u[1]); N::Int=3) where {S, T} = VectorField([similar(u, T) for _ in 1:N]...)
 
 
 # ------------- #
