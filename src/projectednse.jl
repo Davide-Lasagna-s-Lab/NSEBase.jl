@@ -1,25 +1,29 @@
 # Wrapper for the Navier-Stokes equation that includes the project-expand steps
 # required for wall-bounded variational optimisation.
 
-struct ProjectedNSE{EQ, LEQ, B, N, S}
-       nl::EQ
-       ln::LEQ
-     base::B
-    cache::NTuple{2, VectorField{N, S}}
+struct ProjectedNSE{EQ, LEQ, B, N, S1, S2}
+        nl::EQ
+        ln::LEQ
+      base::B
+    cache1::VectorField{N, S1}
+    cache2::VectorField{N, S2}
 
-    function ProjectedNSE(u::S, nl::NSE{S}, ln::LNSE{S}, base::B) where {S<:AbstractScalarField, B}
-        # construct cache
-        cache = ntuple(_->VectorField(u, N=ndim(nl)), 2)
+    ProjectedNSE(nl::EQ, ln::LEQ, base::B, caches...) where {EQ, LEQ, B} =
+        new{EQ, LEQ, B, length(caches[1]), eltype(caches[1]), eltype(caches[2])}(nl, ln, base, caches...)
+end
 
-        new{typeof(nl), typeof(ln), B, ndim(nl), eltype(cache[1])}(nl, ln, base, cache)
-    end
+function ProjectedNSE(u::S, nl::NSE{S}, ln::LNSE{S}, base::B) where {S<:AbstractScalarField, B}
+    # construct cache
+    caches = ntuple(_->VectorField(u, N=ndim(nl)), 2)
+
+    ProjectedNSE(nl, ln, base, caches...)
 end
 
 function (eq::ProjectedNSE)(out::ProjectedField,
                               a::ProjectedField)
     # aliases
-    u   = eq.cache[1]
-    N_u = eq.cache[2]
+    u   = eq.cache1
+    N_u = eq.cache2
 
     # expand coefficients into spectral field
     expand!(u, a)
@@ -38,8 +42,8 @@ function (eq::ProjectedNSE)(out::ProjectedField,
                                ::ProjectedField,
                               b::ProjectedField)
     # aliases
-    v    = eq.cache[1]
-    M_uv = eq.cache[2]
+    v    = eq.cache1
+    M_uv = eq.cache2
 
     # expand coefficients into spectral fields
     expand!(v, b)
