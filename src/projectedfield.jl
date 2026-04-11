@@ -30,6 +30,7 @@ Base.IndexStyle(::Type{<:ProjectedField})                            = Base.Inde
 Base.parent(a::ProjectedField)                                       = a.data
 Base.eltype(::ProjectedField{G, T}) where {G, T}                     = T
 Base.size(a::ProjectedField)                                         = size(parent(a))
+# ! this method breakes the implicit contract that the eltype of the underlying data is the same as the eltype prescribed by the type `S`
 Base.similar(a::ProjectedField{S}, ::Type{T}=eltype(a)) where {S, T} = ProjectedField(S, similar(parent(a), T), modes(a))
 Base.copy(a::ProjectedField{S}) where {S}                            = ProjectedField(S, copy(parent(a)), modes(a))
 Base.zero(a::ProjectedField{S}) where {S}                            = ProjectedField(S, zero(parent(a)), modes(a))

@@ -33,16 +33,23 @@ function Base.copy(bc::Broadcast.Broadcasted{Broadcast.ArrayStyle{V}}) where {N,
 end
 
 function Base.copyto!(dest::VectorField{N}, bc::Broadcast.Broadcasted{Broadcast.ArrayStyle{V}}) where {N, V<:VectorField{N}}
-    for i in 1:N
-        copyto!(dest[i], unpack(bc, i))
+    for n in 1:N
+        copyto!(dest[n], unpack(bc, n))
     end
     return dest
 end
 
-@inline unpack(bc::Broadcast.Broadcasted, i) = Broadcast.Broadcasted(bc.f, _unpack(i, bc.args))
-@inline unpack(x::Any,                    i) = x
-@inline unpack(x::VectorField,            i) = x.elements[i]
+function Base.copyto!(dest::VectorField{N}, bc::Broadcast.Broadcasted{<:Broadcast.AbstractArrayStyle{0}}) where {N}
+    for n in 1:N
+        fill!(dest[n], bc.args[1][])
+    end
+    return dest
+end
 
-@inline _unpack(i, args::Tuple) = (unpack(args[1], i), _unpack(i, Base.tail(args))...)
-@inline _unpack(i, args::Tuple{Any}) = (unpack(args[1], i),)
+@inline unpack(bc::Broadcast.Broadcasted, n) = Broadcast.Broadcasted(bc.f, _unpack(n, bc.args))
+@inline unpack(x::Any,                    n) = x
+@inline unpack(x::VectorField,            n) = x.elements[n]
+
+@inline _unpack(n, args::Tuple) = (unpack(args[1], n), _unpack(n, Base.tail(args))...)
+@inline _unpack(n, args::Tuple{Any}) = (unpack(args[1], n),)
 @inline _unpack(::Any, args::Tuple{}) = ()
