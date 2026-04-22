@@ -2,7 +2,7 @@
 # FTField and Field use for their construction.
 
 """
-    AbstractGrid{D, H, T} where {T<:AbstractFloat}
+    AbstractGrid{T, D, H} where {T<:Real}
 
 Abstract type that represents a generic computational grid of a
 `D` dimensional domain. The variable `H` is a tuple of values
@@ -12,7 +12,9 @@ transformed using [`FFTPlans`](@ref).
 # Required methods
 - `points`: collocation points making up the grid
 """
-abstract type AbstractGrid{D, H, T<:AbstractFloat} end
+abstract type AbstractGrid{T<:Real, D, H} end
 
-points(g::AbstractGrid)                                           = throw(NotImplementedError(g))
-similar(g::AbstractGrid{D, H, T}, ::Type{S}=T) where {D, H, T, S} = throw(NotImplementedError(g, S))
+ similar(grid::AbstractGrid{T}, ::Type{S}=T) where {T, S} = throw(NotImplementedError(grid, S))
+    size(grid::AbstractGrid)                              = throw(NotImplementedError(grid))
+  points(grid::AbstractGrid; dealias=false)               = throw(NotImplementedError(grid))
+fft_norm(grid::AbstractGrid)                              = throw(NotImplementedError(grid))
