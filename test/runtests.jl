@@ -14,6 +14,6 @@ using NSEBase
 include("test_notimplementederror.jl")
 # include("test_abstractscalarfield.jl")
 # include("test_vectorfield.jl")
-# include("test_fft.jl")
+include("test_fft.jl")
 # include("test_projectedfield.jl")
 # include("test_projectednse.jl")
