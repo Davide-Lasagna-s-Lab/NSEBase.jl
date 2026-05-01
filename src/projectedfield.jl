@@ -3,6 +3,7 @@
 # ---------------------- #
 # projected vector field #
 # ---------------------- #
+# TODO: add grid to fields
 struct ProjectedField{S, T, D, A} <: AbstractArray{T, D}
     data::Array{T, D}
     modes::A

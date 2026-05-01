@@ -28,6 +28,20 @@
     end
 
     # test broadcasting
+    foo(u, v, w) = (@allocated u .= v.*2 .+ w./3)
+    bar(u)       = (@allocated u .= 0.0)
+    u = Field(g,    dealias=false)
+    v = Field(g, f, dealias=false)
+    w = Field(g, f, dealias=false)
+    @test foo(u, v, w) == 0
+    @test parent(u) == 2*parent(v) + parent(w)/3
+    @test bar(u) == 0
+    u = Field(g,    dealias=true)
+    v = Field(g, f, dealias=true)
+    w = Field(g, f, dealias=true)
+    @test foo(u, v, w) == 0
+    @test parent(u) == 2*parent(v) + parent(w)/3
+    @test bar(u) == 0
 end
 
 @testset "FTField                       " begin
@@ -71,9 +85,17 @@ end
     end
 
     # test broadcasting
+    foo(u, v, w) = (@allocated u .= v.*2 .+ w./3)
+    bar(u)       = (@allocated u .= 0.0)
+    u = FTField(g)
+    v = FTField(g, randn(ComplexF64, Nx, (Ny >> 1) + 1))
+    w = FTField(g, randn(ComplexF64, Nx, (Ny >> 1) + 1))
+    @test foo(u, v, w) == 0
+    @test parent(u) == 2*parent(v) + parent(w)/3
+    @test bar(u) == 0
 end
 
-@testset "Vectorfield                   " begin
+@testset "VectorField                   " begin
     # construct grid
     Nx = 16; Ny = 11
     L = 10*rand()
@@ -109,4 +131,16 @@ end
     @test all(parent(zero(u2)[2]) .== 0.0)
 
     # test broadcasting
+    foo(u, v, w) = (@allocated u .= v.*2 .+ w./3)
+    bar(u)       = (@allocated u .= 0.0)
+    u = VectorField(g)
+    v = VectorField(FTField(g, randn(ComplexF64, Nx, (Ny >> 1) + 1)),
+                    FTField(g, randn(ComplexF64, Nx, (Ny >> 1) + 1)),
+                    FTField(g, randn(ComplexF64, Nx, (Ny >> 1) + 1)))
+    w = VectorField(FTField(g, randn(ComplexF64, Nx, (Ny >> 1) + 1)),
+                    FTField(g, randn(ComplexF64, Nx, (Ny >> 1) + 1)),
+                    FTField(g, randn(ComplexF64, Nx, (Ny >> 1) + 1)))
+    @test foo(u, v, w) == 0
+    for n in 1:3; @test parent(u[n]) == 2*parent(v[n]) + parent(w[n])/3; end
+    @test bar(u) == 0
 end
