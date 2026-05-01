@@ -64,83 +64,66 @@ end
 
 """
     apply_symmetry!(data::AbstractArray{T, D}, ::Val{H})
- 
-Apply hermitian symmetry to a D-dimensional array `data` whose axes listed
-in the tuple `H` have been RFFT-transformed, in the order they were applied.
-"""
-@generated function apply_symmetry!(data::AbstractArray{T, D}, ::Val{H}) where {T, D, H}
-    # check if symmetry needs special treatment
-    length(H) == 1 && return :(return data)
 
-    # generate loops
-    blocks = Expr[]
-    for mask_int in 0:(1 << length(H[2:end])) - 1
-        active_mask = ntuple(k -> Bool((mask_int >> (k-1)) & 1), length(H[2:end]))
-        all(!, active_mask) && length(H[2:end]) > 0 && continue
-        push!(blocks, make_case(active_mask, D, H))
+Enforce Hermitian symmetry on `data` after a multi-dimensional RFFT along
+the dimensions listed in `H` (in transform order).
+
+For a real-valued physical field, Fourier coefficients must satisfy
+û(-k) = conj(û(k)). After the RFFT along `H[1]`, only non-negative
+frequencies along that axis are stored. Along the remaining axes `H[2:end]`
+both signs are present, but at the zero-frequency plane of `H[1]` (index 1)
+the coefficients must still satisfy the conjugate-symmetry constraint — this
+function enforces it by averaging each conjugate pair in-place.
+
+Dimensions not in `H` are untransformed and are iterated over in full.
+No-op when only one dimension is transformed (`length(H) == 1`).
+"""
+function apply_symmetry!(data::AbstractArray{T, D}, ::Val{H}) where {T, D, H}
+    length(H) == 1 && return data
+
+    # H[2:end] are the secondary transformed dims; at the zero-frequency
+    # plane of H[1] these must satisfy û(-k) = conj(û(k)).
+    secondary = H[2:end]
+
+    # Iterate over every non-empty subset of secondary dims (bitmask enumeration).
+    # Each subset defines one pass: those dims are symmetrised while inactive
+    # secondary dims are held at their DC component (index 1).
+    for mask_int in 1:(1 << length(secondary)) - 1
+        active_dims = Tuple(secondary[k] for k in eachindex(secondary) if Bool((mask_int >> (k-1)) & 1))
+
+        # Restrict the last active dim to positive frequencies only;
+        # its conjugate partner is computed explicitly, so iterating the full
+        # range would process each pair twice.
+        half_dim = active_dims[end]
+
+        ranges = ntuple(D) do d
+            if d == H[1]
+                1:1                              # zero-frequency plane of H[1]
+            elseif d == half_dim
+                2:(size(data, d) >> 1) + 1       # positive frequencies only
+            elseif d in active_dims
+                2:size(data, d)                  # all non-DC frequencies
+            elseif d in secondary
+                1:1                              # inactive secondary dim: DC only
+            else
+                1:size(data, d)                  # untransformed dim: all indices
+            end
+        end
+
+        for I in CartesianIndices(ranges)
+            # negative-frequency partner: reflect each active dim's index
+            neg = CartesianIndex(ntuple(d -> d in active_dims ? size(data, d) - I[d] + 2 : I[d], D))
+
+            # average the pair so that data[neg] == conj(data[I])
+            _av       = _average_complex(data[I], data[neg])
+            data[I]   = _av
+            data[neg] = conj(_av)
+        end
     end
 
-    # assemble and return
-    return Base.remove_linenums!(quote
-        $(blocks...)
-        return data
-    end)
+    return data
 end
 apply_symmetry!(data, H::Dims) = apply_symmetry!(data, Val(H))
-
-function make_case(active_mask, D, H)
-    # determine which directions are being looped over
-    active_syms = [H[2:end][k] for k in 1:length(H[2:end]) if active_mask[k]]
-    half_range_dim = isempty(active_syms) ? nothing : active_syms[end]
-
-    # forward and negative frequency indices
-    idx_pos = Vector{Any}(undef, D)
-    idx_neg = Vector{Any}(undef, D)
-    loop_vars = Dict{Int, Symbol}()
-    for d in 1:D
-        if d == H[1]
-            idx_pos[d] = 1
-            idx_neg[d] = 1
-        elseif d in active_syms
-            var = Symbol("n_", d)
-            loop_vars[d] = var
-            idx_pos[d] = var
-            idx_neg[d] = :($(Symbol("end")) - $var + 2)
-        elseif d in H[2:end]
-            idx_pos[d] = 1
-            idx_neg[d] = 1
-        else
-            var = Symbol("n_", d)
-            loop_vars[d] = var
-            idx_pos[d] = var
-            idx_neg[d] = var
-        end
-    end
-
-    # averaging kernel
-    kernel = quote
-        _av  = _average_complex(data[$(idx_pos...)], data[$(idx_neg...)])
-        data[$(idx_pos...)] =      _av
-        data[$(idx_neg...)] = conj(_av)
-    end
-
-    # generate loop block
-    looped_dims = sort(collect(keys(loop_vars)))
-    body = kernel
-    for d in looped_dims
-        var = loop_vars[d]
-        if d == half_range_dim
-            range = :(2:(Base.size(data, $d) >> 1) + 1)
-        elseif d in active_syms
-            range = :(2:Base.size(data, $d))
-        else
-            range = :(1:Base.size(data, $d))
-        end
-        body = :(for $var in $range; $body; end)
-    end
-
-    return body
-end
 
 """
     normalise_mean!(data::Array{<:Any, D}, ::Val{H})

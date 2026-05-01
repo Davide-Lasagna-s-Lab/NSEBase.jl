@@ -5,7 +5,7 @@ struct FakeGrid <: AbstractGrid{Float64, 2, (2,)}
 end
 
  NSEBase.similar(g::FakeGrid, ::Type{T}=Float64) where {T} = FakeGrid(g.x, g.N, g.L)
-    NSEBase.size(g::FakeGrid)                              = (length(g.x), g.N)
+    Base.size(g::FakeGrid)                                 = (length(g.x), g.N)
   NSEBase.points(g::FakeGrid; dealias=false)               = dealias ? _grid_dealiased_points(g) : _grid_points(g)
 NSEBase.fft_norm(g::FakeGrid)                              = g.N
 

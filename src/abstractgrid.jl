@@ -14,7 +14,7 @@ transformed using [`FFTPlans`](@ref).
 """
 abstract type AbstractGrid{T<:Real, D, H} end
 
- similar(grid::AbstractGrid{T}, ::Type{S}=T) where {T, S} = throw(NotImplementedError(grid, S))
-    size(grid::AbstractGrid)                              = throw(NotImplementedError(grid))
-  points(grid::AbstractGrid; dealias=false)               = throw(NotImplementedError(grid))
-fft_norm(grid::AbstractGrid)                              = throw(NotImplementedError(grid))
+  similar(grid::AbstractGrid{T}, ::Type{S}=T) where {T, S} = throw(NotImplementedError(grid, S))
+Base.size(grid::AbstractGrid)                              = throw(NotImplementedError(grid))
+   points(grid::AbstractGrid; dealias=false)               = throw(NotImplementedError(grid))
+ fft_norm(grid::AbstractGrid)                              = throw(NotImplementedError(grid))
