@@ -150,27 +150,15 @@ end
 # utility functions #
 # ----------------- #
 function _get_padded_shape(shape, order)
-    new_shape = zeros(Int, length(shape))
-    for (i, s) in enumerate(shape)
-        if i ∈ order
-            new_shape[i] = (3*s)>>1 + 1 - ((3*s)>>1)&1
-        else
-            new_shape[i] = s
-        end
+    return ntuple(length(shape)) do i
+        i ∈ order ? cld(3*shape[i], 2) | 1 : shape[i]
     end
-    return tuple(new_shape...)
 end
 
 function _get_transform_shape(shape, dim)
-    new_shape = zeros(Int, length(shape))
-    for (i, s) in enumerate(shape)
-        if i == dim
-            new_shape[i] = (s >> 1) + 1
-        else
-            new_shape[i] = s
-        end
+    return ntuple(length(shape)) do i
+        i == dim ? (shape[i] >> 1) + 1 : shape[i]
     end
-    return tuple(new_shape...)
 end
 
 # copy function for dealiasing
