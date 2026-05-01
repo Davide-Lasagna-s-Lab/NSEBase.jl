@@ -1,5 +1,6 @@
 using BenchmarkTools
 using PyPlot
+using Printf
 using NSEBase
 
 # 4D array, all dims RFFT-transformed; H[1] is the rfft dim (half-sized)

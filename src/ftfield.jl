@@ -77,51 +77,61 @@ function enforces it by averaging each conjugate pair in-place.
 
 Dimensions not in `H` are untransformed and are iterated over in full.
 No-op when only one dimension is transformed (`length(H) == 1`).
+
+# Note on cache efficiency
+The DC plane of `H[1]` (the rfft dim) has memory stride `size(data, H[1])`
+rather than 1, because the rfft dim is stored as the leading (stride-1)
+dimension. The loop iterates the remaining dims in ascending stride order,
+which is optimal for the current layout. If this function is a bottleneck,
+storing the rfft dim last would give stride-1 access to the DC plane.
 """
-function apply_symmetry!(data::AbstractArray{T, D}, ::Val{H}) where {T, D, H}
-    length(H) == 1 && return data
+@generated function apply_symmetry!(data::AbstractArray{T, D}, ::Val{H}) where {T, D, H}
+    length(H) == 1 && return :(return data)
 
-    # H[2:end] are the secondary transformed dims; at the zero-frequency
-    # plane of H[1] these must satisfy û(-k) = conj(û(k)).
+    # All subset enumeration happens at code-generation time so the compiled
+    # hot loop contains only literal index expressions — no closures, no dynamic
+    # dispatch, no allocations.
     secondary = H[2:end]
+    blocks    = Expr[]
 
-    # Iterate over every non-empty subset of secondary dims (bitmask enumeration).
-    # Each subset defines one pass: those dims are symmetrised while inactive
-    # secondary dims are held at their DC component (index 1).
     for mask_int in 1:(1 << length(secondary)) - 1
+
+        # active subset of secondary dims for this pass
         active_dims = Tuple(secondary[k] for k in eachindex(secondary) if Bool((mask_int >> (k-1)) & 1))
+        half_dim    = active_dims[end]
 
-        # Restrict the last active dim to positive frequencies only;
-        # its conjugate partner is computed explicitly, so iterating the full
-        # range would process each pair twice.
-        half_dim = active_dims[end]
-
-        ranges = ntuple(D) do d
+        # per-dim range literals (e.g. 1:1, 2:Base.size(data,3)>>1+1, ...)
+        range_exprs = ntuple(D) do d
             if d == H[1]
-                1:1                              # zero-frequency plane of H[1]
+                :(1:1)
             elseif d == half_dim
-                2:(size(data, d) >> 1) + 1       # positive frequencies only
+                :(2:(Base.size(data, $d) >> 1) + 1)
             elseif d in active_dims
-                2:size(data, d)                  # all non-DC frequencies
+                :(2:Base.size(data, $d))
             elseif d in secondary
-                1:1                              # inactive secondary dim: DC only
+                :(1:1)
             else
-                1:size(data, d)                  # untransformed dim: all indices
+                :(1:Base.size(data, $d))
             end
         end
 
-        for I in CartesianIndices(ranges)
-            # negative-frequency partner: reflect each active dim's index
-            neg = CartesianIndex(ntuple(d -> d in active_dims ? size(data, d) - I[d] + 2 : I[d], D))
+        # per-dim neg-index literals (e.g. I[1], Base.size(data,2)-I[2]+2, ...)
+        neg_exprs = ntuple(d -> d in active_dims ? :(Base.size(data, $d) - I[$d] + 2) : :(I[$d]), D)
 
-            # average the pair so that data[neg] == conj(data[I])
-            _av       = _average_complex(data[I], data[neg])
-            data[I]   = _av
-            data[neg] = conj(_av)
-        end
+        push!(blocks, quote
+            for I in CartesianIndices($(Expr(:tuple, range_exprs...)))
+                neg       = $(Expr(:call, :CartesianIndex, neg_exprs...))
+                _av       = _average_complex(data[I], data[neg])
+                data[I]   = _av
+                data[neg] = conj(_av)
+            end
+        end)
     end
 
-    return data
+    return Base.remove_linenums!(quote
+        $(blocks...)
+        return data
+    end)
 end
 apply_symmetry!(data, H::Dims) = apply_symmetry!(data, Val(H))
 
