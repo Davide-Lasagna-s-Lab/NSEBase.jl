@@ -6,7 +6,7 @@
 const FieldType = Union{FTField, Field, VectorField}
 
 Base.BroadcastStyle(S::Type{<:FieldType}) = Broadcast.ArrayStyle{S}()
-Base.similar(bc::Broadcast.Broadcasted{Broadcast.ArrayStyle{<:FieldType}}, ::Type{T}) where {T} = similar(find_field(bc), T)
+Base.similar(bc::Broadcast.Broadcasted{Broadcast.ArrayStyle{F}}, ::Type{T}) where {F<:FieldType, T} = similar(find_field(bc), T)
 
 find_field(bc::Broadcast.Broadcasted) = find_field(bc.args)
 find_field(args::Tuple)               = find_field(find_field(args[1]), Base.tail(args))

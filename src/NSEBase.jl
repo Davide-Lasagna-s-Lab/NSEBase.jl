@@ -2,6 +2,8 @@ module NSEBase
 
 using LinearAlgebra, FFTW
 
+export FFTW
+
 export AbstractGrid, points
 export FTField, Field, VectorField
 export FFTPlans, FFT, IFFT
@@ -15,7 +17,7 @@ include("ftfield.jl")
 include("field.jl")
 include("vectorfield.jl")
 include("broadcasting.jl")
-# include("fft.jl")
+include("fft.jl")
 # include("projectedfield.jl")
 # include("nse.jl")
 # include("projectednse.jl")
