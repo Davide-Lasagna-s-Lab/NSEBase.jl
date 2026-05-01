@@ -24,10 +24,7 @@ struct FTField{G<:AbstractGrid, A<:AbstractArray, T, D} <: AbstractArray{Complex
 end
 
 # construct from standard array and sanitise input
-function FTField(grid::AbstractGrid{T, D, H}) where {T, D, H}
-    shape = size(grid)
-    return FTField(grid, zeros(Complex{T}, ntuple(d->d==H[1] ? (shape[d] >> 1) + 1 : shape[d], length(shape))...))
-end
+FTField(grid::AbstractGrid{T}) where {T} = FTField(grid, zeros(Complex{T}, transform_size(grid)))
 
 Base.IndexStyle(::Type{<:FTField})                                    = Base.IndexLinear()
 Base.parent(u::FTField)                                               = u.data
@@ -51,6 +48,13 @@ Base.@propagate_inbounds function Base.setindex!(u::FTField, v, i)
 end
 
 grid(u::FTField) = u.grid
+
+
+# --------------------- #
+# inner-product methods #
+# --------------------- #
+LinearAlgebra.dot(u::FTField, v::FTField) = throw(NotImplementedError(u, v))
+LinearAlgebra.norm(u::FTField) = sqrt(dot(u, u))
 
 
 # --------------- #
@@ -81,10 +85,10 @@ in the tuple `H` have been RFFT-transformed, in the order they were applied.
     end
 
     # assemble and return
-    return Base.remove_linenums!(quote
+    return quote
         $(blocks...)
         return data
-    end)
+    end
 end
 apply_symmetry!(data, H::Dims) = apply_symmetry!(data, Val(H))
 

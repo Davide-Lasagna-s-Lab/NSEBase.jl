@@ -17,18 +17,18 @@ const NO_TIMELIMIT = FFTW.NO_TIMELIMIT
 # ---------------- #
 # transform object #
 # ---------------- #
-struct FFTPlans{DIM, T, ORDER, DEALIAS, PLAN, IPLAN}
-    plan::PLAN
+struct FFTPlans{DEALIAS, D, T, ORDER, PLAN, IPLAN}
+     plan::PLAN
     iplan::IPLAN
-    cache::Array{Complex{T}, DIM}
-    norm::T
+    cache::Array{Complex{T}, D}
+     norm::T
 
-    function FFTPlans(shape::Dims{DIM},
-                      order::NTuple{H, Int},
+    function FFTPlans(shape::Dims{D},
+                      order::Dims,
                            ::Type{T}=Float64;
                     dealias::Bool   =true,
                       flags::UInt32 =EXHAUSTIVE,
-                  timelimit::Real   =NO_TIMELIMIT) where {DIM, H, T}
+                  timelimit::Real   =NO_TIMELIMIT) where {D, T}
         # create arrays
         shape = dealias ? _get_padded_shape(shape, order) : shape
         spectral_array = zeros(Complex{T}, _get_transform_shape(shape, order[1]))
@@ -39,7 +39,7 @@ struct FFTPlans{DIM, T, ORDER, DEALIAS, PLAN, IPLAN}
         plan  = FFTW.plan_rfft( physical_array,                  order, flags=flags, timelimit=timelimit)
         iplan = FFTW.plan_brfft(spectral_array, shape[order[1]], order, flags=flags, timelimit=timelimit)
 
-        new{DIM, T, order, dealias, typeof(plan), typeof(iplan)}(plan, iplan, spectral_array, norm)
+        new{dealias, D, T, order, typeof(plan), typeof(iplan)}(plan, iplan, spectral_array, norm)
     end
 end
 
@@ -48,53 +48,56 @@ end
 # in-place transformations #
 # ------------------------ #
 # physical -> spectral fields
-function (f::FFTPlans{DIM, T})(û::VectorField{N, S},
-                               u::VectorField{N, P},
-                             add::Bool=false) where {DIM, T, N, S<:AbstractScalarField{DIM, Complex{T}}, P<:AbstractScalarField{DIM, T}}
+function (f::FFTPlans)(û::VectorField{N, <:FTField},
+                       u::VectorField{N, <:Field};
+                     add::Bool=false,
+               use_cache::Bool=false) where {N}
     for n in 1:N
-        f(û[n], u[n], add)
+        f(û[n], u[n]; add=add, use_cache=use_cache)
     end
     return û
 end
 
-(f::FFTPlans{DIM, T})(û::AbstractScalarField{DIM, Complex{T}},
-                      u::AbstractScalarField{DIM,         T},
-                    add::Bool=false,
-              use_cache::Bool=false) where {DIM, T} = (f(parent(û), parent(u), add, use_cache); return û)
+(f::FFTPlans{true})(û::FTField{G},
+                    u::Field{G};
+                  add::Bool=false,
+            use_cache::Bool=false) where {G} =
+    add ? _add_forward_transform_dealias!(û, u, f) : _forward_transform_dealias!(û, u, f)
 
-(f::FFTPlans{DIM, T, ORDER, DEALIAS})(û::AbstractArray{Complex{T}},
-                                      u::AbstractArray{        T},
-                                    add::Bool,
-                              use_cache::Bool) where {DIM, T, ORDER, DEALIAS} = add ? _add_forward_transform!(û, u, f, Val(DEALIAS)) : _forward_transform!(û, u, f, Val(DEALIAS), Val(use_cache))
+(f::FFTPlans{false})(û::FTField{G},
+                     u::Field{G};
+                   add::Bool=false,
+             use_cache::Bool=false) where {G} =
+    add ? _add_forward_transform!(û, u, f) : (use_cache ? _forward_transform_with_cache!(û, u, f) : _forward_transform_without_cache(û, u, f))
 
-function _forward_transform!(û, u, f::FFTPlans{DIM, T, ORDER}, ::Val{true}, ::Val) where {DIM, T, ORDER}
+function _forward_transform_dealias!(û, u, f::FFTPlans{DEALIAS, D, T, ORDER}) where {DEALIAS, D, T, ORDER}
     FFTW.unsafe_execute!(f.plan, u, f.cache)
-    _copy_from_padded!(û, f.cache, DIM, ORDER)
+    _copy_from_padded!(û, f.cache, D, ORDER)
     û .*= f.norm
     return û
 end
 
-function _add_forward_transform!(û, u, f::FFTPlans{DIM, T, ORDER}, ::Val{true}) where {DIM, T, ORDER}
+function _add_forward_transform_dealias!(û, u, f::FFTPlans{DEALIAS, D, T, ORDER}) where {DEALIAS, D, T, ORDER}
     FFTW.unsafe_execute!(f.plan, u, f.cache)
     f.cache .*= f.norm
-    _add_from_padded!(û, f.cache, DIM, ORDER)
+    _add_from_padded!(û, f.cache, D, ORDER)
     return û
 end
 
-function _forward_transform!(û, u, f::FFTPlans{DIM, T, ORDER}, ::Val{false}, ::Val{false}) where {DIM, T, ORDER}
+function _forward_transform_without_cache!(û, u, f::FFTPlans{DEALIAS, D, T, ORDER}) where {DEALIAS, D, T, ORDER}
     FFTW.unsafe_execute!(f.plan, u, û)
     û .*= f.norm
     return û
 end
 
-function _forward_transform!(û, u, f::FFTPlans{DIM, T, ORDER}, ::Val{false}, ::Val{true}) where {DIM, T, ORDER}
+function _forward_transform_with_cache!(û, u, f::FFTPlans{DEALIAS, D, T, ORDER}) where {DEALIAS, D, T, ORDER}
     FFTW.unsafe_execute!(f.plan, u, f.cache)
     f.cache .*= f.norm
     û .= f.cache
     return û
 end
 
-function _add_forward_transform!(û, u, f::FFTPlans{DIM, T, ORDER}, ::Val{false}) where {DIM, T, ORDER}
+function _add_forward_transform!(û, u, f::FFTPlans{DEALIAS, D, T, ORDER}) where {DEALIAS, D, T, ORDER}
     FFTW.unsafe_execute!(f.plan, u, f.cache)
     f.cache .*= f.norm
     û .+= f.cache
@@ -102,53 +105,62 @@ function _add_forward_transform!(û, u, f::FFTPlans{DIM, T, ORDER}, ::Val{false
 end
 
 # spectral -> physical fields
-function (f::FFTPlans{DIM, T})(u::VectorField{N, P},
-                               û::VectorField{N, S},
-                            safe::Bool=true) where {DIM, T, N, S<:AbstractScalarField{DIM, Complex{T}}, P<:AbstractScalarField{DIM, T}}
+function (f::FFTPlans)(u::VectorField{N, <:Field},
+                       û::VectorField{N, <:FTField};
+                    safe::Bool=true) where {N}
     for n in 1:N
-        f(u[n], û[n], safe)
+        f(u[n], û[n]; safe=safe)
     end
     return u
 end
 
-(f::FFTPlans{DIM, T})(u::AbstractScalarField{DIM,         T},
-                      û::AbstractScalarField{DIM, Complex{T}},
-                   safe::Bool=true,
-              use_cache::Bool=false) where {DIM, T} = (f(parent(u), parent(û), safe, use_cache); return u)
+(f::FFTPlans{true})(u::Field{G},
+                    û::FTField{G}) where {G} = _backward_transform_dealias!(u, û, f)
 
-(f::FFTPlans{DIM, T, ORDER, DEALIAS})(u::AbstractArray{        T},
-                                      û::AbstractArray{Complex{T}},
-                                   safe::Bool,
-                              use_cache::Bool) where {DIM, T, ORDER, DEALIAS} = safe ? _backward_transform!(u, û, f, Val(DEALIAS)) : _unsafe_backward_transform!(u, û, f, Val(DEALIAS), Val(use_cache))
+(f::FFTPlans{false})(u::Field{G},
+                     û::FTField{G};
+                  safe::Bool=true) where {G} = safe ? _backward_transform(u, û, f) : _unsafe_backward_transform(u, û, f)
 
-function _backward_transform!(u, û, f::FFTPlans{DIM, T, ORDER}, ::Val{true}) where {DIM, T, ORDER}
-    _copy_to_padded!(_apply_mask!(f.cache), û, DIM, ORDER)
+function _backward_transform_dealias!(u, û, f::FFTPlans{DEALIAS, D, T, ORDER}) where {DEALIAS, D, T, ORDER}
+    _copy_to_padded!(_apply_mask!(f.cache), û, D, ORDER)
     FFTW.unsafe_execute!(f.iplan, f.cache, u)
     return u
 end
-_unsafe_backward_transform!(u, û, f, ::Val{true}, ::Val) = _backward_transform!(u, û, f, Val(true))
 
-function _backward_transform!(u, û, f::FFTPlans{DIM, T, ORDER}, ::Val{false}) where {DIM, T, ORDER}
+function _backward_transform!(u, û, f::FFTPlans{DEALIAS, D, T, ORDER}) where {DEALIAS, D, T, ORDER}
     f.cache .= û
     FFTW.unsafe_execute!(f.iplan, f.cache, u)
     return u
 end
 
-function _unsafe_backward_transform!(u, û, f::FFTPlans{DIM, T, ORDER}, ::Val{false}, ::Val{false}) where {DIM, T, ORDER}
+function _unsafe_backward_transform!(u, û, f::FFTPlans{DEALIAS, D, T, ORDER}) where {DEALIAS, D, T, ORDER}
     FFTW.unsafe_execute!(f.iplan, û, u)
     return u
 end
 
-function _unsafe_backward_transform!(u, û, f::FFTPlans{DIM, T, ORDER}, ::Val{false}, ::Val{true}) where {DIM, T, ORDER}
-    f.cache .= û
-    FFTW.unsafe_execute!(f.iplan, f.cache, u)
+# --------------------- #
+# allocating transforms #
+# --------------------- #
+function FFT(u::Field{G}) where {G<:AbstractGrid{T, D, H}}
+    û = FTField(grid(u))
+    parent(û) .= rfft(parent(u), H)
+    û .*= 1/prod(fft_normalisation(grid(u)))
+    return û
+end
+FFT(u::VectorField{N, <:Field}) where {N} = VectorField([FFT(u[n]) for n in 1:N]...)
+
+function IFFT(û::FTField{G}) where {G<:AbstractGrid{T, D, H}}
+    u = Field(grid(û))
+    parent(u) .= brfft(parent(û), size(grid(û))[H[1]], H)
     return u
 end
+IFFT(u::VectorField{N, <:FTField}) where {N} = VectorField([IFFT(u[n]) for n in 1:N]...)
 
 
 # ----------------- #
 # utility functions #
 # ----------------- #
+# TODO: double check this gives the correct size
 function _get_padded_shape(shape, order)
     new_shape = zeros(Int, length(shape))
     for (i, s) in enumerate(shape)
@@ -174,6 +186,7 @@ function _get_transform_shape(shape, dim)
 end
 
 # copy function for dealiasing
+# TODO: properly benchmark and check allocation of these functions
 for name in [:_copy_from_padded!, :_add_from_padded!, :_copy_to_padded!]
     # get useful variables for evaluation
     src, dst = name ∈ [:_copy_from_padded!, :_add_from_padded!] ? (:cache, :u) : (:u, :cache)

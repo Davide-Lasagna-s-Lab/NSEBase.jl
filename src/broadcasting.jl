@@ -3,31 +3,23 @@
 # that broadcasting on vector fields propagates into the underlying scalar
 # field.
 
-Base.BroadcastStyle(u::Type{<:AbstractScalarField}) = Broadcast.ArrayStyle{u}()
-Base.similar(bc::Base.Broadcast.Broadcasted{Broadcast.ArrayStyle{S}}, ::Type{T}) where {T, S<:AbstractScalarField} = similar(find_field(bc), T)
+const FieldType = Union{FTField, Field, VectorField}
 
-Base.BroadcastStyle(::Type{<:ProjectedField}) = Broadcast.ArrayStyle{ProjectedField}()
-Base.similar(bc::Base.Broadcast.Broadcasted{Broadcast.ArrayStyle{ProjectedField}}, ::Type{T}) where {T} = similar(find_field(bc), T)
+Base.BroadcastStyle(S::Type{<:FieldType}) = Broadcast.ArrayStyle{S}()
+Base.similar(bc::Broadcast.Broadcasted{Broadcast.ArrayStyle{<:FieldType}}, ::Type{T}) where {T} = similar(find_field(bc), T)
 
-Base.BroadcastStyle(::Type{<:VectorField{N}}) where {N} = Broadcast.ArrayStyle{VectorField{N}}()
-Base.similar(bc::Broadcast.Broadcasted{Broadcast.ArrayStyle{F}}, ::Type{T}) where {F<:VectorField, T} = similar(find_field(bc), T)
-
-Base.BroadcastStyle(::Broadcast.ArrayStyle{<:VectorField}, ::Broadcast.ArrayStyle{<:AbstractScalarField}) = Broadcast.ArrayStyle{V}()
-
-find_field(bc::Broadcast.Broadcasted)    = find_field(bc.args)
-find_field(args::Tuple)                  = find_field(find_field(args[1]), Base.tail(args))
-find_field(u::AbstractScalarField, rest) = u
-find_field(u::VectorField, rest)         = u
-find_field(a::ProjectedField, rest)      = a
-find_field(::Any, rest)                  = find_field(rest)
-find_field(x)                            = x
-find_field(::Tuple{})                    = nothing
+find_field(bc::Broadcast.Broadcasted) = find_field(bc.args)
+find_field(args::Tuple)               = find_field(find_field(args[1]), Base.tail(args))
+find_field(u::FieldType, rest)        = u
+find_field(::Any, rest)               = find_field(rest)
+find_field(x)                         = x
+find_field(::Tuple{})                 = nothing
 
 # vector field broadcasting into underlying field
 function Base.copy(bc::Broadcast.Broadcasted{Broadcast.ArrayStyle{V}}) where {N, V<:VectorField{N}}
     dest = similar(bc, eltype(find_field(bc)[1]))
-    for i in 1:N
-        copyto!(dest[i], unpack(bc, i))
+    for n in 1:N
+        copyto!(dest[n], unpack(bc, n))
     end
     return dest
 end
@@ -39,6 +31,7 @@ function Base.copyto!(dest::VectorField{N}, bc::Broadcast.Broadcasted{Broadcast.
     return dest
 end
 
+# ! special case to handle assigment of scalar values to vectorfield
 function Base.copyto!(dest::VectorField{N}, bc::Broadcast.Broadcasted{<:Broadcast.AbstractArrayStyle{0}}) where {N}
     for n in 1:N
         fill!(dest[n], bc.args[1][])
