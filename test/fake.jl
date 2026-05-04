@@ -16,6 +16,9 @@ _grid_points(g)           = (reshape(g.x, :, 1), reshape(collect(range(0, g.L*(1
 _grid_dealiased_points(g) = (reshape(g.x, :, 1), reshape(collect(range(0, g.L*(1 - 1/(ceil(Int, 1.5*g.N))), length=ceil(Int, 1.5*g.N))), 1, :))
 
 
+NSEBase.add_base!(u::VectorField{N, <:FTField{FakeGrid}}, base) where {N} = u
+
+
 # ----------------- #
 # field dot methods #
 # ----------------- #
@@ -30,6 +33,28 @@ function LinearAlgebra.dot(u::FTField{FakeGrid}, v::FTField{FakeGrid})
     end
     return sum
 end
+
+
+# --------- #
+# operators #
+# --------- #
+struct NLE; end
+function (eq::NLE)(::Real,
+                  u::VectorField{3, <:FTField{FakeGrid}},
+                out::VectorField{3, <:FTField{FakeGrid}})
+    @. out = 2*u
+    return out
+end
+
+struct LNE; end
+function (eq::LNE)(::Real,
+                  v::VectorField{3, <:FTField{FakeGrid}},
+                out::VectorField{3, <:FTField{FakeGrid}})
+    @. out = 4*v
+    return out
+end
+
+NSEBase.ProjectedNSE(grid::FakeGrid) = ProjectedNSE(grid, 3, NLE(), LNE(), nothing)
 
 
 # ----------------------- #

@@ -18,8 +18,6 @@ struct VectorField{N, S} <: AbstractVector{S}
     end
 end
 
-# hsize(u::VectorField) = hsize(u[1]) # ! necessary?
-
 # ! required !
 add_base!(u::VectorField, base) = throw(NotImplementedError(u, base))
 

@@ -1,4 +1,4 @@
-@testset "Field                         " begin
+@testset "Field                             " begin
     # construct grid
     Nx = 16; Ny = 11
     L = 10*rand()
@@ -44,7 +44,11 @@
     @test bar(u) == 0
 end
 
-@testset "FTField                       " begin
+@testset "Hermitian symmetry                " begin
+    # TODO: this for a few different dimensions
+end
+
+@testset "FTField                           " begin
     # construct grid
     Nx = 16; Ny = 11
     L = 10*rand()
@@ -95,7 +99,7 @@ end
     @test bar(u) == 0
 end
 
-@testset "VectorField                   " begin
+@testset "VectorField                       " begin
     # construct grid
     Nx = 16; Ny = 11
     L = 10*rand()
@@ -151,7 +155,7 @@ end
     @test bar(u) == 0
 end
 
-@testset "ProjectedField                " begin
+@testset "ProjectedField                    " begin
     # construct grid
     Nx = 16; Ny = 11
     L = 10*rand()

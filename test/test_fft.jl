@@ -1,4 +1,4 @@
-@testset "Transform Plans               " begin
+@testset "Fourier transforms                " begin
     # construct grid
     Nx = 16; Ny = 11
     L = 10*rand()

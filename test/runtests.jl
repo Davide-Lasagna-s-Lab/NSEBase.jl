@@ -4,9 +4,9 @@ using LinearAlgebra
 
 using NSEBase
 
-include("fake/grid.jl")
+include("fake.jl")
 
 include("test_notimplementederror.jl")
 include("test_fields.jl")
 include("test_fft.jl")
-# include("test_projectednse.jl")
+include("test_operators.jl")

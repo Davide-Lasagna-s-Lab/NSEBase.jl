@@ -8,16 +8,12 @@ struct ProjectedNSE{EQ, LEQ, B, N, S1, S2}
     cache1::VectorField{N, S1}
     cache2::VectorField{N, S2}
 
-    ProjectedNSE(nl::EQ, ln::LEQ, base::B, caches...) where {EQ, LEQ, B} =
-        new{EQ, LEQ, B, length(caches[1]), eltype(caches[1]), eltype(caches[2])}(nl, ln, base, caches...)
+    ProjectedNSE{N}(nl::EQ, ln::LEQ, base::B, caches) where {EQ, LEQ, B, N} =
+        new{EQ, LEQ, B, N, eltype(caches[1]), eltype(caches[2])}(nl, ln, base, caches...)
 end
 
-function ProjectedNSE(u::S, nl::NSE{S}, ln::LNSE{S}, base::B) where {S<:AbstractScalarField, B}
-    # construct cache
-    caches = ntuple(_->VectorField(u, N=ndim(nl)), 2)
-
-    ProjectedNSE(nl, ln, base, caches...)
-end
+ProjectedNSE(grid::AbstractGrid, N::Int, nl, ln, base) =
+    ProjectedNSE{N}(nl, ln, base, ntuple(_->VectorField(grid, FTField, N=N), 2))
 
 function (eq::ProjectedNSE)(out::ProjectedField,
                               a::ProjectedField)
@@ -56,3 +52,21 @@ function (eq::ProjectedNSE)(out::ProjectedField,
 
     return out
 end
+
+
+
+
+
+
+
+
+# nonlinear operator
+# abstract type NSE{S<:AbstractScalarField} end
+# (f::NSE{S})(t::Real, u::F, out::F) where {S<:AbstractScalarField, N, F<:Union{S, VectorField{N, S}}} = throw(NotImplementedError(t, u, out))
+# ndim(op::NSE) = throw(NotImplementedError(op))
+
+# linearised operator
+# abstract type LNSE{S<:AbstractScalarField} end
+# (f::LNSE{S})(t::Real, u::F, v::F, out::F) where {S<:AbstractScalarField, N, F<:Union{S, VectorField{N, S}}} = throw(NotImplementedError(t, u, v, out))
+# (f::LNSE{S})(t::Real, v::F, out::F) where {S<:AbstractScalarField, N, F<:Union{S, VectorField{N, S}}} = throw(NotImplementedError(t, v, out))
+# ndim(op::LNSE) = throw(NotImplementedError(op))
