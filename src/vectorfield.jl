@@ -23,6 +23,8 @@ end
 # ! required !
 add_base!(u::VectorField, base) = throw(NotImplementedError(u, base))
 
+grid(u::VectorField) = grid(u[1])
+
 
 # ------------------- #
 # constructor methods #

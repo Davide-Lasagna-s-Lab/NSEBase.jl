@@ -10,7 +10,7 @@ a concrete sub-type of AbstractGrid.
 
 # Fields
 - `grid`: concrete instance of `AbstractGrid`
-- `data`: Fourier coefficient values of scalar field
+- `data`: fourier coefficient values of scalar field
 """
 struct FTField{G<:AbstractGrid, A<:AbstractArray, T, D} <: AbstractArray{Complex{T}, D}
     grid::G
@@ -68,6 +68,7 @@ LinearAlgebra.norm(u::FTField) = sqrt(dot(u, u))
     return _re + im * _im
 end
 
+# TODO: see what this outputs
 """
     apply_symmetry!(data::AbstractArray{T, D}, ::Val{H})
 

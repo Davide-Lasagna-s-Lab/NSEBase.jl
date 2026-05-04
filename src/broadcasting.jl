@@ -3,7 +3,7 @@
 # that broadcasting on vector fields propagates into the underlying scalar
 # field.
 
-const FieldType = Union{FTField, Field, VectorField}
+const FieldType = Union{FTField, Field, VectorField, ProjectedField}
 
 Base.BroadcastStyle(S::Type{<:FieldType}) = Broadcast.ArrayStyle{S}()
 Base.similar(bc::Broadcast.Broadcasted{Broadcast.ArrayStyle{F}}, ::Type{T}) where {F<:FieldType, T} = similar(find_field(bc), T)

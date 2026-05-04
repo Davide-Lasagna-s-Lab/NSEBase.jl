@@ -1,3 +1,6 @@
+# ------------- #
+# concrete grid #
+# ------------- #
 struct FakeGrid <: AbstractGrid{Float64, 2, (2,)}
     x::Vector{Float64}
     N::Int
@@ -11,3 +14,53 @@ NSEBase.fft_norm(g::FakeGrid)                              = g.N
 
 _grid_points(g)           = (reshape(g.x, :, 1), reshape(collect(range(0, g.L*(1 - 1/g.N), length=g.N)), 1, :))
 _grid_dealiased_points(g) = (reshape(g.x, :, 1), reshape(collect(range(0, g.L*(1 - 1/(ceil(Int, 1.5*g.N))), length=ceil(Int, 1.5*g.N))), 1, :))
+
+
+# ----------------- #
+# field dot methods #
+# ----------------- #
+function LinearAlgebra.dot(u::FTField{FakeGrid}, v::FTField{FakeGrid})
+    Nx, Ny = size(grid(u))
+    sum = 0.0
+    for nx in 1:Nx
+        sum += 0.5*real(dot(u[nx, 1], v[nx, 1]))
+        for ny in 2:((Ny >> 1) + 1)
+            sum += real(dot(u[nx, ny], v[nx, ny]))
+        end
+    end
+    return sum
+end
+
+
+# ----------------------- #
+# projected field methods #
+# ----------------------- #
+NSEBase.no_of_modes(modes::Vector{Array{Complex{T}, 3}}) where {T} = size(modes[1], 2)
+
+function NSEBase.project!(a::ProjectedField{FakeGrid}, u::VectorField{N, <:FTField{FakeGrid}}) where {N}
+    a .= 0
+    for n in 1:N, ny in axes(a, 2), m in axes(a, 1)
+        a[m, ny] += dot(modes(a)[n][:, m, ny], u[n][:, ny])
+    end
+    return a
+end
+
+function NSEBase.expand!(u::VectorField{N, <:FTField{FakeGrid}}, a::ProjectedField{FakeGrid}) where {N}
+    u .= 0
+    for n in 1:N, ny in axes(a, 2), m in axes(a, 1)
+        u[n][:, ny] .+= a[m, ny].*@view(modes(a)[n][:, m, ny])
+    end
+    return u
+end
+
+function LinearAlgebra.dot(a::ProjectedField{FakeGrid}, b::ProjectedField{FakeGrid})
+    M, Ny = size(a)
+    sum = 0.0
+    for m in 1:M
+        sum += 0.5*real(dot(a[m, 1], b[m, 1]))
+        for ny in 2:((Ny >> 1) + 1)
+            sum += real(dot(a[m, ny], b[m, ny]))
+        end
+    end
+    return sum
+end

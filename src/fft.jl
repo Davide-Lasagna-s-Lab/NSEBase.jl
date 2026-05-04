@@ -238,6 +238,7 @@ for name in [:_copy_from_padded!, :_add_from_padded!, :_copy_to_padded!]
             # get positive and negative frequency lengths
             npos = (size(u, order[2]) >> 1) + 1
             nneg = size(u, order[2]) - npos
+            # ! bug???
             nneg == 0 && return cache
 
             # copy negative frequencies in second direction
