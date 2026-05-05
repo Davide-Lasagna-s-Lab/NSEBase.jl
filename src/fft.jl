@@ -122,6 +122,17 @@ end
                                     add::Bool,
                               use_cache::Bool) where {DIM, T, ORDER, DEALIAS} = add ? _add_forward_transform!(û, u, f) : _forward_transform!(û, u, f, use_cache)
 
+"""
+    _forward_transform!(û, u, f::FFTPlans{DIM, T, ORDER, DEALIAS}, use_cache::Bool)
+
+Overwrite `û` with the normalised forward transform of `u`.
+
+When `DEALIAS` is `true`, transforms into the padded `f.cache`, truncates the
+resolved frequencies into `û`, then normalises. When `DEALIAS` is `false` and
+`use_cache` is `false`, transforms directly into `û`. When `DEALIAS` is `false`
+and `use_cache` is `true`, transforms into `f.cache` first and copies to `û`
+(required when `û` is not a valid FFTW output buffer).
+"""
 function _forward_transform!(û, u, f::FFTPlans{DIM, T, ORDER, DEALIAS}, use_cache::Bool) where {DIM, T, ORDER, DEALIAS}
     if DEALIAS
         FFTW.unsafe_execute!(f.plan, u, f.cache)
@@ -138,6 +149,15 @@ function _forward_transform!(û, u, f::FFTPlans{DIM, T, ORDER, DEALIAS}, use_cac
     return û
 end
 
+"""
+    _add_forward_transform!(û, u, f::FFTPlans{DIM, T, ORDER, DEALIAS})
+
+Accumulate the normalised forward transform of `u` into `û`: `û .+= f.norm * rfft(u)`.
+
+Always routes through `f.cache` to avoid aliasing the output. When `DEALIAS`
+is `true`, only the resolved frequencies are added via `_add_from_padded!`;
+otherwise the full normalised cache is added directly.
+"""
 function _add_forward_transform!(û, u, f::FFTPlans{DIM, T, ORDER, DEALIAS}) where {DIM, T, ORDER, DEALIAS}
     FFTW.unsafe_execute!(f.plan, u, f.cache)
     f.cache .*= f.norm
@@ -186,6 +206,17 @@ end
                                    safe::Bool,
                               use_cache::Bool) where {DIM, T, ORDER, DEALIAS} = safe ? _backward_transform!(u, û, f) : _unsafe_backward_transform!(u, û, f, use_cache)
 
+"""
+    _backward_transform!(u, û, f::FFTPlans{DIM, T, ORDER, DEALIAS})
+
+Safe backward transform: write the inverse transform of `û` into `u`,
+always preserving `û`.
+
+The brfft plan executes on `f.cache`, never directly on `û`. When `DEALIAS`
+is `true`, `û` is first embedded into a zeroed `f.cache` via `_copy_to_padded!`
+so that padding-zone entries contribute nothing. When `DEALIAS` is `false`,
+`û` is simply copied into `f.cache`.
+"""
 function _backward_transform!(u, û, f::FFTPlans{DIM, T, ORDER, DEALIAS}) where {DIM, T, ORDER, DEALIAS}
     if DEALIAS
         _copy_to_padded!(_apply_mask!(f.cache), û, DIM, ORDER)
@@ -197,6 +228,17 @@ function _backward_transform!(u, û, f::FFTPlans{DIM, T, ORDER, DEALIAS}) where 
     return u
 end
 
+"""
+    _unsafe_backward_transform!(u, û, f::FFTPlans{DIM, T, ORDER, DEALIAS}, use_cache::Bool)
+
+Backward transform that may destroy `û` to save one array copy.
+
+When `DEALIAS` is `true`, delegates to `_backward_transform!` (padding always
+requires staging through `f.cache` regardless). When `DEALIAS` is `false` and
+`use_cache` is `false`, the brfft plan executes directly on `û`, which FFTW
+will overwrite. When `use_cache` is `true`, `û` is still staged through
+`f.cache` and left intact.
+"""
 function _unsafe_backward_transform!(u, û, f::FFTPlans{DIM, T, ORDER, DEALIAS}, use_cache::Bool) where {DIM, T, ORDER, DEALIAS}
     if DEALIAS
         _backward_transform!(u, û, f)
@@ -240,28 +282,6 @@ function _get_transform_shape(shape, dim)
     end
 end
 
-# _copy_from_padded!, _add_from_padded!, _copy_to_padded!
-#
-# Transfer data between the padded spectral cache (sized for the dealiased
-# physical grid) and the truncated spectral array (resolved frequencies only).
-#
-#   _copy_from_padded!(u, cache, dim, order)
-#       Truncate: copy resolved frequencies from padded cache into u.
-#
-#   _add_from_padded!(u, cache, dim, order)
-#       Accumulate: add resolved frequencies from padded cache into u.
-#
-#   _copy_to_padded!(cache, u, dim, order)
-#       Embed: copy resolved frequencies from u into a zeroed padded cache,
-#       placing negative-frequency blocks at the high-index end of each dim.
-#
-# Dispatch is on the length of `order`:
-#   NTuple{1} - rfft dim only; one contiguous block copy.
-#   NTuple{2} - rfft dim + one periodic dim; positive and negative frequency
-#               blocks for the second dim are handled separately.
-#   NTuple{3} - rfft dim + two periodic dims; same as above but iterated over
-#               both secondary dims, plus the corner block where both hold
-#               negative frequencies simultaneously.
 for name in [:_copy_from_padded!, :_add_from_padded!, :_copy_to_padded!]
     # get useful variables for evaluation
     src, dst = name ∈ [:_copy_from_padded!, :_add_from_padded!] ? (:cache, :u) : (:u, :cache)
@@ -326,4 +346,36 @@ for name in [:_copy_from_padded!, :_add_from_padded!, :_copy_to_padded!]
     end
 end
 
+@doc """
+    _copy_from_padded!(u, cache, dim, order)
+
+Copy resolved Fourier coefficients from the padded spectral `cache` into the
+truncated spectral array `u`, discarding the dealiasing padding. Negative-
+frequency blocks (stored at the high-index end of `cache`) are mapped back to
+the corresponding high-index end of `u`. Dispatches on `length(order)`.
+""" _copy_from_padded!
+
+@doc """
+    _add_from_padded!(u, cache, dim, order)
+
+Accumulate resolved Fourier coefficients from the padded spectral `cache` into
+`u` (`u .+= cache[resolved]`). Same block structure as `_copy_from_padded!`.
+""" _add_from_padded!
+
+@doc """
+    _copy_to_padded!(cache, u, dim, order)
+
+Embed resolved Fourier coefficients from the truncated spectral array `u` into
+the padded `cache`, placing negative-frequency blocks at the high-index end of
+each transformed dimension. The caller must zero `cache` first (typically via
+`_apply_mask!`) so that padding-zone entries are zero before the brfft plan runs.
+""" _copy_to_padded!
+
+"""
+    _apply_mask!(cache::Array{T}) -> cache
+
+Zero all elements of `cache` in-place and return it. Called before
+`_copy_to_padded!` to ensure that padding-zone entries in the spectral cache
+do not pollute the backward transform output.
+"""
 _apply_mask!(cache::Array{T}) where {T} = (cache .= zero(T); return cache)
