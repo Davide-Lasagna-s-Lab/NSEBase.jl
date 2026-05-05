@@ -86,126 +86,126 @@ end
 # in-place transformations #
 # ------------------------ #
 """
-    (f::FFTPlans)(û, u, add=false)
-    (f::FFTPlans)(û, u, add=false, use_cache=false)
+    (f::FFTPlans)(û, u, add=false)
+    (f::FFTPlans)(û, u, add=false, use_cache=false)
 
-Forward in-place transform: physical array `u` → spectral array `û`.
+Forward in-place transform: physical array `u` → spectral array `û`.
 
-Computes `û .= f.norm * rfft(u)`, or accumulates into `û` when `add=true`.
+Computes `û .= f.norm * rfft(u)`, or accumulates into `û` when `add=true`.
 When constructed with `dealias=true`, `u` is transformed into the zero-padded
-`f.cache` first and the result is then truncated into `û`; when `dealias=false`
-the transform writes directly into `û` unless `use_cache=true`.
+`f.cache` first and the result is then truncated into `û`; when `dealias=false`
+the transform writes directly into `û` unless `use_cache=true`.
 
 ## Arguments
-- `û`: output spectral array (overwritten, or accumulated into when `add=true`)
+- `û`: output spectral array (overwritten, or accumulated into when `add=true`)
 - `u`: input physical array (read-only)
-- `add`: accumulate result into `û` instead of overwriting (default `false`)
-- `use_cache`: route the FFTW output through `f.cache` before writing to `û`;
-  required when `û` cannot serve directly as an FFTW output buffer (default `false`)
+- `add`: accumulate result into `û` instead of overwriting (default `false`)
+- `use_cache`: route the FFTW output through `f.cache` before writing to `û`;
+  required when `û` cannot serve directly as an FFTW output buffer (default `false`)
 """
-function (f::FFTPlans{DIM, T})(û::VectorField{N, S},
+function (f::FFTPlans{DIM, T})(û::VectorField{N, S},
                                u::VectorField{N, P},
                              add::Bool=false) where {DIM, T, N, S<:AbstractScalarField{DIM, Complex{T}}, P<:AbstractScalarField{DIM, T}}
     for n in 1:N
-        f(û[n], u[n], add)
+        f(û[n], u[n], add)
     end
-    return û
+    return û
 end
 
-(f::FFTPlans{DIM, T})(û::AbstractScalarField{DIM, Complex{T}},
+(f::FFTPlans{DIM, T})(û::AbstractScalarField{DIM, Complex{T}},
                       u::AbstractScalarField{DIM,         T},
                     add::Bool=false,
-              use_cache::Bool=false) where {DIM, T} = (f(parent(û), parent(u), add, use_cache); return û)
+              use_cache::Bool=false) where {DIM, T} = (f(parent(û), parent(u), add, use_cache); return û)
 
-(f::FFTPlans{DIM, T, ORDER, DEALIAS})(û::AbstractArray{Complex{T}},
+(f::FFTPlans{DIM, T, ORDER, DEALIAS})(û::AbstractArray{Complex{T}},
                                       u::AbstractArray{        T},
                                     add::Bool,
-                              use_cache::Bool) where {DIM, T, ORDER, DEALIAS} = add ? _add_forward_transform!(û, u, f) : _forward_transform!(û, u, f, use_cache)
+                              use_cache::Bool) where {DIM, T, ORDER, DEALIAS} = add ? _add_forward_transform!(û, u, f) : _forward_transform!(û, u, f, use_cache)
 
-function _forward_transform!(û, u, f::FFTPlans{DIM, T, ORDER, DEALIAS}, use_cache::Bool) where {DIM, T, ORDER, DEALIAS}
+function _forward_transform!(û, u, f::FFTPlans{DIM, T, ORDER, DEALIAS}, use_cache::Bool) where {DIM, T, ORDER, DEALIAS}
     if DEALIAS
         FFTW.unsafe_execute!(f.plan, u, f.cache)
-        _copy_from_padded!(û, f.cache, DIM, ORDER)
-        û .*= f.norm
+        _copy_from_padded!(û, f.cache, DIM, ORDER)
+        û .*= f.norm
     elseif use_cache
         FFTW.unsafe_execute!(f.plan, u, f.cache)
         f.cache .*= f.norm
-        û .= f.cache
+        û .= f.cache
     else
-        FFTW.unsafe_execute!(f.plan, u, û)
-        û .*= f.norm
+        FFTW.unsafe_execute!(f.plan, u, û)
+        û .*= f.norm
     end
-    return û
+    return û
 end
 
-function _add_forward_transform!(û, u, f::FFTPlans{DIM, T, ORDER, DEALIAS}) where {DIM, T, ORDER, DEALIAS}
+function _add_forward_transform!(û, u, f::FFTPlans{DIM, T, ORDER, DEALIAS}) where {DIM, T, ORDER, DEALIAS}
     FFTW.unsafe_execute!(f.plan, u, f.cache)
     f.cache .*= f.norm
     if DEALIAS
-        _add_from_padded!(û, f.cache, DIM, ORDER)
+        _add_from_padded!(û, f.cache, DIM, ORDER)
     else
-        û .+= f.cache
+        û .+= f.cache
     end
-    return û
+    return û
 end
 
 """
-    (f::FFTPlans)(u, û, safe=true)
-    (f::FFTPlans)(u, û, safe=true, use_cache=false)
+    (f::FFTPlans)(u, û, safe=true)
+    (f::FFTPlans)(u, û, safe=true, use_cache=false)
 
-Backward in-place transform: spectral array `û` → physical array `u`.
+Backward in-place transform: spectral array `û` → physical array `u`.
 
-When `safe=true` (default), `û` is copied into `f.cache` before executing the
-brfft plan, which preserves `û` (FFTW's brfft destroys its input buffer).
-When `safe=false` the plan may execute directly on `û`, saving one array copy
-at the cost of corrupting `û` in-place.
+When `safe=true` (default), `û` is copied into `f.cache` before executing the
+brfft plan, which preserves `û` (FFTW's brfft destroys its input buffer).
+When `safe=false` the plan may execute directly on `û`, saving one array copy
+at the cost of corrupting `û` in-place.
 
 ## Arguments
 - `u`: output physical array
-- `û`: input spectral array (preserved when `safe=true`, corrupted otherwise)
-- `safe`: copy `û` before transforming to protect it from FFTW (default `true`)
+- `û`: input spectral array (preserved when `safe=true`, corrupted otherwise)
+- `safe`: copy `û` before transforming to protect it from FFTW (default `true`)
 - `use_cache`: when `safe=false` and not dealiasing, still stage through `f.cache`
-  to avoid destroying `û` (default `false`)
+  to avoid destroying `û` (default `false`)
 """
 function (f::FFTPlans{DIM, T})(u::VectorField{N, P},
-                               û::VectorField{N, S},
+                               û::VectorField{N, S},
                             safe::Bool=true) where {DIM, T, N, S<:AbstractScalarField{DIM, Complex{T}}, P<:AbstractScalarField{DIM, T}}
     for n in 1:N
-        f(u[n], û[n], safe)
+        f(u[n], û[n], safe)
     end
     return u
 end
 
 (f::FFTPlans{DIM, T})(u::AbstractScalarField{DIM,         T},
-                      û::AbstractScalarField{DIM, Complex{T}},
+                      û::AbstractScalarField{DIM, Complex{T}},
                    safe::Bool=true,
-              use_cache::Bool=false) where {DIM, T} = (f(parent(u), parent(û), safe, use_cache); return u)
+              use_cache::Bool=false) where {DIM, T} = (f(parent(u), parent(û), safe, use_cache); return u)
 
 (f::FFTPlans{DIM, T, ORDER, DEALIAS})(u::AbstractArray{        T},
-                                      û::AbstractArray{Complex{T}},
+                                      û::AbstractArray{Complex{T}},
                                    safe::Bool,
-                              use_cache::Bool) where {DIM, T, ORDER, DEALIAS} = safe ? _backward_transform!(u, û, f) : _unsafe_backward_transform!(u, û, f, use_cache)
+                              use_cache::Bool) where {DIM, T, ORDER, DEALIAS} = safe ? _backward_transform!(u, û, f) : _unsafe_backward_transform!(u, û, f, use_cache)
 
-function _backward_transform!(u, û, f::FFTPlans{DIM, T, ORDER, DEALIAS}) where {DIM, T, ORDER, DEALIAS}
+function _backward_transform!(u, û, f::FFTPlans{DIM, T, ORDER, DEALIAS}) where {DIM, T, ORDER, DEALIAS}
     if DEALIAS
-        _copy_to_padded!(_apply_mask!(f.cache), û, DIM, ORDER)
+        _copy_to_padded!(_apply_mask!(f.cache), û, DIM, ORDER)
         FFTW.unsafe_execute!(f.iplan, f.cache, u)
     else
-        f.cache .= û
+        f.cache .= û
         FFTW.unsafe_execute!(f.iplan, f.cache, u)
     end
     return u
 end
 
-function _unsafe_backward_transform!(u, û, f::FFTPlans{DIM, T, ORDER, DEALIAS}, use_cache::Bool) where {DIM, T, ORDER, DEALIAS}
+function _unsafe_backward_transform!(u, û, f::FFTPlans{DIM, T, ORDER, DEALIAS}, use_cache::Bool) where {DIM, T, ORDER, DEALIAS}
     if DEALIAS
-        _backward_transform!(u, û, f)
+        _backward_transform!(u, û, f)
     elseif use_cache
-        f.cache .= û
+        f.cache .= û
         FFTW.unsafe_execute!(f.iplan, f.cache, u)
     else
         # brfft destroys its input; caller accepts this when use_cache=false
-        FFTW.unsafe_execute!(f.iplan, û, u)
+        FFTW.unsafe_execute!(f.iplan, û, u)
     end
     return u
 end
