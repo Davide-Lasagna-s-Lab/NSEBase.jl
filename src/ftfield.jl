@@ -68,7 +68,6 @@ LinearAlgebra.norm(u::FTField) = sqrt(dot(u, u))
     return _re + im * _im
 end
 
-# TODO: see what this outputs
 """
     apply_symmetry!(data::AbstractArray{T, D}, ::Val{H})
 
@@ -93,7 +92,7 @@ which is optimal for the current layout. If this function is a bottleneck,
 storing the rfft dim last would give stride-1 access to the DC plane.
 """
 @generated function apply_symmetry!(data::AbstractArray{T, D}, ::Val{H}) where {T, D, H}
-    length(H) == 1 && return :(return data)
+    length(H) <= 1 && return :(return data)
 
     # All subset enumeration happens at code-generation time so the compiled
     # hot loop contains only literal index expressions — no closures, no dynamic
@@ -135,10 +134,10 @@ storing the rfft dim last would give stride-1 access to the DC plane.
         end)
     end
 
-    return quote
+    return Base.remove_linenums!(quote
         $(blocks...)
         return data
-    end
+    end)
 end
 apply_symmetry!(data, H::Dims) = apply_symmetry!(data, Val(H))
 

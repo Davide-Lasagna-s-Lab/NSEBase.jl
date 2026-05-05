@@ -45,7 +45,54 @@
 end
 
 @testset "Hermitian symmetry                " begin
-    # TODO: this for a few different dimensions
+    # 1 dimension
+    out = randn(ComplexF64, 11)
+    @test NSEBase.apply_symmetry!(copy(out), ()) == out
+
+    # 2 dimension
+    out = randn(ComplexF64, 11, 11)
+    @test NSEBase.apply_symmetry!(copy(out), ()) == out
+    @test NSEBase.apply_symmetry!(copy(out), (2,)) == out
+
+    # 3 dimension
+    out = randn(ComplexF64, 11, 11, 11)
+    @test NSEBase.apply_symmetry!(copy(out), ()) == out
+    @test NSEBase.apply_symmetry!(copy(out), (3,)) == out
+    new_out = NSEBase.apply_symmetry!(copy(out), (2, 3))
+    for i in 1:11
+        @test new_out[i, 1, 2:6] == reverse(conj.(new_out[i, 1, 7:end]))
+    end
+    new_out = NSEBase.apply_symmetry!(copy(out), (3, 1))
+    for j in 1:11
+        @test new_out[2:6, j, 1] == reverse(conj.(new_out[7:end, j, 1]))
+    end
+
+    # 4 dimension
+    out = randn(ComplexF64, 11, 11, 11, 11)
+    @test NSEBase.apply_symmetry!(copy(out), ()) == out
+    @test NSEBase.apply_symmetry!(copy(out), (2,)) == out
+    new_out = NSEBase.apply_symmetry!(copy(out), (3, 4))
+    for i in 1:11, j in 1:11
+        @test new_out[i, j, 1, 2:6] == reverse(conj.(new_out[i, j, 1, 7:end]))
+    end
+    new_out = NSEBase.apply_symmetry!(copy(out), (4, 2))
+    for i in 1:11, k in 1:11
+        @test new_out[i, 2:6, k, 1] == reverse(conj.(new_out[i, 7:end, k, 1]))
+    end
+    new_out = NSEBase.apply_symmetry!(copy(out), (1, 2, 3))
+    for l in 1:11
+        @test new_out[1, 1, 2:6, l] == reverse(conj.(new_out[1, 1, 7:end, l]))
+        for j in 2:11
+            @test new_out[1, j, 2:6, l] == reverse(conj.(new_out[1, end-j+2, 7:end, l]))
+        end
+    end
+    new_out = NSEBase.apply_symmetry!(copy(out), (3, 2, 4))
+    for i in 1:11
+        @test new_out[i, 1, 1, 2:6] == reverse(conj.(new_out[i, 1, 1, 7:end]))
+        for j in 2:11
+            @test new_out[i, j, 1, 2:6] == reverse(conj.(new_out[i, end-j+2, 1, 7:end]))
+        end
+    end
 end
 
 @testset "FTField                           " begin
