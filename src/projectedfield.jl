@@ -41,7 +41,7 @@ Base.IndexStyle(::Type{<:ProjectedField})                                    = B
 Base.parent(a::ProjectedField)                                               = a.data
 Base.eltype(::ProjectedField{<:AbstractGrid{T}}) where {T}                   = Complex{T}
 Base.size(a::ProjectedField)                                                 = size(parent(a))
-Base.similar(a::ProjectedField{<:AbstractGrid{T}}, ::Type{S}=T) where {S, T} = ProjectedField(similar(grid(a), S), zero(parent(a)), modes(a))
+Base.similar(a::ProjectedField{<:AbstractGrid{T}}, ::Type{S}=T) where {S, T} = ProjectedField(convert(real(S), grid(a)), zero(parent(a)), modes(a))
 Base.copy(a::ProjectedField)                                                 = ProjectedField(grid(a), copy(parent(a)), modes(a))
 Base.zero(a::ProjectedField)                                                 = ProjectedField(grid(a), zero(parent(a)), modes(a))
 Base.abs(a::ProjectedField)                                                  = (b = zero(a); parent(b) .= abs.(parent(a)); return b)

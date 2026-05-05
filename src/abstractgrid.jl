@@ -14,10 +14,10 @@ transformed using [`FFTPlans`](@ref).
 """
 abstract type AbstractGrid{T<:Real, D, H} end
 
-# TODO: change `similar` to `convert`
-Base.similar(grid::AbstractGrid{T}, ::Type{S}=T) where {T, S} = throw(NotImplementedError(grid, S))
-   Base.size(grid::AbstractGrid)                              = throw(NotImplementedError(grid))
-      points(grid::AbstractGrid; dealias=false)               = throw(NotImplementedError(grid))
-    fft_norm(grid::AbstractGrid)                              = throw(NotImplementedError(grid))
+Base.convert(::Type{T}, grid::AbstractGrid{T}) where {T}    = grid
+Base.convert(::Type{S}, grid::AbstractGrid{T}) where {S, T} = throw(NotImplementedError(grid, S))
+   Base.size(           grid::AbstractGrid)                 = throw(NotImplementedError(grid))
+      points(           grid::AbstractGrid; dealias=false)  = throw(NotImplementedError(grid))
+    fft_norm(           grid::AbstractGrid)                 = throw(NotImplementedError(grid))
 
 transform_size(grid::AbstractGrid{T, D, H}) where {T, D, H} = (shape = size(grid); ntuple(d->d==H[1] ? (shape[d] >> 1) + 1 : shape[d], length(shape)))

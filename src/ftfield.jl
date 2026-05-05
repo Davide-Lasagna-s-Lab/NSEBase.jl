@@ -31,7 +31,7 @@ FTField(grid::AbstractGrid{T}) where {T} = FTField(grid, zeros(Complex{T}, trans
 Base.IndexStyle(::Type{<:FTField})                                    = Base.IndexLinear()
 Base.parent(u::FTField)                                               = u.data
 Base.eltype(::FTField{<:AbstractGrid{T}}) where {T}                   = Complex{T}
-Base.similar(u::FTField{<:AbstractGrid{T}}, ::Type{S}=T) where {T, S} = FTField(similar(grid(u), S), zero(parent(u)))
+Base.similar(u::FTField{<:AbstractGrid{T}}, ::Type{S}=T) where {T, S} = FTField(convert(real(S), grid(u)), zero(parent(u)))
 Base.size(u::FTField)                                                 = Base.size(parent(u))
 Base.copy(u::FTField)                                                 = (v = Base.similar(u); parent(v) .= parent(u); return v)
 Base.zero(u::FTField{<:AbstractGrid{T}}) where {T}                    = (v = Base.similar(u); parent(v) .= zero(T)  ; return v)

@@ -25,7 +25,7 @@ Field(grid::AbstractGrid{T}               ; dealias=false) where {T} = Field(gri
 Base.IndexStyle(::Type{<:Field})                                    = Base.IndexLinear()
 Base.parent(u::Field)                                               = u.data
 Base.eltype(::Field{<:AbstractGrid{T}}) where {T}                   = T
-Base.similar(u::Field{<:AbstractGrid{T}}, ::Type{S}=T) where {T, S} = Field(similar(grid(u), S), zero(parent(u)))
+Base.similar(u::Field{<:AbstractGrid{T}}, ::Type{S}=T) where {T, S} = Field(convert(S, grid(u)), zero(parent(u)))
 Base.size(u::Field)                                                 = Base.size(parent(u))
 Base.copy(u::Field)                                                 = (v = Base.similar(u); parent(v) .= parent(u); return v)
 Base.zero(u::Field{<:AbstractGrid{T}}) where {T}                    = (v = Base.similar(u); parent(v) .= zero(T)  ; return v)
