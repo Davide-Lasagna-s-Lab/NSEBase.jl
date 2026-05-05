@@ -111,11 +111,30 @@ function (f::FFTPlans{DIM, T})(û::VectorField{N, S},
     return û
 end
 
+"""
+    (f::FFTPlans)(û::AbstractScalarField, u::AbstractScalarField, add=false, use_cache=false)
+
+Forward transform for `AbstractScalarField` inputs.
+
+Unwraps both fields to their underlying `parent` arrays and delegates to the
+`AbstractArray` method. `unsafe_execute!` requires a plain contiguous array
+whose memory layout matches the array used during planning; `parent` extracts
+that storage while this method preserves the `AbstractScalarField` return type
+for the caller.
+"""
 (f::FFTPlans{DIM, T})(û::AbstractScalarField{DIM, Complex{T}},
                       u::AbstractScalarField{DIM,         T},
                     add::Bool=false,
               use_cache::Bool=false) where {DIM, T} = (f(parent(û), parent(u), add, use_cache); return û)
 
+"""
+    (f::FFTPlans)(û::AbstractArray{Complex{T}}, u::AbstractArray{T}, add::Bool, use_cache::Bool)
+
+Inner dispatch point for the forward transform: all type-level unwrapping is
+complete and `_forward_transform!` can be called directly. `add` and `use_cache`
+carry no defaults here so that every internal call site is explicit about both
+flags rather than silently inheriting a behaviour.
+"""
 (f::FFTPlans{DIM, T, ORDER, DEALIAS})(û::AbstractArray{Complex{T}},
                                       u::AbstractArray{        T},
                                     add::Bool,
@@ -180,11 +199,29 @@ function (f::FFTPlans{DIM, T})(u::VectorField{N, P},
     return u
 end
 
+"""
+    (f::FFTPlans)(u::AbstractScalarField, û::AbstractScalarField, safe=true, use_cache=false)
+
+Backward transform for `AbstractScalarField` inputs.
+
+Unwraps both fields to their `parent` arrays and delegates to the `AbstractArray`
+method. Symmetric to the forward `AbstractScalarField` overload — the `parent`
+unwrapping is required for the same reason: `unsafe_execute!` needs a plain
+contiguous array matching the planning layout.
+"""
 (f::FFTPlans{DIM, T})(u::AbstractScalarField{DIM,         T},
                       û::AbstractScalarField{DIM, Complex{T}},
                    safe::Bool=true,
               use_cache::Bool=false) where {DIM, T} = (f(parent(u), parent(û), safe, use_cache); return u)
 
+"""
+    (f::FFTPlans)(u::AbstractArray{T}, û::AbstractArray{Complex{T}}, safe::Bool, use_cache::Bool)
+
+Inner dispatch point for the backward transform: all type-level unwrapping is
+complete and `_backward_transform!` can be called directly. `safe` and
+`use_cache` carry no defaults here so that every internal call site is explicit
+about both flags.
+"""
 (f::FFTPlans{DIM, T, ORDER, DEALIAS})(u::AbstractArray{        T},
                                       û::AbstractArray{Complex{T}},
                                    safe::Bool,
