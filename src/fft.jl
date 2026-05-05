@@ -91,17 +91,16 @@ end
 
 Forward in-place transform: physical array `u` → spectral array `û`.
 
-Computes `û .= f.norm * rfft(u)`, or accumulates into `û` when `add=true`.
-When constructed with `dealias=true`, `u` is transformed into the zero-padded
-`f.cache` first and the result is then truncated into `û`; when `dealias=false`
-the transform writes directly into `û` unless `use_cache=true`.
-
 ## Arguments
-- `û`: output spectral array (overwritten, or accumulated into when `add=true`)
-- `u`: input physical array (read-only)
-- `add`: accumulate result into `û` instead of overwriting (default `false`)
-- `use_cache`: route the FFTW output through `f.cache` before writing to `û`;
-  required when `û` cannot serve directly as an FFTW output buffer (default `false`)
+- `û`: output spectral array
+- `u`: input physical array (never modified)
+- `add`: add the transform result into `û` rather than overwriting it. Useful
+  when accumulating multiple physical-space contributions into the same spectral
+  array (e.g. nonlinear terms) without allocating a temporary.
+- `use_cache`: route the FFTW output through `f.cache` before writing to `û`.
+  `unsafe_execute!` bypasses FFTW's buffer checks and assumes the output has
+  the same memory layout as the array used during planning; set `use_cache=true`
+  when `û` is non-contiguous (e.g. a strided view) to avoid undefined behaviour.
 """
 function (f::FFTPlans{DIM, T})(û::VectorField{N, S},
                                u::VectorField{N, P},
@@ -127,11 +126,12 @@ end
 
 Overwrite `û` with the normalised forward transform of `u`.
 
-When `DEALIAS` is `true`, transforms into the padded `f.cache`, truncates the
-resolved frequencies into `û`, then normalises. When `DEALIAS` is `false` and
-`use_cache` is `false`, transforms directly into `û`. When `DEALIAS` is `false`
-and `use_cache` is `true`, transforms into `f.cache` first and copies to `û`
-(required when `û` is not a valid FFTW output buffer).
+When `DEALIAS` is `true`, the physical array must be larger than `û` to satisfy
+the 3/2 rule, so the transform must go through the padded `f.cache`; resolved
+frequencies are then truncated into `û`. When `DEALIAS` is `false`, the transform
+can write directly into `û` if `û` is a plain contiguous array — `unsafe_execute!`
+skips FFTW's layout checks, so writing directly into a non-contiguous `û` is
+undefined behaviour; `use_cache=true` routes through `f.cache` to avoid this.
 """
 function _forward_transform!(û, u, f::FFTPlans{DIM, T, ORDER, DEALIAS}, use_cache::Bool) where {DIM, T, ORDER, DEALIAS}
     if DEALIAS
@@ -154,9 +154,11 @@ end
 
 Accumulate the normalised forward transform of `u` into `û`: `û .+= f.norm * rfft(u)`.
 
-Always routes through `f.cache` to avoid aliasing the output. When `DEALIAS`
-is `true`, only the resolved frequencies are added via `_add_from_padded!`;
-otherwise the full normalised cache is added directly.
+Always routes through `f.cache` because the accumulation step requires `û` and
+the transform result to be separate arrays — `û` cannot simultaneously be the
+FFTW output buffer and the accumulation target. When `DEALIAS` is `true`, only
+the resolved frequencies are added via `_add_from_padded!`; otherwise the full
+normalised cache is added directly.
 """
 function _add_forward_transform!(û, u, f::FFTPlans{DIM, T, ORDER, DEALIAS}) where {DIM, T, ORDER, DEALIAS}
     FFTW.unsafe_execute!(f.plan, u, f.cache)
@@ -175,17 +177,18 @@ end
 
 Backward in-place transform: spectral array `û` → physical array `u`.
 
-When `safe=true` (default), `û` is copied into `f.cache` before executing the
-brfft plan, which preserves `û` (FFTW's brfft destroys its input buffer).
-When `safe=false` the plan may execute directly on `û`, saving one array copy
-at the cost of corrupting `û` in-place.
-
 ## Arguments
 - `u`: output physical array
-- `û`: input spectral array (preserved when `safe=true`, corrupted otherwise)
-- `safe`: copy `û` before transforming to protect it from FFTW (default `true`)
-- `use_cache`: when `safe=false` and not dealiasing, still stage through `f.cache`
-  to avoid destroying `û` (default `false`)
+- `û`: input spectral array
+- `safe`: FFTW's C2R (brfft) transform is permitted to overwrite its complex
+  input buffer as scratch during computation — this is a fundamental property
+  of the FFTW algorithm, not a bug. When `safe=true` (default), `û` is copied
+  into `f.cache` first so it is never touched. Use `safe=false` only when `û`
+  is no longer needed after the transform, saving one full spectral-array copy.
+- `use_cache`: when `safe=false` and not dealiasing, set this to `true` to
+  still stage through `f.cache` and protect `û` — useful when `û` is not a
+  valid FFTW input buffer (non-contiguous layout) but the caller still wants
+  to avoid the cost of the safe embedding path.
 """
 function (f::FFTPlans{DIM, T})(u::VectorField{N, P},
                                û::VectorField{N, S},
@@ -212,10 +215,12 @@ end
 Safe backward transform: write the inverse transform of `û` into `u`,
 always preserving `û`.
 
-The brfft plan executes on `f.cache`, never directly on `û`. When `DEALIAS`
-is `true`, `û` is first embedded into a zeroed `f.cache` via `_copy_to_padded!`
-so that padding-zone entries contribute nothing. When `DEALIAS` is `false`,
-`û` is simply copied into `f.cache`.
+FFTW's brfft plan is allowed to use its complex input buffer as scratch during
+the C2R computation, so the plan always executes on `f.cache`, never on `û`
+directly. When `DEALIAS` is `true`, `û` must be embedded into a padded buffer
+before transforming (to reconstruct the full physical grid), so `f.cache` is
+zeroed and filled via `_copy_to_padded!`. When `DEALIAS` is `false`, `û` is
+simply copied into `f.cache` before execution.
 """
 function _backward_transform!(u, û, f::FFTPlans{DIM, T, ORDER, DEALIAS}) where {DIM, T, ORDER, DEALIAS}
     if DEALIAS
@@ -231,13 +236,16 @@ end
 """
     _unsafe_backward_transform!(u, û, f::FFTPlans{DIM, T, ORDER, DEALIAS}, use_cache::Bool)
 
-Backward transform that may destroy `û` to save one array copy.
+Backward transform for callers that no longer need `û` after the call.
 
-When `DEALIAS` is `true`, delegates to `_backward_transform!` (padding always
-requires staging through `f.cache` regardless). When `DEALIAS` is `false` and
-`use_cache` is `false`, the brfft plan executes directly on `û`, which FFTW
-will overwrite. When `use_cache` is `true`, `û` is still staged through
-`f.cache` and left intact.
+When `DEALIAS` is `false` and `use_cache` is `false`, the brfft plan runs
+directly on `û`, avoiding the copy that `_backward_transform!` would perform.
+This saves one spectral-array traversal in memory bandwidth, which matters in
+tight time-stepping loops where the spectral state is consumed and immediately
+overwritten. When `DEALIAS` is `true`, the padded embedding always requires
+`f.cache`, so this degenerates to `_backward_transform!`. When `use_cache` is
+`true`, `û` is staged through `f.cache` even in the non-dealiased path — needed
+when `û` is non-contiguous and cannot serve directly as an FFTW input buffer.
 """
 function _unsafe_backward_transform!(u, û, f::FFTPlans{DIM, T, ORDER, DEALIAS}, use_cache::Bool) where {DIM, T, ORDER, DEALIAS}
     if DEALIAS
