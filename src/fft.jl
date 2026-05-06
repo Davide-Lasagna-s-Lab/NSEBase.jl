@@ -67,15 +67,16 @@ struct FFTPlans{DIM, T, ORDER, DEALIAS, PLAN, IPLAN}
                     dealias::Bool   =true,
                       flags::UInt32 =EXHAUSTIVE,
                   timelimit::Real   =NO_TIMELIMIT) where {DIM, H, T}
-        # create arrays
-        shape = dealias ? _get_padded_shape(shape, order) : shape
-        spectral_array = zeros(Complex{T}, _get_transform_shape(shape, order[1]))
-        physical_array = zeros(T, shape)
-        norm = T(1/prod(shape[collect(order)]))
+        all(1 ≤ d ≤ DIM for d in order) || throw(ArgumentError("order indices must be in 1:$DIM, got $order"))
+        allunique(order)                  || throw(ArgumentError("order indices must be unique, got $order"))
 
-        # construct plans
-        plan  = FFTW.plan_rfft( physical_array,                  order, flags=flags, timelimit=timelimit)
-        iplan = FFTW.plan_brfft(spectral_array, shape[order[1]], order, flags=flags, timelimit=timelimit)
+        grid_shape     = dealias ? _get_padded_shape(shape, order) : shape
+        spectral_array = zeros(Complex{T}, _get_transform_shape(grid_shape, order[1]))
+        physical_array = zeros(T, grid_shape)
+        norm           = T(1 / prod(grid_shape[i] for i in order))
+
+        plan  = FFTW.plan_rfft( physical_array,                       order, flags=flags, timelimit=timelimit)
+        iplan = FFTW.plan_brfft(spectral_array, grid_shape[order[1]], order, flags=flags, timelimit=timelimit)
 
         new{DIM, T, order, dealias, typeof(plan), typeof(iplan)}(plan, iplan, spectral_array, norm)
     end
@@ -172,35 +173,36 @@ function _forward_transform!(û, u, f::FFTPlans{DIM, T, ORDER, DEALIAS}, add::Bo
 end
 
 """
-    (f::FFTPlans)(u, û, safe=true)
-    (f::FFTPlans)(u, û, safe=true, use_cache=false)
+    (f::FFTPlans)(u, û, preserve_input=true)
+    (f::FFTPlans)(u, û, preserve_input=true, use_cache=false)
 
 Backward in-place transform: spectral array `û` → physical array `u`.
 
 ## Arguments
 - `u`: output physical array
 - `û`: input spectral array
-- `safe`: FFTW's C2R (brfft) transform is permitted to overwrite its complex
-  input buffer as scratch during computation — this is a fundamental property
-  of the FFTW algorithm, not a bug. When `safe=true` (default), `û` is copied
-  into `f.cache` first so it is never touched. Use `safe=false` only when `û`
-  is no longer needed after the transform, saving one full spectral-array copy.
-- `use_cache`: when `safe=false` and not dealiasing, set this to `true` to
-  still stage through `f.cache` and protect `û` — useful when `û` is not a
-  valid FFTW input buffer (non-contiguous layout) but the caller still wants
-  to avoid the cost of the safe embedding path.
+- `preserve_input`: FFTW's C2R (brfft) transform is permitted to overwrite its
+  complex input buffer as scratch during computation — this is a fundamental
+  property of the FFTW algorithm, not a bug. When `preserve_input=true`
+  (default), `û` is copied into `f.cache` first so it is never touched. Set
+  `preserve_input=false` only when `û` is no longer needed after the transform,
+  saving one full spectral-array copy.
+- `use_cache`: when `preserve_input=false` and not dealiasing, set this to
+  `true` to still stage through `f.cache` — useful when `û` is not a valid FFTW
+  input buffer (non-contiguous layout) but the caller does not want to pay for
+  the full safe-copy path.
 """
 function (f::FFTPlans{DIM, T})(u::VectorField{N, P},
                                û::VectorField{N, S},
-                            safe::Bool=true) where {DIM, T, N, S<:AbstractScalarField{DIM, Complex{T}}, P<:AbstractScalarField{DIM, T}}
+                  preserve_input::Bool=true) where {DIM, T, N, S<:AbstractScalarField{DIM, Complex{T}}, P<:AbstractScalarField{DIM, T}}
     for n in 1:N
-        f(u[n], û[n], safe)
+        f(u[n], û[n], preserve_input)
     end
     return u
 end
 
 """
-    (f::FFTPlans)(u::AbstractScalarField, û::AbstractScalarField, safe=true, use_cache=false)
+    (f::FFTPlans)(u::AbstractScalarField, û::AbstractScalarField, preserve_input=true, use_cache=false)
 
 Backward transform for `AbstractScalarField` inputs.
 
@@ -211,33 +213,33 @@ contiguous array matching the planning layout.
 """
 (f::FFTPlans{DIM, T})(u::AbstractScalarField{DIM,         T},
                       û::AbstractScalarField{DIM, Complex{T}},
-                   safe::Bool=true,
-              use_cache::Bool=false) where {DIM, T} = (f(parent(u), parent(û), safe, use_cache); return u)
+         preserve_input::Bool=true,
+              use_cache::Bool=false) where {DIM, T} = (f(parent(u), parent(û), preserve_input, use_cache); return u)
 
 """
-    (f::FFTPlans)(u::AbstractArray{T}, û::AbstractArray{Complex{T}}, safe::Bool, use_cache::Bool)
+    (f::FFTPlans)(u::AbstractArray{T}, û::AbstractArray{Complex{T}}, preserve_input::Bool, use_cache::Bool)
 
 Inner dispatch point for the backward transform: all type-level unwrapping is
-complete and `_backward_transform!` can be called directly. `safe` and
+complete and `_backward_transform!` can be called directly. `preserve_input` and
 `use_cache` carry no defaults here so that every internal call site is explicit
 about both flags.
 """
 (f::FFTPlans{DIM, T, ORDER, DEALIAS})(u::AbstractArray{        T},
                                       û::AbstractArray{Complex{T}},
-                                   safe::Bool,
-                              use_cache::Bool) where {DIM, T, ORDER, DEALIAS} = _backward_transform!(u, û, f, safe, use_cache)
+                         preserve_input::Bool,
+                              use_cache::Bool) where {DIM, T, ORDER, DEALIAS} = _backward_transform!(u, û, f, preserve_input, use_cache)
 
 """
-    _backward_transform!(u, û, f::FFTPlans{DIM, T, ORDER, DEALIAS}, safe::Bool, use_cache::Bool)
+    _backward_transform!(u, û, f::FFTPlans{DIM, T, ORDER, DEALIAS}, preserve_input::Bool, use_cache::Bool)
 
 Backward transform of `û` into `u`.
 
-Routes through `f.cache` whenever `DEALIAS`, `safe`, or `use_cache` is true
-(`through_cache = DEALIAS | safe | use_cache`). This is required because:
-brfft is permitted to overwrite its complex input buffer during computation, so
-preserving `û` requires a staging copy (`safe`); the 3/2-rule padded plan needs
-a larger input buffer than `û` provides (`DEALIAS`); and a non-contiguous `û`
-cannot serve as a valid FFTW input buffer (`use_cache`).
+Routes through `f.cache` whenever `DEALIAS`, `preserve_input`, or `use_cache`
+is true (`through_cache = DEALIAS | preserve_input | use_cache`). This is
+required because: brfft is permitted to overwrite its complex input buffer during
+computation, so preserving `û` requires a staging copy (`preserve_input`); the
+3/2-rule padded plan needs a larger input buffer than `û` provides (`DEALIAS`);
+and a non-contiguous `û` cannot serve as a valid FFTW input buffer (`use_cache`).
 
 When `through_cache` is false, the plan runs directly on `û`, which brfft may
 silently destroy — the caller accepts this side effect.
@@ -246,8 +248,8 @@ silently destroy — the caller accepts this side effect.
 into a zero-padded cache after `_apply_mask!`) and the non-dealiased case (full
 copy, since same-size embedding covers all elements and no prior zeroing is needed).
 """
-function _backward_transform!(u, û, f::FFTPlans{DIM, T, ORDER, DEALIAS}, safe::Bool, use_cache::Bool) where {DIM, T, ORDER, DEALIAS}
-    through_cache = DEALIAS | safe | use_cache
+function _backward_transform!(u, û, f::FFTPlans{DIM, T, ORDER, DEALIAS}, preserve_input::Bool, use_cache::Bool) where {DIM, T, ORDER, DEALIAS}
+    through_cache = DEALIAS | preserve_input | use_cache
     if through_cache
         DEALIAS && _apply_mask!(f.cache)
         _copy_to_padded!(f.cache, û, DIM, ORDER)
@@ -289,94 +291,116 @@ function _get_transform_shape(shape, dim)
     end
 end
 
-for name in [:_copy_from_padded!, :_add_from_padded!, :_copy_to_padded!]
-    # get useful variables for evaluation
-    src, dst = name ∈ [:_copy_from_padded!, :_add_from_padded!] ? (:cache, :u) : (:u, :cache)
-    blk_src, blk_dst = name ∈ [:_copy_from_padded!, :_add_from_padded!] ? (:blk_c, :blk_u) : (:blk_u, :blk_c)
-    op = name ∈ [:_copy_from_padded!, :_copy_to_padded!] ? ((x, y)->x) : +
+"""
+    _for_spectral_blocks!(f, u, cache, dim, order)
 
-    # create functions
-    @eval begin
-        function $name($dst, $src, dim, ::NTuple{1})
-            # copy non-negative frequencies
-            blk = ntuple(i->1:size(u, i), dim)
-            broadcast!($op, @view($dst[blk...]), @view($src[blk...]), @view($dst[blk...]))
-            return $dst
-        end
+Call `f(blk_u, blk_c)` for each pair of index blocks that maps resolved
+frequencies between `u` (the compact spectral array) and `cache` (the padded
+spectral array). Positive-frequency blocks share the same low-index range in
+both arrays; negative-frequency blocks are at the high-index end of `u` and
+at the corresponding high-index end of the larger `cache`.
 
-        function $name($dst, $src, dim, order::NTuple{2})
-            # copy non-negative frequencies in both directions
-            blk = ntuple(i->i == order[2] ? (1:(size(u, i) >> 1) + 1) : (1:size(u, i)), dim)
-            broadcast!($op, @view($dst[blk...]), @view($src[blk...]), @view($dst[blk...]))
-
-            # get positive and negative frequency lengths
-            npos = (size(u, order[2]) >> 1) + 1
-            nneg = size(u, order[2]) - npos
-            nneg == 0 && return cache
-
-            # copy negative frequencies in second direction
-            blk_u = ntuple(i->i ∈ order[2] ? (npos+1:size(u, i))                    : (1:size(u, i)), dim)
-            blk_c = ntuple(i->i ∈ order[2] ? (size(cache, i)-nneg+1:size(cache, i)) : (1:size(u, i)), dim)
-            broadcast!($op, @view($dst[$blk_dst...]), @view($src[$blk_src...]), @view($dst[$blk_dst...]))
-
-            return $dst
-        end
-
-        function $name($dst, $src, dim, order::NTuple{3})
-            # copy non-negative frequencies in both directions
-            blk = ntuple(i->i ∈ order[2:3] ? (1:(size(u, i) >> 1) + 1) : (1:size(u, i)), dim)
-            broadcast!($op, @view($dst[blk...]), @view($src[blk...]), @view($dst[blk...]))
-
-            for d in order[2:end]
-                # get positive and negative frequency lengths
-                npos = (size(u, d) >> 1) + 1
-                nneg = size(u, d) - npos
-                nneg == 0 && continue
-
-                # get block ranges
-                blk_u = ntuple(i->i ∈ order[2:end] ? (i == d ? (npos+1:size(u, d))                    : (1:(size(u, i) >> 1)+1)) : (1:size(u, i)), dim)
-                blk_c = ntuple(i->i ∈ order[2:end] ? (i == d ? (size(cache, d)-nneg+1:size(cache, d)) : (1:(size(u, i) >> 1)+1)) : (1:size(u, i)), dim)
-
-                # do copy
-                broadcast!($op, @view($dst[$blk_dst...]), @view($src[$blk_src...]), @view($dst[$blk_dst...]))
-            end
-
-            # copy final block corner
-            blk_u = ntuple(i->i ∈ order[2:end] ? ((size(u, i) >> 1)+2:size(u, i))               : (1:size(u, i)), dim)
-            blk_c = ntuple(i->i ∈ order[2:end] ? (size(cache, i)-size(u, i)+(size(u, i) >> 1)+2:size(cache, i)) : (1:size(u, i)), dim)
-            broadcast!($op, @view($dst[$blk_dst...]), @view($src[$blk_src...]), @view($dst[$blk_dst...]))
-
-            return $dst
-        end
-
-        $name($dst, $src, dim, order::NTuple{N}) where {N} = throw(NotImplementedError(order))
-    end
+`dim` is the total number of array dimensions (used as the length argument to
+`ntuple`). Dispatches on `length(order)` to handle 1, 2, or 3 transformed dims.
+"""
+function _for_spectral_blocks!(f, u, _, dim, ::NTuple{1})
+    blk = ntuple(i -> 1:size(u, i), dim)
+    f(blk, blk)
 end
 
-@doc """
+function _for_spectral_blocks!(f, u, cache, dim, order::NTuple{2})
+    npos = (size(u, order[2]) >> 1) + 1
+    nneg = size(u, order[2]) - npos
+
+    blk_pos = ntuple(i -> i == order[2] ? (1:npos) : (1:size(u, i)), dim)
+    f(blk_pos, blk_pos)
+
+    nneg == 0 && return
+
+    blk_u = ntuple(i -> i == order[2] ? (npos+1:size(u, order[2]))                          : (1:size(u, i)), dim)
+    blk_c = ntuple(i -> i == order[2] ? (size(cache, order[2])-nneg+1:size(cache, order[2])) : (1:size(u, i)), dim)
+    f(blk_u, blk_c)
+end
+
+function _for_spectral_blocks!(f, u, cache, dim, order::NTuple{3})
+    # all-positive block: low-index range in both fft dims
+    blk_pos = ntuple(i -> i ∈ order[2:3] ? (1:(size(u, i)>>1)+1) : (1:size(u, i)), dim)
+    f(blk_pos, blk_pos)
+
+    # edge blocks: negative in one fft dim, positive in the other
+    for d in order[2:end]
+        npos = (size(u, d) >> 1) + 1
+        nneg = size(u, d) - npos
+        nneg == 0 && continue
+
+        blk_u = ntuple(dim) do i
+            i ∈ order[2:end] ? (i == d ? (npos+1:size(u, d))                  : (1:(size(u, i)>>1)+1)) : (1:size(u, i))
+        end
+        blk_c = ntuple(dim) do i
+            i ∈ order[2:end] ? (i == d ? (size(cache, d)-nneg+1:size(cache, d)) : (1:(size(u, i)>>1)+1)) : (1:size(u, i))
+        end
+        f(blk_u, blk_c)
+    end
+
+    # corner block: negative in all fft dims simultaneously
+    blk_u = ntuple(dim) do i
+        i ∈ order[2:end] ? ((size(u, i)>>1)+2 : size(u, i)) : (1:size(u, i))
+    end
+    blk_c = ntuple(dim) do i
+        if i ∈ order[2:end]
+            nneg_i = size(u, i) - (size(u, i)>>1) - 1
+            (size(cache, i) - nneg_i + 1 : size(cache, i))
+        else
+            (1:size(u, i))
+        end
+    end
+    f(blk_u, blk_c)
+end
+
+_for_spectral_blocks!(f, u, cache, dim, order::NTuple{N}) where {N} = throw(NotImplementedError(order))
+
+"""
     _copy_from_padded!(u, cache, dim, order)
 
 Copy resolved Fourier coefficients from the padded spectral `cache` into the
-truncated spectral array `u`, discarding the dealiasing padding. Negative-
-frequency blocks (stored at the high-index end of `cache`) are mapped back to
-the corresponding high-index end of `u`. Dispatches on `length(order)`.
-""" _copy_from_padded!
+compact spectral array `u`, discarding the dealiasing padding. Negative-frequency
+blocks (at the high-index end of `cache`) are mapped to the corresponding high-index
+end of `u`. Delegates block enumeration to `_for_spectral_blocks!`.
+"""
+function _copy_from_padded!(u, cache, dim, order)
+    _for_spectral_blocks!(u, cache, dim, order) do blk_u, blk_c
+        @views u[blk_u...] .= cache[blk_c...]
+    end
+    return u
+end
 
-@doc """
+"""
     _add_from_padded!(u, cache, dim, order)
 
 Accumulate resolved Fourier coefficients from the padded spectral `cache` into
 `u` (`u .+= cache[resolved]`). Same block structure as `_copy_from_padded!`.
-""" _add_from_padded!
+"""
+function _add_from_padded!(u, cache, dim, order)
+    _for_spectral_blocks!(u, cache, dim, order) do blk_u, blk_c
+        @views u[blk_u...] .+= cache[blk_c...]
+    end
+    return u
+end
 
-@doc """
+"""
     _copy_to_padded!(cache, u, dim, order)
 
-Embed resolved Fourier coefficients from the truncated spectral array `u` into
+Embed resolved Fourier coefficients from the compact spectral array `u` into
 the padded `cache`, placing negative-frequency blocks at the high-index end of
-each transformed dimension. The caller must zero `cache` first (typically via
-`_apply_mask!`) so that padding-zone entries are zero before the brfft plan runs.
-""" _copy_to_padded!
+each transformed dimension. The caller must zero `cache` first (via `_apply_mask!`)
+so that padding-zone entries are zero before the brfft plan runs.
+"""
+function _copy_to_padded!(cache, u, dim, order)
+    _for_spectral_blocks!(u, cache, dim, order) do blk_u, blk_c
+        @views cache[blk_c...] .= u[blk_u...]
+    end
+    return cache
+end
 
 """
     _apply_mask!(cache::Array{T}) -> cache
