@@ -292,61 +292,68 @@ function _get_transform_shape(shape, dim)
 end
 
 """
-    _for_spectral_blocks!(f, u, cache, dim, order)
+    _spectral_blocks(u, cache, dim, order) -> Tuple of (blk_u, blk_c) pairs
 
-Call `f(blk_u, blk_c)` for each pair of index blocks that maps resolved
-frequencies between `u` (the compact spectral array) and `cache` (the padded
-spectral array). Positive-frequency blocks share the same low-index range in
-both arrays; negative-frequency blocks are at the high-index end of `u` and
-at the corresponding high-index end of the larger `cache`.
+Return a fixed-size tuple of index-block pairs that map resolved frequencies
+between `u` (the compact spectral array) and `cache` (the padded spectral array).
+Each pair `(blk_u, blk_c)` is a pair of `NTuple{DIM, UnitRange{Int}}` index
+blocks: `blk_u` selects a region of `u` and `blk_c` selects the corresponding
+region of `cache`.
 
-`dim` is the total number of array dimensions (used as the length argument to
-`ntuple`). Dispatches on `length(order)` to handle 1, 2, or 3 transformed dims.
+Positive-frequency blocks share the same low-index range in both arrays.
+Negative-frequency blocks are at the high-index end of `u` and at the
+corresponding high-index end of the larger `cache`. When a dimension has no
+negative frequencies, its block uses an empty range and is a no-op in any
+subsequent broadcast.
+
+Dispatches on `length(order)` and always returns a statically-sized tuple
+(1 pair for `NTuple{1}`, 2 for `NTuple{2}`, 4 for `NTuple{3}`), so callers
+incur no heap allocation.
 """
-function _for_spectral_blocks!(f, u, _, dim, ::NTuple{1})
+function _spectral_blocks(u, _, dim, ::NTuple{1})
     blk = ntuple(i -> 1:size(u, i), dim)
-    f(blk, blk)
+    return ((blk, blk),)
 end
 
-function _for_spectral_blocks!(f, u, cache, dim, order::NTuple{2})
+function _spectral_blocks(u, cache, dim, order::NTuple{2})
     npos = (size(u, order[2]) >> 1) + 1
     nneg = size(u, order[2]) - npos
 
-    blk_pos = ntuple(i -> i == order[2] ? (1:npos) : (1:size(u, i)), dim)
-    f(blk_pos, blk_pos)
+    blk_pos = ntuple(i -> i == order[2] ? (1:npos)                                             : (1:size(u, i)), dim)
+    blk_u   = ntuple(i -> i == order[2] ? (npos+1:size(u, order[2]))                           : (1:size(u, i)), dim)
+    blk_c   = ntuple(i -> i == order[2] ? (size(cache, order[2])-nneg+1:size(cache, order[2])) : (1:size(u, i)), dim)
 
-    nneg == 0 && return
-
-    blk_u = ntuple(i -> i == order[2] ? (npos+1:size(u, order[2]))                          : (1:size(u, i)), dim)
-    blk_c = ntuple(i -> i == order[2] ? (size(cache, order[2])-nneg+1:size(cache, order[2])) : (1:size(u, i)), dim)
-    f(blk_u, blk_c)
+    return ((blk_pos, blk_pos), (blk_u, blk_c))
 end
 
-function _for_spectral_blocks!(f, u, cache, dim, order::NTuple{3})
-    # all-positive block: low-index range in both fft dims
+function _spectral_blocks(u, cache, dim, order::NTuple{3})
+    npos2 = (size(u, order[2]) >> 1) + 1;  nneg2 = size(u, order[2]) - npos2
+    npos3 = (size(u, order[3]) >> 1) + 1;  nneg3 = size(u, order[3]) - npos3
+
+    # all-positive block
     blk_pos = ntuple(i -> i ∈ order[2:3] ? (1:(size(u, i)>>1)+1) : (1:size(u, i)), dim)
-    f(blk_pos, blk_pos)
 
-    # edge blocks: negative in one fft dim, positive in the other
-    for d in order[2:end]
-        npos = (size(u, d) >> 1) + 1
-        nneg = size(u, d) - npos
-        nneg == 0 && continue
-
-        blk_u = ntuple(dim) do i
-            i ∈ order[2:end] ? (i == d ? (npos+1:size(u, d))                  : (1:(size(u, i)>>1)+1)) : (1:size(u, i))
-        end
-        blk_c = ntuple(dim) do i
-            i ∈ order[2:end] ? (i == d ? (size(cache, d)-nneg+1:size(cache, d)) : (1:(size(u, i)>>1)+1)) : (1:size(u, i))
-        end
-        f(blk_u, blk_c)
+    # edge block: negative in order[2], positive in order[3]
+    blk_u2 = ntuple(dim) do i
+        i ∈ order[2:end] ? (i == order[2] ? (npos2+1:size(u, order[2]))                           : (1:(size(u, i)>>1)+1)) : (1:size(u, i))
+    end
+    blk_c2 = ntuple(dim) do i
+        i ∈ order[2:end] ? (i == order[2] ? (size(cache, order[2])-nneg2+1:size(cache, order[2])) : (1:(size(u, i)>>1)+1)) : (1:size(u, i))
     end
 
-    # corner block: negative in all fft dims simultaneously
-    blk_u = ntuple(dim) do i
+    # edge block: positive in order[2], negative in order[3]
+    blk_u3 = ntuple(dim) do i
+        i ∈ order[2:end] ? (i == order[3] ? (npos3+1:size(u, order[3]))                           : (1:(size(u, i)>>1)+1)) : (1:size(u, i))
+    end
+    blk_c3 = ntuple(dim) do i
+        i ∈ order[2:end] ? (i == order[3] ? (size(cache, order[3])-nneg3+1:size(cache, order[3])) : (1:(size(u, i)>>1)+1)) : (1:size(u, i))
+    end
+
+    # corner block: negative in both order[2] and order[3]
+    blk_uc = ntuple(dim) do i
         i ∈ order[2:end] ? ((size(u, i)>>1)+2 : size(u, i)) : (1:size(u, i))
     end
-    blk_c = ntuple(dim) do i
+    blk_cc = ntuple(dim) do i
         if i ∈ order[2:end]
             nneg_i = size(u, i) - (size(u, i)>>1) - 1
             (size(cache, i) - nneg_i + 1 : size(cache, i))
@@ -354,10 +361,11 @@ function _for_spectral_blocks!(f, u, cache, dim, order::NTuple{3})
             (1:size(u, i))
         end
     end
-    f(blk_u, blk_c)
+
+    return ((blk_pos, blk_pos), (blk_u2, blk_c2), (blk_u3, blk_c3), (blk_uc, blk_cc))
 end
 
-_for_spectral_blocks!(f, u, cache, dim, order::NTuple{N}) where {N} = throw(NotImplementedError(order))
+_spectral_blocks(_, _, _, order::NTuple{N}) where {N} = throw(NotImplementedError(order))
 
 """
     _copy_from_padded!(u, cache, dim, order)
@@ -365,10 +373,10 @@ _for_spectral_blocks!(f, u, cache, dim, order::NTuple{N}) where {N} = throw(NotI
 Copy resolved Fourier coefficients from the padded spectral `cache` into the
 compact spectral array `u`, discarding the dealiasing padding. Negative-frequency
 blocks (at the high-index end of `cache`) are mapped to the corresponding high-index
-end of `u`. Delegates block enumeration to `_for_spectral_blocks!`.
+end of `u`. Delegates block enumeration to `_spectral_blocks`.
 """
 function _copy_from_padded!(u, cache, dim, order)
-    _for_spectral_blocks!(u, cache, dim, order) do blk_u, blk_c
+    for (blk_u, blk_c) in _spectral_blocks(u, cache, dim, order)
         @views u[blk_u...] .= cache[blk_c...]
     end
     return u
@@ -381,7 +389,7 @@ Accumulate resolved Fourier coefficients from the padded spectral `cache` into
 `u` (`u .+= cache[resolved]`). Same block structure as `_copy_from_padded!`.
 """
 function _add_from_padded!(u, cache, dim, order)
-    _for_spectral_blocks!(u, cache, dim, order) do blk_u, blk_c
+    for (blk_u, blk_c) in _spectral_blocks(u, cache, dim, order)
         @views u[blk_u...] .+= cache[blk_c...]
     end
     return u
@@ -396,7 +404,7 @@ each transformed dimension. The caller must zero `cache` first (via `_apply_mask
 so that padding-zone entries are zero before the brfft plan runs.
 """
 function _copy_to_padded!(cache, u, dim, order)
-    _for_spectral_blocks!(u, cache, dim, order) do blk_u, blk_c
+    for (blk_u, blk_c) in _spectral_blocks(u, cache, dim, order)
         @views cache[blk_c...] .= u[blk_u...]
     end
     return cache
