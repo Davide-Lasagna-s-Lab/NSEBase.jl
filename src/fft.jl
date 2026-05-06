@@ -17,20 +17,20 @@ const NO_TIMELIMIT = FFTW.NO_TIMELIMIT
 # transform object #
 # ---------------- #
 """
-    FFTPlans{DIM, T, ORDER, DEALIAS, PLAN, IPLAN}
+    FFTPlans{DEALIAS, D, T, ORDER, PLAN, IPLAN}
 
 Paired FFTW real-to-complex (rfft) and complex-to-real (brfft) plans for
 in-place transformations between physical and spectral representations of a
-scalar field on a `DIM`-dimensional grid.
+scalar field on a `D`-dimensional grid.
 
 # Type parameters
-- `DIM`: number of spatial dimensions
+- `DEALIAS`: `Bool`; when `true`, physical arrays are padded by the 3/2 rule
+  in each transformed dimension to eliminate aliasing in nonlinear products
+- `D`: number of spatial dimensions
 - `T`: real element type (e.g. `Float64`)
 - `ORDER`: tuple of transformed dimension indices; `ORDER[1]` is the rfft
   dimension (non-negative frequencies only), `ORDER[2:end]` are full-spectrum
   complex FFT dimensions applied in sequence
-- `DEALIAS`: `Bool`; when `true`, physical arrays are padded by the 3/2 rule
-  in each transformed dimension to eliminate aliasing in nonlinear products
 
 # Fields
 - `plan`: FFTW rfft plan (physical → spectral)
@@ -55,20 +55,20 @@ scalar field on a `DIM`-dimensional grid.
 - `timelimit::Real`: maximum planner wall-time in seconds (`NO_TIMELIMIT` to
   disable)
 """
-struct FFTPlans{DIM, T, ORDER, DEALIAS, PLAN, IPLAN}
+struct FFTPlans{DEALIAS, D, T, ORDER, PLAN, IPLAN}
     plan::PLAN
     iplan::IPLAN
-    cache::Array{Complex{T}, DIM}
+    cache::Array{Complex{T}, D}
     norm::T
 
-    function FFTPlans(shape::Dims{DIM},
+    function FFTPlans(shape::Dims{D},
                       order::NTuple{H, Int},
                            ::Type{T}=Float64;
                     dealias::Bool   =true,
                       flags::UInt32 =EXHAUSTIVE,
-                  timelimit::Real   =NO_TIMELIMIT) where {DIM, H, T}
-        all(1 ≤ d ≤ DIM for d in order) || throw(ArgumentError("order indices must be in 1:$DIM, got $order"))
-        allunique(order)                  || throw(ArgumentError("order indices must be unique, got $order"))
+                  timelimit::Real   =NO_TIMELIMIT) where {D, H, T}
+        all(1 ≤ d ≤ D for d in order) || throw(ArgumentError("order indices must be in 1:$D, got $order"))
+        allunique(order)               || throw(ArgumentError("order indices must be unique, got $order"))
 
         grid_shape     = dealias ? _get_padded_shape(shape, order) : shape
         spectral_array = zeros(Complex{T}, _get_transform_shape(grid_shape, order[1]))
@@ -78,9 +78,13 @@ struct FFTPlans{DIM, T, ORDER, DEALIAS, PLAN, IPLAN}
         plan  = FFTW.plan_rfft( physical_array,                       order, flags=flags, timelimit=timelimit)
         iplan = FFTW.plan_brfft(spectral_array, grid_shape[order[1]], order, flags=flags, timelimit=timelimit)
 
-        new{DIM, T, order, dealias, typeof(plan), typeof(iplan)}(plan, iplan, spectral_array, norm)
+        new{dealias, D, T, order, typeof(plan), typeof(iplan)}(plan, iplan, spectral_array, norm)
     end
 end
+
+FFTPlans(g::AbstractGrid{T, D, H}; kwargs...) where {T, D, H} = FFTPlans(size(g), H, T; kwargs...)
+FFTPlans(u::FTField;               kwargs...)                 = FFTPlans(grid(u); kwargs...)
+FFTPlans(u::Field;                 kwargs...)                 = FFTPlans(grid(u); kwargs...)
 
 
 # ------------------------ #
@@ -103,30 +107,28 @@ Forward in-place transform: physical array `u` → spectral array `û`.
   the same memory layout as the array used during planning; set `use_cache=true`
   when `û` is non-contiguous (e.g. a strided view) to avoid undefined behaviour.
 """
-function (f::FFTPlans{DIM, T})(û::VectorField{N, S},
-                               u::VectorField{N, P},
-                             add::Bool=false) where {DIM, T, N, S<:AbstractScalarField{DIM, Complex{T}}, P<:AbstractScalarField{DIM, T}}
+function (f::FFTPlans)(û::VectorField{N, <:FTField},
+                       u::VectorField{N, <:Field};
+                     add::Bool=false,
+               use_cache::Bool=false) where {N}
     for n in 1:N
-        f(û[n], u[n], add)
+        f(û[n], u[n]; add=add, use_cache=use_cache)
     end
     return û
 end
 
 """
-    (f::FFTPlans)(û::AbstractScalarField, u::AbstractScalarField, add=false, use_cache=false)
+    (f::FFTPlans)(û::FTField, u::Field; add=false, use_cache=false)
 
-Forward transform for `AbstractScalarField` inputs.
+Forward transform for `FTField`/`Field` inputs with keyword arguments.
 
 Unwraps both fields to their underlying `parent` arrays and delegates to the
 `AbstractArray` method. `unsafe_execute!` requires a plain contiguous array
 whose memory layout matches the array used during planning; `parent` extracts
-that storage while this method preserves the `AbstractScalarField` return type
-for the caller.
+that storage while this method preserves the `FTField` return type for the caller.
 """
-(f::FFTPlans{DIM, T})(û::AbstractScalarField{DIM, Complex{T}},
-                      u::AbstractScalarField{DIM,         T},
-                    add::Bool=false,
-              use_cache::Bool=false) where {DIM, T} = (f(parent(û), parent(u), add, use_cache); return û)
+(f::FFTPlans)(û::FTField, u::Field; add::Bool=false, use_cache::Bool=false) =
+    (f(parent(û), parent(u), add, use_cache); return û)
 
 """
     (f::FFTPlans)(û::AbstractArray{Complex{T}}, u::AbstractArray{T}, add::Bool, use_cache::Bool)
@@ -136,13 +138,13 @@ complete and `_forward_transform!` can be called directly. `add` and `use_cache`
 carry no defaults here so that every internal call site is explicit about both
 flags rather than silently inheriting a behaviour.
 """
-(f::FFTPlans{DIM, T, ORDER, DEALIAS})(û::AbstractArray{Complex{T}},
-                                      u::AbstractArray{        T},
-                                    add::Bool,
-                              use_cache::Bool) where {DIM, T, ORDER, DEALIAS} = _forward_transform!(û, u, f, add, use_cache)
+(f::FFTPlans{DEALIAS, D, T, ORDER})(û::AbstractArray{Complex{T}},
+                                    u::AbstractArray{        T},
+                                  add::Bool,
+                            use_cache::Bool) where {DEALIAS, D, T, ORDER} = _forward_transform!(û, u, f, add, use_cache)
 
 """
-    _forward_transform!(û, u, f::FFTPlans{DIM, T, ORDER, DEALIAS}, add::Bool, use_cache::Bool)
+    _forward_transform!(û, u, f::FFTPlans{DEALIAS, D, T, ORDER}, add::Bool, use_cache::Bool)
 
 Forward transform of `u` into `û`, optionally accumulating into `û`.
 
@@ -161,13 +163,13 @@ when `û` has the same memory layout as the array used during planning.
 (truncation from a padded cache) and the non-dealiased case (full copy, since
 same-size arrays make the truncation a no-op that covers all elements).
 """
-function _forward_transform!(û, u, f::FFTPlans{DIM, T, ORDER, DEALIAS}, add::Bool, use_cache::Bool) where {DIM, T, ORDER, DEALIAS}
+function _forward_transform!(û, u, f::FFTPlans{DEALIAS, D, T, ORDER}, add::Bool, use_cache::Bool) where {DEALIAS, D, T, ORDER}
     through_cache = DEALIAS | use_cache | add
     buf = through_cache ? f.cache : û
     FFTW.unsafe_execute!(f.plan, u, buf)
     buf .*= f.norm
     if through_cache
-        add ? _add_from_padded!(û, f.cache, DIM, ORDER) : _copy_from_padded!(û, f.cache, DIM, ORDER)
+        add ? _add_from_padded!(û, f.cache, D, ORDER) : _copy_from_padded!(û, f.cache, D, ORDER)
     end
     return û
 end
@@ -192,29 +194,28 @@ Backward in-place transform: spectral array `û` → physical array `u`.
   input buffer (non-contiguous layout) but the caller does not want to pay for
   the full safe-copy path.
 """
-function (f::FFTPlans{DIM, T})(u::VectorField{N, P},
-                               û::VectorField{N, S},
-                  preserve_input::Bool=true) where {DIM, T, N, S<:AbstractScalarField{DIM, Complex{T}}, P<:AbstractScalarField{DIM, T}}
+function (f::FFTPlans)(u::VectorField{N, <:Field},
+                       û::VectorField{N, <:FTField};
+          preserve_input::Bool=true,
+               use_cache::Bool=false) where {N}
     for n in 1:N
-        f(u[n], û[n], preserve_input)
+        f(u[n], û[n]; preserve_input=preserve_input, use_cache=use_cache)
     end
     return u
 end
 
 """
-    (f::FFTPlans)(u::AbstractScalarField, û::AbstractScalarField, preserve_input=true, use_cache=false)
+    (f::FFTPlans)(u::Field, û::FTField; preserve_input=true, use_cache=false)
 
-Backward transform for `AbstractScalarField` inputs.
+Backward transform for `Field`/`FTField` inputs with keyword arguments.
 
 Unwraps both fields to their `parent` arrays and delegates to the `AbstractArray`
-method. Symmetric to the forward `AbstractScalarField` overload — the `parent`
-unwrapping is required for the same reason: `unsafe_execute!` needs a plain
-contiguous array matching the planning layout.
+method. Symmetric to the forward `FTField`/`Field` overload — `parent` unwrapping
+is required for the same reason: `unsafe_execute!` needs a plain contiguous array
+matching the planning layout.
 """
-(f::FFTPlans{DIM, T})(u::AbstractScalarField{DIM,         T},
-                      û::AbstractScalarField{DIM, Complex{T}},
-         preserve_input::Bool=true,
-              use_cache::Bool=false) where {DIM, T} = (f(parent(u), parent(û), preserve_input, use_cache); return u)
+(f::FFTPlans)(u::Field, û::FTField; preserve_input::Bool=true, use_cache::Bool=false) =
+    (f(parent(u), parent(û), preserve_input, use_cache); return u)
 
 """
     (f::FFTPlans)(u::AbstractArray{T}, û::AbstractArray{Complex{T}}, preserve_input::Bool, use_cache::Bool)
@@ -224,13 +225,14 @@ complete and `_backward_transform!` can be called directly. `preserve_input` and
 `use_cache` carry no defaults here so that every internal call site is explicit
 about both flags.
 """
-(f::FFTPlans{DIM, T, ORDER, DEALIAS})(u::AbstractArray{        T},
-                                      û::AbstractArray{Complex{T}},
-                         preserve_input::Bool,
-                              use_cache::Bool) where {DIM, T, ORDER, DEALIAS} = _backward_transform!(u, û, f, preserve_input, use_cache)
+(f::FFTPlans{DEALIAS, D, T, ORDER})(u::AbstractArray{        T},
+                                    û::AbstractArray{Complex{T}},
+                       preserve_input::Bool,
+                            use_cache::Bool) where {DEALIAS, D, T, ORDER} = 
+    _backward_transform!(u, û, f, preserve_input, use_cache)
 
 """
-    _backward_transform!(u, û, f::FFTPlans{DIM, T, ORDER, DEALIAS}, preserve_input::Bool, use_cache::Bool)
+    _backward_transform!(u, û, f::FFTPlans{DEALIAS, D, T, ORDER}, preserve_input::Bool, use_cache::Bool)
 
 Backward transform of `û` into `u`.
 
@@ -248,18 +250,52 @@ silently destroy — the caller accepts this side effect.
 into a zero-padded cache after `_apply_mask!`) and the non-dealiased case (full
 copy, since same-size embedding covers all elements and no prior zeroing is needed).
 """
-function _backward_transform!(u, û, f::FFTPlans{DIM, T, ORDER, DEALIAS}, preserve_input::Bool, use_cache::Bool) where {DIM, T, ORDER, DEALIAS}
+function _backward_transform!(u, û, f::FFTPlans{DEALIAS, D, T, ORDER}, preserve_input::Bool, use_cache::Bool) where {DEALIAS, D, T, ORDER}
     through_cache = DEALIAS | preserve_input | use_cache
     if through_cache
         DEALIAS && _apply_mask!(f.cache)
-        _copy_to_padded!(f.cache, û, DIM, ORDER)
+        _copy_to_padded!(f.cache, û, D, ORDER)
         FFTW.unsafe_execute!(f.iplan, f.cache, u)
     else
-        # brfft destroys its input; caller accepts this when safe=false, use_cache=false
+        # brfft destroys its input; caller accepts this when preserve_input=false, use_cache=false
         FFTW.unsafe_execute!(f.iplan, û, u)
     end
     return u
 end
+
+
+# --------------------- #
+# allocating transforms #
+# --------------------- #
+"""
+    FFT(u::Field) -> FTField
+
+Allocating forward transform: compute and return the Fourier coefficients of `u`
+normalised by the grid's `fft_norm`. Equivalent to planning and executing a fresh
+`rfft` on `parent(u)`.
+"""
+function FFT(u::Field{G}) where {T, D, H, G<:AbstractGrid{T, D, H}}
+    û = FTField(grid(u))
+    parent(û) .= rfft(parent(u), H)
+    û .*= 1 / prod(fft_norm(grid(u)))
+    return û
+end
+FFT(u::VectorField{N, <:Field}) where {N} = VectorField([FFT(u[n]) for n in 1:N]...)
+
+"""
+    IFFT(û::FTField) -> Field
+
+Allocating backward transform: compute and return the physical-space field
+corresponding to the Fourier coefficients `û`. No normalisation is applied
+(consistent with the convention that normalisation belongs to the forward
+transform). Equivalent to planning and executing a fresh `brfft` on `parent(û)`.
+"""
+function IFFT(û::FTField{G}) where {T, D, H, G<:AbstractGrid{T, D, H}}
+    u = Field(grid(û))
+    parent(u) .= brfft(parent(û), size(grid(û))[H[1]], H)
+    return u
+end
+IFFT(û::VectorField{N, <:FTField}) where {N} = VectorField([IFFT(û[n]) for n in 1:N]...)
 
 
 # ----------------- #
@@ -296,7 +332,7 @@ end
 
 Return a fixed-size tuple of index-block pairs that map resolved frequencies
 between `u` (the compact spectral array) and `cache` (the padded spectral array).
-Each pair `(blk_u, blk_c)` is a pair of `NTuple{DIM, UnitRange{Int}}` index
+Each pair `(blk_u, blk_c)` is a pair of `NTuple{D, UnitRange{Int}}` index
 blocks: `blk_u` selects a region of `u` and `blk_c` selects the corresponding
 region of `cache`.
 
