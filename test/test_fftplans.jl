@@ -33,6 +33,27 @@ using FFTW: ESTIMATE
         f = FFTPlans((4, 6, 8), (1, 2, 3), T, dealias=false, flags=ESTIMATE)
         @test f.norm ≈ T(1/192)
         @test size(f.cache) == (3, 6, 8)
+
+        # padded_size overrides dealias: explicit size used instead of 3/2 rule
+        f = FFTPlans((8,), (1,), T, padded_size=(16,), flags=ESTIMATE)
+        @test f.norm ≈ T(1/16)
+        @test size(f.cache) == (9,)   # (16 >> 1) + 1
+
+        # padded_size == shape: no padding, so DEALIAS=false
+        f = FFTPlans((8,), (1,), T, padded_size=(8,), flags=ESTIMATE)
+        @test f.norm ≈ T(1/8)
+        @test size(f.cache) == (5,)
+        @test !isa(f, FFTPlans{true})
+
+        # padded_size in 2D, only rfft dim padded
+        f = FFTPlans((8, 6), (1,), T, padded_size=(12, 6), flags=ESTIMATE)
+        @test f.norm ≈ T(1/12)
+        @test size(f.cache) == (7, 6)  # (12 >> 1) + 1
+
+        # argument errors
+        @test_throws ArgumentError FFTPlans((8,), (1,), T, padded_size=(6,),   flags=ESTIMATE)  # smaller than shape
+        @test_throws ArgumentError FFTPlans((8,), (1,), T, padded_size=(8, 6), flags=ESTIMATE)  # wrong length
+        @test_throws ArgumentError FFTPlans((8,), (1,), T, padded_size=(16,), dealias=false, flags=ESTIMATE)  # contradictory
     end
 end
 

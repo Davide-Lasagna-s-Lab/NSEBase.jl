@@ -24,8 +24,9 @@ in-place transformations between physical and spectral representations of a
 scalar field on a `D`-dimensional grid.
 
 # Type parameters
-- `DEALIAS`: `Bool`; when `true`, physical arrays are padded by the 3/2 rule
-  in each transformed dimension to eliminate aliasing in nonlinear products
+- `DEALIAS`: `Bool`; when `true`, the physical array used for planning is larger
+  than the spectral domain — either via the 3/2-rule or a user-supplied size —
+  and the forward/backward transforms pad/truncate accordingly
 - `D`: number of spatial dimensions
 - `T`: real element type (e.g. `Float64`)
 - `ORDER`: tuple of transformed dimension indices; `ORDER[1]` is the rfft
@@ -43,13 +44,16 @@ scalar field on a `D`-dimensional grid.
 
 # Constructor
 
-    FFTPlans(shape, order, T=Float64; dealias=true, flags=EXHAUSTIVE, timelimit=NO_TIMELIMIT)
+    FFTPlans(shape, order, T=Float64; dealias=true, padded_size=nothing, flags=EXHAUSTIVE, timelimit=NO_TIMELIMIT)
 
 ## Arguments
 - `shape::Dims`: size of the physical domain
 - `order::NTuple{H,Int}`: dimensions to transform (first → rfft, rest → fft)
 - `T::Type`: real element type (default `Float64`)
 - `dealias::Bool`: if `true`, pad each transformed dimension by the 3/2 rule
+- `padded_size::Union{Nothing,Dims}`: explicit physical grid size, overriding the
+  3/2-rule padding; must be `≥ shape` in each transformed dimension; cannot be
+  combined with `dealias=false`
 - `flags::UInt32`: FFTW planner effort flag (`ESTIMATE`, `MEASURE`, `PATIENT`,
   `EXHAUSTIVE`); higher effort finds faster plans but takes longer to compile
 - `timelimit::Real`: maximum planner wall-time in seconds (`NO_TIMELIMIT` to
@@ -64,21 +68,36 @@ struct FFTPlans{DEALIAS, D, T, ORDER, PLAN, IPLAN}
     function FFTPlans(shape::Dims{D},
                       order::NTuple{H, Int},
                            ::Type{T}=Float64;
-                    dealias::Bool   =true,
-                      flags::UInt32 =EXHAUSTIVE,
-                  timelimit::Real   =NO_TIMELIMIT) where {D, H, T}
+                    dealias::Bool                 =true,
+                padded_size::Union{Nothing, Dims} =nothing,
+                      flags::UInt32               =EXHAUSTIVE,
+                  timelimit::Real                 =NO_TIMELIMIT) where {D, H, T}
         all(1 ≤ d ≤ D for d in order) || throw(ArgumentError("order indices must be in 1:$D, got $order"))
-        allunique(order)               || throw(ArgumentError("order indices must be unique, got $order"))
+        allunique(order)              || throw(ArgumentError("order indices must be unique, got $order"))
+        padded_size !== nothing && !dealias &&
+            throw(ArgumentError("cannot set padded_size with dealias=false"))
 
-        grid_shape     = dealias ? _get_padded_shape(shape, order) : shape
-        spectral_array = zeros(Complex{T}, _get_transform_shape(grid_shape, order[1]))
-        physical_array = zeros(T, grid_shape)
-        norm           = T(1 / prod(grid_shape[i] for i in order))
+        grid_shape = if padded_size !== nothing
+            length(padded_size) == D ||
+                throw(ArgumentError("padded_size must have $D elements, got $(length(padded_size))"))
+            all(padded_size[d] >= shape[d] for d in order) ||
+                throw(ArgumentError("padded_size must be ≥ shape along each transformed dimension"))
+            padded_size
+        elseif dealias
+            _get_padded_shape(shape, order)
+        else
+            shape
+        end
+
+        computed_dealias = any(grid_shape[d] != shape[d] for d in order)
+        spectral_array   = zeros(Complex{T}, _get_transform_shape(grid_shape, order[1]))
+        physical_array   = zeros(T, grid_shape)
+        norm             = T(1 / prod(grid_shape[i] for i in order))
 
         plan  = FFTW.plan_rfft( physical_array,                       order, flags=flags, timelimit=timelimit)
         iplan = FFTW.plan_brfft(spectral_array, grid_shape[order[1]], order, flags=flags, timelimit=timelimit)
 
-        new{dealias, D, T, order, typeof(plan), typeof(iplan)}(plan, iplan, spectral_array, norm)
+        new{computed_dealias, D, T, order, typeof(plan), typeof(iplan)}(plan, iplan, spectral_array, norm)
     end
 end
 
