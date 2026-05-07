@@ -35,9 +35,9 @@ for (ci, c) in enumerate(cases)
         u     = rand(ComplexF64, spec_sz)
         cache = rand(ComplexF64, cach_sz)
 
-        b1 = @benchmark NSEBase._copy_to_padded!(  buf, $u,  $c.D, $c.order) setup=(buf=copy($cache)) evals=1
-        b2 = @benchmark NSEBase._copy_from_padded!($u,  buf, $c.D, $c.order) setup=(buf=copy($cache)) evals=1
-        b3 = @benchmark NSEBase._add_from_padded!( $u,  buf, $c.D, $c.order) setup=(buf=copy($cache)) evals=1
+        b1 = @benchmark NSEBase._copy_to_padded!(  buf, $u,  $c.order) setup=(buf=copy($cache)) evals=1
+        b2 = @benchmark NSEBase._copy_from_padded!($u,  buf, $c.order) setup=(buf=copy($cache)) evals=1
+        b3 = @benchmark NSEBase._add_from_padded!( $u,  buf, $c.order) setup=(buf=copy($cache)) evals=1
         b4 = @benchmark NSEBase._apply_mask!(buf)                             setup=(buf=copy($cache)) evals=1
 
         for (fi, b) in enumerate((b1, b2, b3, b4))
@@ -45,12 +45,12 @@ for (ci, c) in enumerate(cases)
             push!(results[ci][fi].kb, median(b).memory / 1024)
         end
 
-        @printf("  n=%-4d  %7.3f ms / %5.1f KB  %7.3f ms / %5.1f KB  %7.3f ms / %5.1f KB  %7.3f ms / %5.1f KB\n",
+        @printf("  n=%-4d  %7.3f ms / %5.1f B  %7.3f ms / %5.1f B  %7.3f ms / %5.1f B  %7.3f ms / %5.1f B\n",
                 n,
-                median(b1).time/1e6, median(b1).memory/1024,
-                median(b2).time/1e6, median(b2).memory/1024,
-                median(b3).time/1e6, median(b3).memory/1024,
-                median(b4).time/1e6, median(b4).memory/1024)
+                median(b1).time/1e6, median(b1).memory,
+                median(b2).time/1e6, median(b2).memory,
+                median(b3).time/1e6, median(b3).memory,
+                median(b4).time/1e6, median(b4).memory)
     end
 end
 

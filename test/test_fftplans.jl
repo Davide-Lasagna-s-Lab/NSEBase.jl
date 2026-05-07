@@ -303,7 +303,7 @@ end
     cache = zeros(ComplexF64, M_spec_pad)
 
     NSEBase._apply_mask!(cache)
-    NSEBase._copy_to_padded!(cache, u, 1, (1,))
+    NSEBase._copy_to_padded!(cache, u, (1,))
 
     # resolved range is embedded at the low end; padding zone stays zero
     @test cache[1:M_spec] ≈ u
@@ -311,7 +311,7 @@ end
 
     # round-trip
     u2 = zeros(ComplexF64, M_spec)
-    NSEBase._copy_from_padded!(u2, cache, 1, (1,))
+    NSEBase._copy_from_padded!(u2, cache, (1,))
     @test u2 ≈ u
 end
 
@@ -325,11 +325,11 @@ end
     cache = zeros(ComplexF64, M_spec_pad, N_pad)
 
     NSEBase._apply_mask!(cache)
-    NSEBase._copy_to_padded!(cache, u, 2, (1, 2))
+    NSEBase._copy_to_padded!(cache, u, (1, 2))
 
     # round-trip
     u2 = zeros(ComplexF64, M_spec, N)
-    NSEBase._copy_from_padded!(u2, cache, 2, (1, 2))
+    NSEBase._copy_from_padded!(u2, cache, (1, 2))
     @test u2 ≈ u
 
     # positive-frequency block is at the low end of each dim
@@ -353,10 +353,10 @@ end
     cache = zeros(ComplexF64, L_spec_pad, M_pad, N_pad)
 
     NSEBase._apply_mask!(cache)
-    NSEBase._copy_to_padded!(cache, u, 3, (1, 2, 3))
+    NSEBase._copy_to_padded!(cache, u, (1, 2, 3))
 
     u2 = zeros(ComplexF64, L_spec, M, N)
-    NSEBase._copy_from_padded!(u2, cache, 3, (1, 2, 3))
+    NSEBase._copy_from_padded!(u2, cache, (1, 2, 3))
     @test u2 ≈ u
 end
 
@@ -368,7 +368,7 @@ end
     accum = randn(ComplexF64, M_spec)
     accum0 = copy(accum)
 
-    NSEBase._add_from_padded!(accum, cache, 1, (1,))
+    NSEBase._add_from_padded!(accum, cache, (1,))
     @test accum ≈ accum0 .+ cache[1:M_spec]
 end
 
@@ -381,7 +381,7 @@ end
     accum = randn(ComplexF64, M_spec, N)
     accum0 = copy(accum)
 
-    NSEBase._add_from_padded!(accum, cache, 2, (1, 2))
+    NSEBase._add_from_padded!(accum, cache, (1, 2))
 
     # positive-frequency block
     N_pos = (N >> 1) + 1

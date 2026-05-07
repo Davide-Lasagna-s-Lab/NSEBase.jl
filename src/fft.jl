@@ -188,7 +188,7 @@ function _forward_transform!(û, u, f::FFTPlans{DEALIAS, D, <:Any, ORDER}, add::
     FFTW.unsafe_execute!(f.plan, u, buf)
     buf .*= f.norm
     if through_cache
-        add ? _add_from_padded!(û, f.cache, D, ORDER) : _copy_from_padded!(û, f.cache, D, ORDER)
+        add ? _add_from_padded!(û, f.cache, ORDER) : _copy_from_padded!(û, f.cache, ORDER)
     end
     return û
 end
@@ -273,7 +273,7 @@ function _backward_transform!(u, û, f::FFTPlans{DEALIAS, D, <:Any, ORDER}, pres
     through_cache = DEALIAS | preserve_input | use_cache
     if through_cache
         DEALIAS && _apply_mask!(f.cache)
-        _copy_to_padded!(f.cache, û, D, ORDER)
+        _copy_to_padded!(f.cache, û, ORDER)
         FFTW.unsafe_execute!(f.iplan, f.cache, u)
     else
         # brfft destroys its input; caller accepts this when preserve_input=false, use_cache=false
@@ -347,123 +347,187 @@ function _get_transform_size(size, dim)
 end
 
 """
-    _spectral_blocks(u, cache, dim, order) -> Tuple of (blk_u, blk_c) pairs
+    _loopblk!(dest, ar, src, br, ::Val{ADD})
 
-Return a fixed-size tuple of index-block pairs that map resolved frequencies
-between `u` (the compact spectral array) and `cache` (the padded spectral array).
-Each pair `(blk_u, blk_c)` is a pair of `NTuple{D, UnitRange{Int}}` index
-blocks: `blk_u` selects a region of `u` and `blk_c` selects the corresponding
-region of `cache`.
+Copy (`ADD=false`) or accumulate (`ADD=true`) one contiguous block from `src`
+into `dest`. `ar` and `br` are `NTuple{D, UnitRange{Int}}` index-range tuples
+that describe the destination and source blocks respectively; `br` may be offset
+relative to `ar`.
 
-Positive-frequency blocks share the same low-index range in both arrays.
-Negative-frequency blocks are at the high-index end of `u` and at the
-corresponding high-index end of the larger `cache`. When a dimension has no
-negative frequencies, its block uses an empty range and is a no-op in any
-subsequent broadcast.
-
-Dispatches on `length(order)` and always returns a statically-sized tuple
-(1 pair for `NTuple{1}`, 2 for `NTuple{2}`, 4 for `NTuple{3}`), so callers
-incur no heap allocation.
+Using `Val{ADD}` instead of a plain `Bool` lets the compiler specialise and
+inline the assignment at each call site, eliminating the branch from the inner
+loop. A single method covers all dimensionalities `D` because
+`CartesianIndices(ar::NTuple{D,...})` is type-stable and stack-allocated, and
+its iterator elements are value-typed `CartesianIndex{D}` — no heap allocation
+occurs regardless of `D`.
 """
-function _spectral_blocks(u, _, dim, ::NTuple{1})
-    blk = ntuple(i -> 1:size(u, i), dim)
-    return ((blk, blk),)
+@inline function _loopblk!(dest, ar::NTuple{D}, src, br::NTuple{D}, ::Val{ADD}) where {D, ADD}
+    off = ntuple(k -> first(br[k]) - first(ar[k]), Val(D))
+    @inbounds for I in CartesianIndices(ar)
+        J = CartesianIndex(ntuple(k -> I[k] + off[k], Val(D)))
+        ADD ? (dest[I] += src[J]) : (dest[I] = src[J])
+    end
 end
 
-function _spectral_blocks(u, cache, dim, order::NTuple{2})
-    npos = (size(u, order[2]) >> 1) + 1
-    nneg = size(u, order[2]) - npos
+"""
+    _copy_to_padded!(cache, u, order)
 
-    blk_pos = ntuple(i -> i == order[2] ? (1:npos)                                             : (1:size(u, i)), dim)
-    blk_u   = ntuple(i -> i == order[2] ? (npos+1:size(u, order[2]))                           : (1:size(u, i)), dim)
-    blk_c   = ntuple(i -> i == order[2] ? (size(cache, order[2])-nneg+1:size(cache, order[2])) : (1:size(u, i)), dim)
+Embed the resolved Fourier coefficients from the compact spectral array `u` into
+the corresponding frequency slots of the padded spectral array `cache`.
 
-    return ((blk_pos, blk_pos), (blk_u, blk_c))
+The two arrays have different sizes only along the transformed dimensions:
+
+- `order[1]` (rfft dim): `u` occupies indices `1..nspec`; `cache` is simply
+  longer at the high end.  No sign split is needed because rfft produces only
+  non-negative frequencies.
+- `order[2:end]` (full-FFT dims): both positive and negative frequencies must
+  be placed correctly.  Positive frequencies (`1..npos`) share the same index
+  in both arrays.  Negative frequencies (`npos+1..n` in `u`) are placed at the
+  high end of `cache` (`end-nneg+1..end`), leaving the gap in between as zeros.
+
+The caller must zero `cache` first (via `_apply_mask!`) so that the padding
+zone does not carry stale values into the backward transform.
+
+Dispatches on `length(order)` (1, 2, or 3) so the compiler sees the exact
+number of frequency blocks at compile time and can inline `_loopblk!`
+accordingly.  `Val(ndims(u))` is used internally so that `ntuple` returns a
+concrete `NTuple{D, UnitRange{Int}}` type, keeping index construction on the
+stack with zero heap allocations.
+"""
+function _copy_to_padded!(cache, u, ::NTuple{1, Int})
+    # rfft only: every index of u is valid in cache (cache is ≥ u in dim order[1]).
+    vd = Val(ndims(u))
+    blk = ntuple(i -> 1:size(u, i), vd)
+    _loopblk!(cache, blk, u, blk, Val(false))
+    cache
 end
 
-function _spectral_blocks(u, cache, dim, order::NTuple{3})
-    npos2 = (size(u, order[2]) >> 1) + 1;  nneg2 = size(u, order[2]) - npos2
-    npos3 = (size(u, order[3]) >> 1) + 1;  nneg3 = size(u, order[3]) - npos3
+function _copy_to_padded!(cache, u, order::NTuple{2, Int})
+    vd   = Val(ndims(u))
+    d    = order[2]           # the full-FFT dimension that has a pos/neg split
+    npos = (size(u, d) >> 1) + 1
+    nneg = size(u, d) - npos
 
-    # all-positive block
-    blk_pos = ntuple(i -> i ∈ order[2:3] ? (1:(size(u, i)>>1)+1) : (1:size(u, i)), dim)
+    # Positive frequencies: same index range in u and cache.
+    blk = ntuple(i -> i == d ? (1:npos) : (1:size(u, i)), vd)
+    _loopblk!(cache, blk, u, blk, Val(false))
 
-    # edge block: negative in order[2], positive in order[3]
-    blk_u2 = ntuple(dim) do i
-        i ∈ order[2:end] ? (i == order[2] ? (npos2+1:size(u, order[2]))                           : (1:(size(u, i)>>1)+1)) : (1:size(u, i))
+    # Negative frequencies: npos+1..end in u → end-nneg+1..end in cache.
+    if nneg > 0
+        blk_u = ntuple(i -> i == d ? (npos+1:size(u, d))                    : (1:size(u, i)), vd)
+        blk_c = ntuple(i -> i == d ? (size(cache, d)-nneg+1:size(cache, d)) : (1:size(u, i)), vd)
+        _loopblk!(cache, blk_c, u, blk_u, Val(false))
     end
-    blk_c2 = ntuple(dim) do i
-        i ∈ order[2:end] ? (i == order[2] ? (size(cache, order[2])-nneg2+1:size(cache, order[2])) : (1:(size(u, i)>>1)+1)) : (1:size(u, i))
-    end
+    cache
+end
 
-    # edge block: positive in order[2], negative in order[3]
-    blk_u3 = ntuple(dim) do i
-        i ∈ order[2:end] ? (i == order[3] ? (npos3+1:size(u, order[3]))                           : (1:(size(u, i)>>1)+1)) : (1:size(u, i))
-    end
-    blk_c3 = ntuple(dim) do i
-        i ∈ order[2:end] ? (i == order[3] ? (size(cache, order[3])-nneg3+1:size(cache, order[3])) : (1:(size(u, i)>>1)+1)) : (1:size(u, i))
-    end
+function _copy_to_padded!(cache, u, order::NTuple{3, Int})
+    vd     = Val(ndims(u))
+    d2, d3 = order[2], order[3]
+    npos2 = (size(u, d2) >> 1) + 1;  nneg2 = size(u, d2) - npos2
+    npos3 = (size(u, d3) >> 1) + 1;  nneg3 = size(u, d3) - npos3
 
-    # corner block: negative in both order[2] and order[3]
-    blk_uc = ntuple(dim) do i
-        i ∈ order[2:end] ? ((size(u, i)>>1)+2 : size(u, i)) : (1:size(u, i))
-    end
-    blk_cc = ntuple(dim) do i
-        if i ∈ order[2:end]
-            nneg_i = size(u, i) - (size(u, i)>>1) - 1
-            (size(cache, i) - nneg_i + 1 : size(cache, i))
-        else
-            (1:size(u, i))
+    # Iterate over all four quadrants of the (d2, d3) frequency plane.
+    for (r2u, r2c) in ((1:npos2,              1:npos2),
+                       (npos2+1:size(u, d2),  size(cache, d2)-nneg2+1:size(cache, d2)))
+        isempty(r2u) && continue
+        for (r3u, r3c) in ((1:npos3,              1:npos3),
+                           (npos3+1:size(u, d3),  size(cache, d3)-nneg3+1:size(cache, d3)))
+            isempty(r3u) && continue
+            blk_u = ntuple(i -> i == d2 ? r2u : i == d3 ? r3u : (1:size(u, i)), vd)
+            blk_c = ntuple(i -> i == d2 ? r2c : i == d3 ? r3c : (1:size(u, i)), vd)
+            _loopblk!(cache, blk_c, u, blk_u, Val(false))
         end
     end
-
-    return ((blk_pos, blk_pos), (blk_u2, blk_c2), (blk_u3, blk_c3), (blk_uc, blk_cc))
+    cache
 end
 
-_spectral_blocks(_, _, _, order::NTuple{N}) where {N} = throw(NotImplementedError(order))
+_copy_to_padded!(_, _, order::NTuple) = throw(NotImplementedError(order))
 
 """
-    _copy_from_padded!(u, cache, dim, order)
+    _from_padded!(u, cache, order, ::Val{ADD})
 
-Copy resolved Fourier coefficients from the padded spectral `cache` into the
-compact spectral array `u`, discarding the dealiasing padding. Negative-frequency
-blocks (at the high-index end of `cache`) are mapped to the corresponding high-index
-end of `u`. Delegates block enumeration to `_spectral_blocks`.
+Internal implementation shared by `_copy_from_padded!` and `_add_from_padded!`.
+Extracts the resolved Fourier coefficients from the padded spectral array `cache`
+into the compact spectral array `u`, using the same frequency-block layout
+described in `_copy_to_padded!` (source and destination are swapped).
+
+`Val{ADD}=false` overwrites `u` (used by `_copy_from_padded!`);
+`Val{ADD}=true`  accumulates into `u` (used by `_add_from_padded!`).
+
+Dispatches on `length(order)` for the same compile-time block-count reason as
+`_copy_to_padded!`.
 """
-function _copy_from_padded!(u, cache, dim, order)
-    for (blk_u, blk_c) in _spectral_blocks(u, cache, dim, order)
-        @views u[blk_u...] .= cache[blk_c...]
+function _from_padded!(u, cache, ::NTuple{1, Int}, vadd::Val)
+    vd = Val(ndims(u))
+    blk = ntuple(i -> 1:size(u, i), vd)
+    _loopblk!(u, blk, cache, blk, vadd)
+    u
+end
+
+function _from_padded!(u, cache, order::NTuple{2, Int}, vadd::Val)
+    vd   = Val(ndims(u))
+    d    = order[2]
+    npos = (size(u, d) >> 1) + 1
+    nneg = size(u, d) - npos
+
+    blk = ntuple(i -> i == d ? (1:npos) : (1:size(u, i)), vd)
+    _loopblk!(u, blk, cache, blk, vadd)
+
+    if nneg > 0
+        blk_u = ntuple(i -> i == d ? (npos+1:size(u, d))                    : (1:size(u, i)), vd)
+        blk_c = ntuple(i -> i == d ? (size(cache, d)-nneg+1:size(cache, d)) : (1:size(u, i)), vd)
+        _loopblk!(u, blk_u, cache, blk_c, vadd)
     end
-    return u
+    u
 end
 
-"""
-    _add_from_padded!(u, cache, dim, order)
+function _from_padded!(u, cache, order::NTuple{3, Int}, vadd::Val)
+    vd     = Val(ndims(u))
+    d2, d3 = order[2], order[3]
+    npos2 = (size(u, d2) >> 1) + 1;  nneg2 = size(u, d2) - npos2
+    npos3 = (size(u, d3) >> 1) + 1;  nneg3 = size(u, d3) - npos3
 
-Accumulate resolved Fourier coefficients from the padded spectral `cache` into
-`u` (`u .+= cache[resolved]`). Same block structure as `_copy_from_padded!`.
-"""
-function _add_from_padded!(u, cache, dim, order)
-    for (blk_u, blk_c) in _spectral_blocks(u, cache, dim, order)
-        @views u[blk_u...] .+= cache[blk_c...]
+    for (r2u, r2c) in ((1:npos2,              1:npos2),
+                       (npos2+1:size(u, d2),  size(cache, d2)-nneg2+1:size(cache, d2)))
+        isempty(r2u) && continue
+        for (r3u, r3c) in ((1:npos3,              1:npos3),
+                           (npos3+1:size(u, d3),  size(cache, d3)-nneg3+1:size(cache, d3)))
+            isempty(r3u) && continue
+            blk_u = ntuple(i -> i == d2 ? r2u : i == d3 ? r3u : (1:size(u, i)), vd)
+            blk_c = ntuple(i -> i == d2 ? r2c : i == d3 ? r3c : (1:size(u, i)), vd)
+            _loopblk!(u, blk_u, cache, blk_c, vadd)
+        end
     end
-    return u
+    u
 end
 
-"""
-    _copy_to_padded!(cache, u, dim, order)
+_from_padded!(_, _, order::NTuple, _) = throw(NotImplementedError(order))
 
-Embed resolved Fourier coefficients from the compact spectral array `u` into
-the padded `cache`, placing negative-frequency blocks at the high-index end of
-each transformed dimension. The caller must zero `cache` first (via `_apply_mask!`)
-so that padding-zone entries are zero before the brfft plan runs.
 """
-function _copy_to_padded!(cache, u, dim, order)
-    for (blk_u, blk_c) in _spectral_blocks(u, cache, dim, order)
-        @views cache[blk_c...] .= u[blk_u...]
-    end
-    return cache
-end
+    _copy_from_padded!(u, cache, order)
+
+Copy the resolved Fourier coefficients from the padded spectral array `cache`
+into the compact spectral array `u`, overwriting `u`.  Called after the forward
+transform to discard the dealiasing padding and produce the resolved spectrum.
+
+Delegates to `_from_padded!` with `Val(false)` (overwrite mode).  See
+`_copy_to_padded!` for a description of the frequency-block layout.
+"""
+_copy_from_padded!(u, cache, order) = _from_padded!(u, cache, order, Val(false))
+
+"""
+    _add_from_padded!(u, cache, order)
+
+Accumulate the resolved Fourier coefficients from the padded spectral array
+`cache` into `u` (`u .+= resolved part of cache`).  Called in place of
+`_copy_from_padded!` when the forward transform is invoked with `add=true`, so
+that the result is added to an existing spectral field rather than overwriting it.
+
+Delegates to `_from_padded!` with `Val(true)` (accumulate mode).  See
+`_copy_to_padded!` for a description of the frequency-block layout.
+"""
+_add_from_padded!(u, cache, order)  = _from_padded!(u, cache, order, Val(true))
 
 """
     _apply_mask!(cache::Array{T}) -> cache
