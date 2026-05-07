@@ -101,7 +101,7 @@ struct FFTPlans{DEALIAS, D, T, ORDER, PLAN, IPLAN}
     end
 end
 
-FFTPlans(g::AbstractGrid{T, D, H}; kwargs...) where {T, D, H} = FFTPlans(size(g), H, T; kwargs...)
+FFTPlans(g::AbstractGrid{T, <:Any, H}; kwargs...) where {T, H} = FFTPlans(size(g), H, T; kwargs...)
 FFTPlans(u::FTField;               kwargs...)                 = FFTPlans(grid(u); kwargs...)
 FFTPlans(u::Field;                 kwargs...)                 = FFTPlans(grid(u); kwargs...)
 
@@ -157,10 +157,10 @@ complete and `_forward_transform!` can be called directly. `add` and `use_cache`
 carry no defaults here so that every internal call site is explicit about both
 flags rather than silently inheriting a behaviour.
 """
-(f::FFTPlans{DEALIAS, D, T, ORDER})(û::AbstractArray{Complex{T}},
-                                    u::AbstractArray{        T},
-                                  add::Bool,
-                            use_cache::Bool) where {DEALIAS, D, T, ORDER} = _forward_transform!(û, u, f, add, use_cache)
+(f::FFTPlans{<:Any, <:Any, T})(û::AbstractArray{Complex{T}},
+                               u::AbstractArray{        T},
+                             add::Bool,
+                       use_cache::Bool) where {T} = _forward_transform!(û, u, f, add, use_cache)
 
 """
     _forward_transform!(û, u, f::FFTPlans{DEALIAS, D, T, ORDER}, add::Bool, use_cache::Bool)
@@ -182,7 +182,7 @@ when `û` has the same memory layout as the array used during planning.
 (truncation from a padded cache) and the non-dealiased case (full copy, since
 same-size arrays make the truncation a no-op that covers all elements).
 """
-function _forward_transform!(û, u, f::FFTPlans{DEALIAS, D, T, ORDER}, add::Bool, use_cache::Bool) where {DEALIAS, D, T, ORDER}
+function _forward_transform!(û, u, f::FFTPlans{DEALIAS, D, <:Any, ORDER}, add::Bool, use_cache::Bool) where {DEALIAS, D, ORDER}
     through_cache = DEALIAS | use_cache | add
     buf = through_cache ? f.cache : û
     FFTW.unsafe_execute!(f.plan, u, buf)
@@ -244,10 +244,10 @@ complete and `_backward_transform!` can be called directly. `preserve_input` and
 `use_cache` carry no defaults here so that every internal call site is explicit
 about both flags.
 """
-(f::FFTPlans{DEALIAS, D, T, ORDER})(u::AbstractArray{        T},
-                                    û::AbstractArray{Complex{T}},
-                       preserve_input::Bool,
-                            use_cache::Bool) where {DEALIAS, D, T, ORDER} = 
+(f::FFTPlans{<:Any, <:Any, T})(u::AbstractArray{        T},
+                               û::AbstractArray{Complex{T}},
+                  preserve_input::Bool,
+                       use_cache::Bool) where {T} =
     _backward_transform!(u, û, f, preserve_input, use_cache)
 
 """
@@ -269,7 +269,7 @@ silently destroy — the caller accepts this side effect.
 into a zero-padded cache after `_apply_mask!`) and the non-dealiased case (full
 copy, since same-size embedding covers all elements and no prior zeroing is needed).
 """
-function _backward_transform!(u, û, f::FFTPlans{DEALIAS, D, T, ORDER}, preserve_input::Bool, use_cache::Bool) where {DEALIAS, D, T, ORDER}
+function _backward_transform!(u, û, f::FFTPlans{DEALIAS, D, <:Any, ORDER}, preserve_input::Bool, use_cache::Bool) where {DEALIAS, D, ORDER}
     through_cache = DEALIAS | preserve_input | use_cache
     if through_cache
         DEALIAS && _apply_mask!(f.cache)
@@ -293,7 +293,7 @@ Allocating forward transform: compute and return the Fourier coefficients of `u`
 normalised by the grid's `fft_norm`. Equivalent to planning and executing a fresh
 `rfft` on `parent(u)`.
 """
-function FFT(u::Field{G}) where {T, D, H, G<:AbstractGrid{T, D, H}}
+function FFT(u::Field{G}) where {H, G<:AbstractGrid{<:Any, <:Any, H}}
     û = FTField(grid(u))
     parent(û) .= rfft(parent(u), H)
     û .*= 1 / prod(fft_norm(grid(u)))
@@ -309,7 +309,7 @@ corresponding to the Fourier coefficients `û`. No normalisation is applied
 (consistent with the convention that normalisation belongs to the forward
 transform). Equivalent to planning and executing a fresh `brfft` on `parent(û)`.
 """
-function IFFT(û::FTField{G}) where {T, D, H, G<:AbstractGrid{T, D, H}}
+function IFFT(û::FTField{G}) where {H, G<:AbstractGrid{<:Any, <:Any, H}}
     u = Field(grid(û))
     parent(u) .= brfft(parent(û), size(grid(û))[H[1]], H)
     return u
