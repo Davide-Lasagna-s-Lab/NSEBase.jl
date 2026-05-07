@@ -44,15 +44,15 @@ scalar field on a `D`-dimensional grid.
 
 # Constructor
 
-    FFTPlans(shape, order, T=Float64; dealias=true, padded_size=nothing, flags=EXHAUSTIVE, timelimit=NO_TIMELIMIT)
+    FFTPlans(size, order, T=Float64; dealias=true, padded_size=nothing, flags=EXHAUSTIVE, timelimit=NO_TIMELIMIT)
 
 ## Arguments
-- `shape::Dims`: size of the physical domain
+- `size::Dims`: size of the physical domain
 - `order::NTuple{H,Int}`: dimensions to transform (first → rfft, rest → fft)
 - `T::Type`: real element type (default `Float64`)
 - `dealias::Bool`: if `true`, pad each transformed dimension by the 3/2 rule
 - `padded_size::Union{Nothing,Dims}`: explicit physical grid size, overriding the
-  3/2-rule padding; must be `≥ shape` in each transformed dimension; cannot be
+  3/2-rule padding; must be `≥ size` in each transformed dimension; cannot be
   combined with `dealias=false`
 - `flags::UInt32`: FFTW planner effort flag (`ESTIMATE`, `MEASURE`, `PATIENT`,
   `EXHAUSTIVE`); higher effort finds faster plans but takes longer to compile
@@ -65,7 +65,7 @@ struct FFTPlans{DEALIAS, D, T, ORDER, PLAN, IPLAN}
     cache::Array{Complex{T}, D}
     norm::T
 
-    function FFTPlans(shape::Dims{D},
+    function FFTPlans(size::Dims{D},
                       order::NTuple{H, Int},
                            ::Type{T}=Float64;
                     dealias::Bool                 =true,
@@ -77,25 +77,25 @@ struct FFTPlans{DEALIAS, D, T, ORDER, PLAN, IPLAN}
         padded_size !== nothing && !dealias &&
             throw(ArgumentError("cannot set padded_size with dealias=false"))
 
-        grid_shape = if padded_size !== nothing
+        grid_size = if padded_size !== nothing
             length(padded_size) == D ||
                 throw(ArgumentError("padded_size must have $D elements, got $(length(padded_size))"))
-            all(padded_size[d] >= shape[d] for d in order) ||
-                throw(ArgumentError("padded_size must be ≥ shape along each transformed dimension"))
+            all(padded_size[d] >= size[d] for d in order) ||
+                throw(ArgumentError("padded_size must be ≥ size along each transformed dimension"))
             padded_size
         elseif dealias
-            _get_padded_shape(shape, order)
+            _get_padded_size(size, order)
         else
-            shape
+            size
         end
 
-        computed_dealias = any(grid_shape[d] != shape[d] for d in order)
-        spectral_array   = zeros(Complex{T}, _get_transform_shape(grid_shape, order[1]))
-        physical_array   = zeros(T, grid_shape)
-        norm             = T(1 / prod(grid_shape[i] for i in order))
+        computed_dealias = any(grid_size[d] != size[d] for d in order)
+        spectral_array   = zeros(Complex{T}, _get_transform_size(grid_size, order[1]))
+        physical_array   = zeros(T, grid_size)
+        norm             = T(1 / prod(grid_size[i] for i in order))
 
         plan  = FFTW.plan_rfft( physical_array,                       order, flags=flags, timelimit=timelimit)
-        iplan = FFTW.plan_brfft(spectral_array, grid_shape[order[1]], order, flags=flags, timelimit=timelimit)
+        iplan = FFTW.plan_brfft(spectral_array, grid_size[order[1]], order, flags=flags, timelimit=timelimit)
 
         new{computed_dealias, D, T, order, typeof(plan), typeof(iplan)}(plan, iplan, spectral_array, norm)
     end
@@ -321,28 +321,28 @@ IFFT(û::VectorField{N, <:FTField}) where {N} = VectorField([IFFT(û[n]) for n i
 # utility functions #
 # ----------------- #
 """
-    _get_padded_shape(shape, order) -> Dims
+    _get_padded_size(size, order) -> Dims
 
-Return the physical grid shape padded for 3/2-rule dealiasing: each dimension
+Return the physical grid size padded for 3/2-rule dealiasing: each dimension
 in `order` is rounded up to the nearest odd number ≥ 3s/2 (where `s` is the
 unpadded size). Odd sizes avoid Nyquist-frequency ambiguity in the brfft plan.
 """
-function _get_padded_shape(shape, order)
-    return ntuple(length(shape)) do i
-        i ∈ order ? cld(3*shape[i], 2) | 1 : shape[i]
+function _get_padded_size(size, order)
+    return ntuple(length(size)) do i
+        i ∈ order ? cld(3*size[i], 2) | 1 : size[i]
     end
 end
 
 """
-    _get_transform_shape(shape, dim) -> Dims
+    _get_transform_size(size, dim) -> Dims
 
-Return the spectral array shape produced by an rfft along dimension `dim`:
+Return the spectral array size produced by an rfft along dimension `dim`:
 size along `dim` shrinks from `n` to `(n >> 1) + 1` (non-negative frequencies
 only); all other dimensions are unchanged.
 """
-function _get_transform_shape(shape, dim)
-    return ntuple(length(shape)) do i
-        i == dim ? (shape[i] >> 1) + 1 : shape[i]
+function _get_transform_size(size, dim)
+    return ntuple(length(size)) do i
+        i == dim ? (size[i] >> 1) + 1 : size[i]
     end
 end
 
