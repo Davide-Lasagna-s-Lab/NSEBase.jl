@@ -370,139 +370,106 @@ occurs regardless of `D`.
 end
 
 """
+    _transfer_padded!(dest, src, order, ::Val{ADD})
+
+Transfer resolved Fourier coefficients between the compact spectral array `u`
+and the padded spectral array `cache`.  Either argument may be `dest`; the
+function identifies the compact array by comparing rfft-dim sizes.
+
+The compact array's indices are valid in both arrays, and are used to define all
+copy blocks:
+
+- `order[1]` (rfft dim): the compact array is a strict prefix of the padded
+  array — the same index range `1..nspec` is used for both dest and src.
+- `order[2:end]` (full-FFT dims): positive frequencies (`1..npos`) share the
+  same index range in both arrays.  Negative frequencies differ: they sit at
+  `npos+1..n` in the compact array and at `end-nneg+1..end` in the padded array.
+  The `dest === compact` pointer check (a single comparison, outside the loop)
+  decides which range goes to dest and which to src.
+
+The three public wrappers call this function with different argument order and
+`Val{ADD}` flags:
+
+| caller                  | dest    | src     | ADD   |
+|-------------------------|---------|---------|-------|
+| `_copy_to_padded!`      | `cache` | `u`     | false |
+| `_copy_from_padded!`    | `u`     | `cache` | false |
+| `_add_from_padded!`     | `u`     | `cache` | true  |
+
+Dispatches on `length(order)` (1, 2, or 3) so the compiler sees the exact block
+count at compile time and can fully inline `_loopblk!`.  `Val(ndims(dest))` keeps
+`ntuple` return types concrete (`NTuple{D, UnitRange{Int}}`), ensuring all index
+construction stays on the stack with zero heap allocations.
+"""
+function _transfer_padded!(dest, src, ord::NTuple{1, Int}, vadd::Val)
+    # rfft dim only: compact array is a prefix of the padded array, so the same
+    # index block (1..size(compact,i) in every dim) is valid in both.
+    compact = size(dest, ord[1]) <= size(src, ord[1]) ? dest : src
+    vd  = Val(ndims(dest))
+    blk = ntuple(i -> 1:size(compact, i), vd)
+    _loopblk!(dest, blk, src, blk, vadd)
+    dest
+end
+
+function _transfer_padded!(dest, src, ord::NTuple{2, Int}, vadd::Val)
+    vd = Val(ndims(dest))
+    d  = ord[2]
+    compact = size(dest, ord[1]) <= size(src, ord[1]) ? dest : src
+    padded  = compact === dest ? src : dest
+    npos = (size(compact, d) >> 1) + 1
+    nneg = size(compact, d) - npos
+
+    # Positive block: same compact-sized range in both arrays.
+    blk = ntuple(i -> i == d ? (1:npos) : (1:size(compact, i)), vd)
+    _loopblk!(dest, blk, src, blk, vadd)
+
+    # Negative block: indices differ between compact and padded arrays.
+    if nneg > 0
+        blk_co = ntuple(i -> i == d ? (npos+1:size(compact, d))                : (1:size(compact, i)), vd)
+        blk_pa = ntuple(i -> i == d ? (size(padded, d)-nneg+1:size(padded, d)) : (1:size(compact, i)), vd)
+        dest === compact ? _loopblk!(dest, blk_co, src, blk_pa, vadd) :
+                           _loopblk!(dest, blk_pa, src, blk_co, vadd)
+    end
+    dest
+end
+
+function _transfer_padded!(dest, src, ord::NTuple{3, Int}, vadd::Val)
+    vd     = Val(ndims(dest))
+    d2, d3 = ord[2], ord[3]
+    compact = size(dest, ord[1]) <= size(src, ord[1]) ? dest : src
+    padded  = compact === dest ? src : dest
+    npos2 = (size(compact, d2) >> 1) + 1;  nneg2 = size(compact, d2) - npos2
+    npos3 = (size(compact, d3) >> 1) + 1;  nneg3 = size(compact, d3) - npos3
+
+    # Iterate over all four quadrants of the (d2, d3) frequency plane.
+    for (rco2, rpa2) in ((1:npos2,                   1:npos2),
+                         (npos2+1:size(compact, d2), size(padded, d2)-nneg2+1:size(padded, d2)))
+        isempty(rco2) && continue
+        for (rco3, rpa3) in ((1:npos3,                   1:npos3),
+                             (npos3+1:size(compact, d3), size(padded, d3)-nneg3+1:size(padded, d3)))
+            isempty(rco3) && continue
+            blk_co = ntuple(i -> i == d2 ? rco2 : i == d3 ? rco3 : (1:size(compact, i)), vd)
+            blk_pa = ntuple(i -> i == d2 ? rpa2 : i == d3 ? rpa3 : (1:size(compact, i)), vd)
+            dest === compact ? _loopblk!(dest, blk_co, src, blk_pa, vadd) :
+                               _loopblk!(dest, blk_pa, src, blk_co, vadd)
+        end
+    end
+    dest
+end
+
+_transfer_padded!(_, _, ord::NTuple, _) = throw(NotImplementedError(ord))
+
+"""
     _copy_to_padded!(cache, u, order)
 
 Embed the resolved Fourier coefficients from the compact spectral array `u` into
-the corresponding frequency slots of the padded spectral array `cache`.
+the corresponding slots of the padded spectral array `cache`.  The caller must
+zero `cache` first (via `_apply_mask!`) so that the padding zone does not carry
+stale values into the backward transform.
 
-The two arrays have different sizes only along the transformed dimensions:
-
-- `order[1]` (rfft dim): `u` occupies indices `1..nspec`; `cache` is simply
-  longer at the high end.  No sign split is needed because rfft produces only
-  non-negative frequencies.
-- `order[2:end]` (full-FFT dims): both positive and negative frequencies must
-  be placed correctly.  Positive frequencies (`1..npos`) share the same index
-  in both arrays.  Negative frequencies (`npos+1..n` in `u`) are placed at the
-  high end of `cache` (`end-nneg+1..end`), leaving the gap in between as zeros.
-
-The caller must zero `cache` first (via `_apply_mask!`) so that the padding
-zone does not carry stale values into the backward transform.
-
-Dispatches on `length(order)` (1, 2, or 3) so the compiler sees the exact
-number of frequency blocks at compile time and can inline `_loopblk!`
-accordingly.  `Val(ndims(u))` is used internally so that `ntuple` returns a
-concrete `NTuple{D, UnitRange{Int}}` type, keeping index construction on the
-stack with zero heap allocations.
+Delegates to `_transfer_padded!` with `cache` as dest and `Val(false)` (overwrite).
 """
-function _copy_to_padded!(cache, u, ::NTuple{1, Int})
-    # rfft only: every index of u is valid in cache (cache is ≥ u in dim order[1]).
-    vd = Val(ndims(u))
-    blk = ntuple(i -> 1:size(u, i), vd)
-    _loopblk!(cache, blk, u, blk, Val(false))
-    cache
-end
-
-function _copy_to_padded!(cache, u, order::NTuple{2, Int})
-    vd   = Val(ndims(u))
-    d    = order[2]           # the full-FFT dimension that has a pos/neg split
-    npos = (size(u, d) >> 1) + 1
-    nneg = size(u, d) - npos
-
-    # Positive frequencies: same index range in u and cache.
-    blk = ntuple(i -> i == d ? (1:npos) : (1:size(u, i)), vd)
-    _loopblk!(cache, blk, u, blk, Val(false))
-
-    # Negative frequencies: npos+1..end in u → end-nneg+1..end in cache.
-    if nneg > 0
-        blk_u = ntuple(i -> i == d ? (npos+1:size(u, d))                    : (1:size(u, i)), vd)
-        blk_c = ntuple(i -> i == d ? (size(cache, d)-nneg+1:size(cache, d)) : (1:size(u, i)), vd)
-        _loopblk!(cache, blk_c, u, blk_u, Val(false))
-    end
-    cache
-end
-
-function _copy_to_padded!(cache, u, order::NTuple{3, Int})
-    vd     = Val(ndims(u))
-    d2, d3 = order[2], order[3]
-    npos2 = (size(u, d2) >> 1) + 1;  nneg2 = size(u, d2) - npos2
-    npos3 = (size(u, d3) >> 1) + 1;  nneg3 = size(u, d3) - npos3
-
-    # Iterate over all four quadrants of the (d2, d3) frequency plane.
-    for (r2u, r2c) in ((1:npos2,              1:npos2),
-                       (npos2+1:size(u, d2),  size(cache, d2)-nneg2+1:size(cache, d2)))
-        isempty(r2u) && continue
-        for (r3u, r3c) in ((1:npos3,              1:npos3),
-                           (npos3+1:size(u, d3),  size(cache, d3)-nneg3+1:size(cache, d3)))
-            isempty(r3u) && continue
-            blk_u = ntuple(i -> i == d2 ? r2u : i == d3 ? r3u : (1:size(u, i)), vd)
-            blk_c = ntuple(i -> i == d2 ? r2c : i == d3 ? r3c : (1:size(u, i)), vd)
-            _loopblk!(cache, blk_c, u, blk_u, Val(false))
-        end
-    end
-    cache
-end
-
-_copy_to_padded!(_, _, order::NTuple) = throw(NotImplementedError(order))
-
-"""
-    _from_padded!(u, cache, order, ::Val{ADD})
-
-Internal implementation shared by `_copy_from_padded!` and `_add_from_padded!`.
-Extracts the resolved Fourier coefficients from the padded spectral array `cache`
-into the compact spectral array `u`, using the same frequency-block layout
-described in `_copy_to_padded!` (source and destination are swapped).
-
-`Val{ADD}=false` overwrites `u` (used by `_copy_from_padded!`);
-`Val{ADD}=true`  accumulates into `u` (used by `_add_from_padded!`).
-
-Dispatches on `length(order)` for the same compile-time block-count reason as
-`_copy_to_padded!`.
-"""
-function _from_padded!(u, cache, ::NTuple{1, Int}, vadd::Val)
-    vd = Val(ndims(u))
-    blk = ntuple(i -> 1:size(u, i), vd)
-    _loopblk!(u, blk, cache, blk, vadd)
-    u
-end
-
-function _from_padded!(u, cache, order::NTuple{2, Int}, vadd::Val)
-    vd   = Val(ndims(u))
-    d    = order[2]
-    npos = (size(u, d) >> 1) + 1
-    nneg = size(u, d) - npos
-
-    blk = ntuple(i -> i == d ? (1:npos) : (1:size(u, i)), vd)
-    _loopblk!(u, blk, cache, blk, vadd)
-
-    if nneg > 0
-        blk_u = ntuple(i -> i == d ? (npos+1:size(u, d))                    : (1:size(u, i)), vd)
-        blk_c = ntuple(i -> i == d ? (size(cache, d)-nneg+1:size(cache, d)) : (1:size(u, i)), vd)
-        _loopblk!(u, blk_u, cache, blk_c, vadd)
-    end
-    u
-end
-
-function _from_padded!(u, cache, order::NTuple{3, Int}, vadd::Val)
-    vd     = Val(ndims(u))
-    d2, d3 = order[2], order[3]
-    npos2 = (size(u, d2) >> 1) + 1;  nneg2 = size(u, d2) - npos2
-    npos3 = (size(u, d3) >> 1) + 1;  nneg3 = size(u, d3) - npos3
-
-    for (r2u, r2c) in ((1:npos2,              1:npos2),
-                       (npos2+1:size(u, d2),  size(cache, d2)-nneg2+1:size(cache, d2)))
-        isempty(r2u) && continue
-        for (r3u, r3c) in ((1:npos3,              1:npos3),
-                           (npos3+1:size(u, d3),  size(cache, d3)-nneg3+1:size(cache, d3)))
-            isempty(r3u) && continue
-            blk_u = ntuple(i -> i == d2 ? r2u : i == d3 ? r3u : (1:size(u, i)), vd)
-            blk_c = ntuple(i -> i == d2 ? r2c : i == d3 ? r3c : (1:size(u, i)), vd)
-            _loopblk!(u, blk_u, cache, blk_c, vadd)
-        end
-    end
-    u
-end
-
-_from_padded!(_, _, order::NTuple, _) = throw(NotImplementedError(order))
+_copy_to_padded!(cache, u, order) = _transfer_padded!(cache, u, order, Val(false))
 
 """
     _copy_from_padded!(u, cache, order)
@@ -511,23 +478,21 @@ Copy the resolved Fourier coefficients from the padded spectral array `cache`
 into the compact spectral array `u`, overwriting `u`.  Called after the forward
 transform to discard the dealiasing padding and produce the resolved spectrum.
 
-Delegates to `_from_padded!` with `Val(false)` (overwrite mode).  See
-`_copy_to_padded!` for a description of the frequency-block layout.
+Delegates to `_transfer_padded!` with `u` as dest and `Val(false)` (overwrite).
 """
-_copy_from_padded!(u, cache, order) = _from_padded!(u, cache, order, Val(false))
+_copy_from_padded!(u, cache, order) = _transfer_padded!(u, cache, order, Val(false))
 
 """
     _add_from_padded!(u, cache, order)
 
 Accumulate the resolved Fourier coefficients from the padded spectral array
 `cache` into `u` (`u .+= resolved part of cache`).  Called in place of
-`_copy_from_padded!` when the forward transform is invoked with `add=true`, so
-that the result is added to an existing spectral field rather than overwriting it.
+`_copy_from_padded!` when the forward transform runs with `add=true`, so that
+the result is added to an existing spectral field rather than overwriting it.
 
-Delegates to `_from_padded!` with `Val(true)` (accumulate mode).  See
-`_copy_to_padded!` for a description of the frequency-block layout.
+Delegates to `_transfer_padded!` with `u` as dest and `Val(true)` (accumulate).
 """
-_add_from_padded!(u, cache, order)  = _from_padded!(u, cache, order, Val(true))
+_add_from_padded!(u, cache, order) = _transfer_padded!(u, cache, order, Val(true))
 
 """
     _apply_mask!(cache::Array{T}) -> cache
