@@ -55,7 +55,64 @@ grid(u::FTField) = u.grid
 # --------------------- #
 # inner-product methods #
 # --------------------- #
-LinearAlgebra.dot(u::FTField, v::FTField) = throw(NotImplementedError(u, v))
+
+"""
+    _quadrature_weight(grid::AbstractGrid, dim::Int, i::Int) -> Real
+
+Return the quadrature weight for index `i` along physical-space dimension `dim`
+of `grid`.
+
+The default is `1.0` (uniform weight, correct for periodic/homogeneous domains).
+Downstream packages should extend this for grids with non-uniform collocation
+(e.g. `dim == 1` → Chebyshev–Gauss–Lobatto weights for channel flow).
+"""
+_quadrature_weight(::AbstractGrid, ::Int, ::Int) = 1.0
+
+"""
+    dot(u::FTField, v::FTField)
+
+L2 inner product in spectral space, accounting for:
+- Hermitian symmetry of the rfft dimension `H[1]`: the DC mode (index 1) is
+  counted once; all other stored modes represent a conjugate pair and are
+  counted twice. The sum is divided by 2 at the end to convert the full
+  two-sided fft spectrum (H[2:end] dims) to the one-sided result.
+- Quadrature weights along the non-homogeneous dimensions (those not in `H`),
+  supplied by `_quadrature_weight(grid(u), dim, i)`.
+
+Downstream packages only need to extend `_quadrature_weight` for their grid
+type; this method handles all loop structure.
+"""
+@generated function LinearAlgebra.dot(u::FTField{G}, v::FTField{G}) where {T, D, H, G<:AbstractGrid{T, D, H}}
+    rfft_d = H[1]
+    non_H  = Tuple(d for d in 1:D if d ∉ H)
+
+    syms = [Symbol("_i", d) for d in 1:D]
+
+    # quadrature weight: product over non-homogeneous dimensions
+    w_terms = [:(_quadrature_weight(grid(u), $d, $(syms[d]))) for d in non_H]
+    w_expr  = isempty(w_terms) ? :(one($T)) :
+              length(w_terms) == 1 ? w_terms[1] : Expr(:call, :*, w_terms...)
+
+    # innermost body: accumulate one element with rfft Hermitian factor
+    body = quote
+        @inbounds _sum += ($(syms[rfft_d]) == 1 ? 1 : 2) * $w_expr *
+                          real(conj(parent(u)[$(syms...)]) * parent(v)[$(syms...)])
+    end
+
+    # wrap in nested for-loops; reverse order so dim 1 is the innermost loop
+    # (column-major: dim 1 has stride 1 → best cache performance)
+    for d in D:-1:1
+        sym = syms[d]
+        body = :(for $sym in 1:Base.size(u, $d); $body; end)
+    end
+
+    return Base.remove_linenums!(quote
+        _sum = zero($T)
+        $body
+        return _sum / 2
+    end)
+end
+
 LinearAlgebra.norm(u::FTField) = sqrt(dot(u, u))
 
 
