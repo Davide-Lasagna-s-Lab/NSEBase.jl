@@ -97,7 +97,7 @@ struct FFTPlans{DEALIAS, D, T, ORDER, PLAN, IPLAN}
         plan  = FFTW.plan_rfft( physical_array,                      order, flags=flags, timelimit=timelimit)
         iplan = FFTW.plan_brfft(spectral_array, grid_size[order[1]], order, flags=flags, timelimit=timelimit)
 
-        new{computed_dealias, D, T, order, typeof(plan), typeof(iplan)}(plan, iplan, spectral_array, norm)
+        return new{computed_dealias, D, T, order, typeof(plan), typeof(iplan)}(plan, iplan, spectral_array, norm)
     end
 end
 
@@ -408,7 +408,7 @@ function _transfer_padded!(dest, src, ord::NTuple{1, Int}, vadd::Val)
     vd  = Val(ndims(dest))
     blk = ntuple(i -> 1:size(compact, i), vd)
     _loopblk!(dest, blk, src, blk, vadd)
-    dest
+    return dest
 end
 
 function _transfer_padded!(dest, src, ord::NTuple{2, Int}, vadd::Val)
@@ -430,7 +430,7 @@ function _transfer_padded!(dest, src, ord::NTuple{2, Int}, vadd::Val)
         dest === compact ? _loopblk!(dest, blk_co, src, blk_pa, vadd) :
                            _loopblk!(dest, blk_pa, src, blk_co, vadd)
     end
-    dest
+    return dest
 end
 
 function _transfer_padded!(dest, src, ord::NTuple{3, Int}, vadd::Val)
@@ -454,7 +454,7 @@ function _transfer_padded!(dest, src, ord::NTuple{3, Int}, vadd::Val)
                                _loopblk!(dest, blk_pa, src, blk_co, vadd)
         end
     end
-    dest
+    return dest
 end
 
 _transfer_padded!(_, _, ord::NTuple, _) = throw(NotImplementedError(ord))
