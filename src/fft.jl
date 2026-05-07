@@ -5,11 +5,11 @@
 # ------------------------------------------- #
 # Re-export FFTW planner flags and time limit  #
 # ------------------------------------------- #
-const ESTIMATE    = FFTW.ESTIMATE
-const EXHAUSTIVE  = FFTW.EXHAUSTIVE
-const MEASURE     = FFTW.MEASURE
-const PATIENT     = FFTW.PATIENT
-const WISDOM_ONLY = FFTW.WISDOM_ONLY
+const ESTIMATE     = FFTW.ESTIMATE
+const EXHAUSTIVE   = FFTW.EXHAUSTIVE
+const MEASURE      = FFTW.MEASURE
+const PATIENT      = FFTW.PATIENT
+const WISDOM_ONLY  = FFTW.WISDOM_ONLY
 const NO_TIMELIMIT = FFTW.NO_TIMELIMIT
 
 
@@ -60,18 +60,18 @@ scalar field on a `D`-dimensional grid.
   disable)
 """
 struct FFTPlans{DEALIAS, D, T, ORDER, PLAN, IPLAN}
-    plan::PLAN
-    iplan::IPLAN
-    cache::Array{Complex{T}, D}
-    norm::T
+     plan :: PLAN
+    iplan :: IPLAN
+    cache :: Array{Complex{T}, D}
+     norm :: T
 
     function FFTPlans(size::Dims{D},
-                      order::NTuple{H, Int},
-                           ::Type{T}=Float64;
-                    dealias::Bool                 =true,
-                padded_size::Union{Nothing, Dims} =nothing,
-                      flags::UInt32               =EXHAUSTIVE,
-                  timelimit::Real                 =NO_TIMELIMIT) where {D, H, T}
+                     order::NTuple{H, Int},
+                          ::Type{T}=Float64;
+                   dealias::Bool                =true,
+               padded_size::Union{Nothing, Dims}=nothing,
+                     flags::UInt32              =EXHAUSTIVE,
+                 timelimit::Real                =NO_TIMELIMIT) where {D, H, T}
         all(1 ≤ d ≤ D for d in order) || throw(ArgumentError("order indices must be in 1:$D, got $order"))
         allunique(order)              || throw(ArgumentError("order indices must be unique, got $order"))
         padded_size !== nothing && !dealias &&
@@ -94,7 +94,7 @@ struct FFTPlans{DEALIAS, D, T, ORDER, PLAN, IPLAN}
         physical_array   = zeros(T, grid_size)
         norm             = T(1 / prod(grid_size[i] for i in order))
 
-        plan  = FFTW.plan_rfft( physical_array,                       order, flags=flags, timelimit=timelimit)
+        plan  = FFTW.plan_rfft( physical_array,                      order, flags=flags, timelimit=timelimit)
         iplan = FFTW.plan_brfft(spectral_array, grid_size[order[1]], order, flags=flags, timelimit=timelimit)
 
         new{computed_dealias, D, T, order, typeof(plan), typeof(iplan)}(plan, iplan, spectral_array, norm)
@@ -102,8 +102,8 @@ struct FFTPlans{DEALIAS, D, T, ORDER, PLAN, IPLAN}
 end
 
 FFTPlans(g::AbstractGrid{T, <:Any, H}; kwargs...) where {T, H} = FFTPlans(size(g), H, T; kwargs...)
-FFTPlans(u::FTField;               kwargs...)                 = FFTPlans(grid(u); kwargs...)
-FFTPlans(u::Field;                 kwargs...)                 = FFTPlans(grid(u); kwargs...)
+FFTPlans(u::FTField;                   kwargs...)              = FFTPlans(grid(u); kwargs...)
+FFTPlans(u::Field;                     kwargs...)              = FFTPlans(grid(u); kwargs...)
 
 
 # ------------------------ #
