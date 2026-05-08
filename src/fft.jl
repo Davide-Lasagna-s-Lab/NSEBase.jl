@@ -54,7 +54,7 @@ struct FFTPlans{DEALIAS, D, T, ORDER, PLAN, IPLAN}
                       flags::UInt32 =FFTW.EXHAUSTIVE,
                   timelimit::Real   =FFTW.NO_TIMELIMIT) where {D, T}
         # create arrays
-        shape = dealias ? _get_padded_shape(shape, order) : shape
+        shape = dealias ? padded_size(shape, order) : shape
         spectral_array = zeros(Complex{T}, _get_transform_shape(shape, order[1]))
         physical_array = zeros(T, shape)
         norm = T(1/prod(shape[collect(order)]))
@@ -67,9 +67,12 @@ struct FFTPlans{DEALIAS, D, T, ORDER, PLAN, IPLAN}
     end
 end
 
-FFTPlans(g::AbstractGrid{T, D, H}; kwargs...) where {T, D, H} = FFTPlans(size(g), H, T; kwargs...)
+FFTPlans(g::AbstractGrid{T, D, Axes, Hs, Ht}; kwargs...) where {T, D, Axes, Hs, Ht} = FFTPlans(size(g), (Hs..., Ht), T; kwargs...)
 FFTPlans(u::FTField;               kwargs...)                 = FFTPlans(grid(u);       kwargs...)
 FFTPlans(u::Field;                 kwargs...)                 = FFTPlans(grid(u);       kwargs...)
+
+growto(u::FTField, size) = throw(NotImplementedError(u, size))
+growto(u::VectorField, size) = throw(NotImplementedError(u, size))
 
 
 # ------------------------ #
@@ -170,7 +173,8 @@ end
 # --------------------- #
 # allocating transforms #
 # --------------------- #
-function FFT(u::Field{G}) where {T, D, H, G<:AbstractGrid{T, D, H}}
+function FFT(u::Field{G}) where {T, D, Axes, Hs, Ht, G<:AbstractGrid{T, D, Axes, Hs, Ht}}
+    H = (Hs..., Ht)
     û = FTField(grid(u))
     parent(û) .= rfft(parent(u), H)
     û .*= 1/prod(fft_norm(grid(u)))
@@ -178,21 +182,61 @@ function FFT(u::Field{G}) where {T, D, H, G<:AbstractGrid{T, D, H}}
 end
 FFT(u::VectorField{N, <:Field}) where {N} = VectorField([FFT(u[n]) for n in 1:N]...)
 
-function IFFT(û::FTField{G}) where {T, D, H, G<:AbstractGrid{T, D, H}}
+"""
+    FFT(u::Field, target_size)
+
+Transform a physical field to spectral space, then grow the result to a target
+homogeneous resolution using `growto`.  Concrete grid packages that support
+resolution changes should extend `growto(grid, target_size)` and
+`growto(û::FTField, target_size)`.
+"""
+FFT(u::Field, target_size) = growto(FFT(u), target_size)
+FFT(u::VectorField{N, <:Field}, target_size) where {N} =
+    VectorField([FFT(u[n], target_size) for n in 1:N]...)
+
+function IFFT(û::FTField{G}) where {T, D, Axes, Hs, Ht, G<:AbstractGrid{T, D, Axes, Hs, Ht}}
+    H = (Hs..., Ht)
     u = Field(grid(û))
-    parent(u) .= brfft(parent(û), size(grid(û))[H[1]], H)
+    parent(u) .= brfft(parent(û), size(grid(û), H[1]), H)
     return u
 end
 IFFT(u::VectorField{N, <:FTField}) where {N} = VectorField([IFFT(u[n]) for n in 1:N]...)
+
+"""
+    IFFT(û::FTField, target_size)
+
+Grow a spectral field to `target_size`, then transform it back to physical
+space on the grown grid.
+"""
+function IFFT(û::FTField{G}, target_size) where {T, D, Axes, Hs, Ht, G<:AbstractGrid{T, D, Axes, Hs, Ht}}
+    H = (Hs..., Ht)
+    grown = growto(û, target_size)
+    u = Field(grid(grown))
+    parent(u) .= brfft(parent(grown), size(grid(grown), H[1]), H)
+    return u
+end
+IFFT(u::VectorField{N, <:FTField}, target_size) where {N} =
+    VectorField([IFFT(u[n], target_size) for n in 1:N]...)
 
 
 # ----------------- #
 # utility functions #
 # ----------------- #
-function _get_padded_shape(shape, order)
+"""
+    padded_size(shape::Dims, dims) -> Dims
+
+Return `shape` with the dimensions in `dims` padded by the 3/2 dealiasing
+rule used by the FFT plans.  The padded size is adjusted to be odd, matching
+the existing channel-flow convention.
+
+```julia
+padded_size((Ny, Nx, Nz, Nt), (2, 3, 4))
+```
+"""
+function padded_size(shape::Dims, dims)
     new_shape = zeros(Int, length(shape))
     for (i, s) in enumerate(shape)
-        if i ∈ order
+        if i ∈ dims
             new_shape[i] = (3*s)>>1 + 1 - ((3*s)>>1)&1
         else
             new_shape[i] = s
@@ -200,6 +244,9 @@ function _get_padded_shape(shape, order)
     end
     return tuple(new_shape...)
 end
+
+padded_size(shape::Dims, ::Val{true}) = padded_size(shape, 1:length(shape))
+padded_size(shape::Dims, ::Val{false}) = shape
 
 function _get_transform_shape(shape, dim)
     new_shape = zeros(Int, length(shape))

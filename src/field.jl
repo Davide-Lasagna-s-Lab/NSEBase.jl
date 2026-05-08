@@ -14,7 +14,7 @@ struct Field{G<:AbstractGrid, A<:AbstractArray, T, D} <: AbstractArray{T, D}
     grid::G
     data::A
 
-    Field(grid::G, data::A) where {T, D, H, G<:AbstractGrid{T, D, H}, A<:AbstractArray{<:Any, D}} =
+    Field(grid::G, data::A) where {T, D, G<:AbstractGrid{T, D}, A<:AbstractArray{<:Any, D}} =
         new{G, A, T, D}(grid, T.(data))
 end
 

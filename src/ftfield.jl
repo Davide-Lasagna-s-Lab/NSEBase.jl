@@ -21,8 +21,8 @@ struct FTField{G<:AbstractGrid, A<:AbstractArray, T, D} <: AbstractArray{Complex
         new{G, A, T, D}(grid, Complex{T}.(data))
 
     # main constructor which sanitises data
-    FTField(grid::G, data::A) where {T, D, H, G<:AbstractGrid{T, D, H}, A<:Array{<:Any, D}} =
-        new{G, A, T, D}(grid, Complex{T}.(normalise_mean!(apply_symmetry!(data, H), H)))
+    FTField(grid::G, data::A) where {T, D, Axes, Hs, Ht, G<:AbstractGrid{T, D, Axes, Hs, Ht}, A<:Array{<:Any, D}} =
+        new{G, A, T, D}(grid, Complex{T}.(normalise_mean!(apply_symmetry!(data, (Hs..., Ht)), (Hs..., Ht))))
 end
 
 # construct from standard array and sanitise input
@@ -82,7 +82,8 @@ L2 inner product in spectral space, accounting for:
 Downstream packages only need to extend `_quadrature_weight` for their grid
 type; this method handles all loop structure.
 """
-@generated function LinearAlgebra.dot(u::FTField{G}, v::FTField{G}) where {T, D, H, G<:AbstractGrid{T, D, H}}
+@generated function LinearAlgebra.dot(u::FTField{G}, v::FTField{G}) where {T, D, Axes, Hs, Ht, G<:AbstractGrid{T, D, Axes, Hs, Ht}}
+    H      = (Hs..., Ht)
     rfft_d = H[1]
     non_H  = Tuple(d for d in 1:D if d ∉ H)
 

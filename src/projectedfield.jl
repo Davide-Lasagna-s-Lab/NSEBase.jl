@@ -24,12 +24,17 @@ struct ProjectedField{G<:AbstractGrid, M, A<:AbstractArray, T, D} <: AbstractArr
     data::A
     modes::M
 
-    ProjectedField(grid::G, data::A, modes::M) where {T, D, H, G<:AbstractGrid{T, D, H}, A<:AbstractArray{<:Any, D}, M} =
+    ProjectedField(grid::G, data::A, modes::M) where {T, D, Axes, Hs, Ht, G<:AbstractGrid{T, D, Axes, Hs, Ht}, A<:AbstractArray{<:Any, D}, M} = begin
+        # ProjectedField storage is `(mode, fft_dims...)`, not physical grid
+        # storage.  The rfft dimension is therefore axis 2, followed by the
+        # remaining transformed axes in FFT order.
+        H = ntuple(i -> i + 1, length((Hs..., Ht)))
         new{G, M, A, T, D}(grid, Complex{T}.(normalise_mean!(apply_symmetry!(data, H), H)), modes)
+    end
 end
 
-ProjectedField(grid::AbstractGrid{T, D, H}, modes) where {T, D, H} =
-    ProjectedField(grid, zeros(Complex{T}, no_of_modes(modes), transform_size(grid)[collect(H)]...), modes)
+ProjectedField(grid::G, modes) where {T, G<:AbstractGrid{T}} =
+    ProjectedField(grid, zeros(Complex{T}, no_of_modes(modes), transform_size(grid)[collect(fft_dims(grid))]...), modes)
 ProjectedField(u::Union{FTField, Field, VectorField}, modes) = ProjectedField(grid(u), modes)
 
 no_of_modes(modes) = throw(NotImplementedError(modes))
