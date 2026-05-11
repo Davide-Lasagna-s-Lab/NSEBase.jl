@@ -2,9 +2,6 @@
 # are assumed to be quite useful for the definition and manipulation of a given
 # field.
 
-# TODO: add optional padded size for user when defining plan
-# TODO: finish documentation
-
 # ---------------- #
 # transform object #
 # ---------------- #
@@ -26,7 +23,7 @@ struct FFTPlans{DEALIAS, D, T, ORDER, PLAN, IPLAN}
      plan::PLAN
     iplan::IPLAN
     cache::Array{Complex{T}, D}
-     norm::T
+     norm::T #TODO: remove this field because it can be computed each time at little cost
 
     """
         FFTPlans(shape::Dims,
@@ -63,7 +60,7 @@ struct FFTPlans{DEALIAS, D, T, ORDER, PLAN, IPLAN}
         plan  = FFTW.plan_rfft( physical_array,                  order, flags=flags, timelimit=timelimit)
         iplan = FFTW.plan_brfft(spectral_array, shape[order[1]], order, flags=flags, timelimit=timelimit)
 
-        new{dealias, D, T, order, typeof(plan), typeof(iplan)}(plan, iplan, spectral_array, norm)
+       return new{dealias, D, T, order, typeof(plan), typeof(iplan)}(plan, iplan, spectral_array, norm)
     end
 end
 

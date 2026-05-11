@@ -1,6 +1,15 @@
 # Abstract interface for computational grids that Field, FTField, FFTPlans,
 # and the generic differential operators use for construction and dispatch.
 
+# TODO: determine how to specify the order of the transformed dimensions.  
+# The current convention is that the first entry of Hs is the rfft dimension, 
+# and the remaining entries are ordinary FFT dimensions, including Ht. 
+# This is currently hardcoded in FTField and FFTPlans, but it would be nice
+# to make it part of the grid metadata.  This may not be the best idea, but
+# at it is worth discussing this. I am tempted to hardcode that time is 
+# transformed first and then the spatial dimensions, but this may not be
+# optimal in terms of performance for some applications. 
+
 """
     AbstractGrid{T, D, Axes, Hs, Ht} where {T<:Real}
 
@@ -90,7 +99,7 @@ z_dim(::AbstractGrid{<:Any, <:Any, Axes})              where {Axes}   = Axes[3]
 
 Return the array dimension corresponding to time.
 """
-t_dim(::AbstractGrid{<:Any, <:Any, <:Any, <:Any, Ht})  where {Ht}     = Ht
+t_dim(::AbstractGrid{<:Any, <:Any, <:Any, <:Axes})     where {Axes}    = last(Axes)
 
 """
     spatial_hom_dims(grid::AbstractGrid) -> Tuple

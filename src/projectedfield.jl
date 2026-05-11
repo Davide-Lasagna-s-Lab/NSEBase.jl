@@ -1,4 +1,4 @@
-# Field of modal coefficinets for a vectorfield projected onto a set of modes.
+# Field of modal coefficients for a vector field projected onto a set of modes.
 
 # ---------------------- #
 # projected vector field #
@@ -58,7 +58,8 @@ grid(a::ProjectedField)  = a.grid
 # ---------------- #
 # indexing methods #
 # ---------------- #
-# linear indexing
+
+# Linear indexing — delegates straight to the underlying data array.
 Base.@propagate_inbounds function Base.getindex(u::ProjectedField, i::Int)
     @boundscheck checkbounds(parent(u), i)
     @inbounds val = parent(u)[i]
@@ -70,13 +71,93 @@ Base.@propagate_inbounds function Base.setindex!(u::ProjectedField, val, i::Int)
     return val
 end
 
+"""
+    a[m, n::ModeNumber]
+
+Return the complex modal coefficient for mode `m` at wavenumber tuple `n`.
+
+The wavenumbers in `n` follow the order of `fft_dims(grid(a)) = (Hs…, Ht)`.
+If the first (rfft) wavenumber `n.ns[1]` is negative the coefficient is
+obtained by conjugate symmetry: the entry stored at `(-n.ns[1], -n.ns[2:N]…)`
+is read and conjugated.
+"""
+Base.@propagate_inbounds function Base.getindex(a::ProjectedField{G},
+                                                 m::Int,
+                                                 n::ModeNumber) where {G<:AbstractGrid}
+    tpl     = _modenumber_to_projected_indices(grid(a), n)
+    do_conj = last(tpl)
+    indices = Base.front(tpl)
+    @boundscheck checkbounds(a, m, indices...)
+    @inbounds val = parent(a)[m, indices...]
+    return do_conj ? conj(val) : val
+end
+
+"""
+    a[m, n::ModeNumber] = val
+
+Write the complex modal coefficient `val` for mode `m` at wavenumber tuple `n`.
+
+Two symmetry invariants are maintained automatically:
+
+- **Hermitian symmetry** — when the rfft wavenumber `n.ns[1] == 0`, the
+  conjugate-symmetric entry at `(0, -n.ns[2:N]…)` is also updated so that
+  the physical field remains real-valued.
+- **Zero-mode reality** — the fully-zero mode `ModeNumber(0, 0, …)` is
+  forced to be real (imaginary part discarded).
+
+If `n.ns[1] < 0` the write targets the conjugate-symmetric storage location
+and `conj(val)` is stored, keeping the representation consistent with reads.
+"""
+Base.@propagate_inbounds function Base.setindex!(a::ProjectedField{G},
+                                                  val,
+                                                  m::Int,
+                                                  n::ModeNumber{N}) where {T, N, G<:AbstractGrid{T}}
+    CT      = Complex{T}
+    tpl     = _modenumber_to_projected_indices(grid(a), n)
+    do_conj = last(tpl)
+    indices = Base.front(tpl)
+    i0      = first(indices)      # rfft axis index (axis 2 of ProjectedField)
+    rest    = Base.tail(indices)  # signed-fft axis indices (axes 3…)
+
+    # Force the fully-zero mode to be real.
+    val = (i0 == 1 && all(==(1), rest)) ? CT(real(val)) : CT(val)
+
+    # Conjugate-symmetric indices for each signed-fft axis.
+    sym_rest = ntuple(j -> _fftw_sym_index(rest[j], size(a, j + 2)), Val(N-1))
+
+    @boundscheck checkbounds(a, m, i0, rest...)
+    @inbounds parent(a)[m, i0, rest...]     = do_conj ? conj(val) :      val
+    # When the rfft wavenumber is zero, also write the mirror entry so that
+    # the Hermitian-symmetry invariant is preserved across all signed dims.
+    i0 == 1 && @inbounds parent(a)[m, i0, sym_rest...] = do_conj ?      val  : conj(val)
+    return val
+end
+
 
 # ------------------- #
 # dot product methods #
 # ------------------- #
-# TODO: should be possible to just implement this as an appropriately weighted sum
-# TODO: of the dot of the all the elements of each component of the dot product
-LinearAlgebra.dot(a::ProjectedField, b::ProjectedField) = throw(NotImplementedError(a, b))
+
+"""
+    dot(a::ProjectedField, b::ProjectedField)
+
+L2 inner product of two projected fields, exploiting the rfft Hermitian symmetry.
+Modes with rfft index `> 1` (wavenumber `nx > 0`) are stored once but represent
+both `+nx` and `-nx`, so they contribute with weight 2; the `nx = 0` plane has
+weight 1.  The result is divided by 2 to account for the double-counting of
+signed-FFT pairs `(nz, nt)` and `(-nz, -nt)` that both appear in storage.
+"""
+function LinearAlgebra.dot(a::ProjectedField{G}, b::ProjectedField{G}) where {G<:AbstractGrid}
+    s = zero(real(eltype(a)))
+    for_each_mode(grid(a)) do args...
+        w = first(args) == 1 ? 1 : 2
+        for m in axes(a, 1)
+            @inbounds s += w * real(LinearAlgebra.dot(parent(a)[m, args...], parent(b)[m, args...]))
+        end
+    end
+    return s / 2
+end
+
 LinearAlgebra.norm(a::ProjectedField) = sqrt(dot(a, a))
 
 

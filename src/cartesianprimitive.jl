@@ -55,9 +55,9 @@ mutable struct CartesianPrimitiveLNSE{MODE<:Mode, T, FFT, S, P, BF}
 end
 
 function CartesianPrimitiveLNSE(g::G, Re;
-                                 mode::Mode=AdjointDiscrete(),
-                                 force::BF=NoForce(),
-                                 flags=FFTW.EXHAUSTIVE) where {T, G<:AbstractGrid{T}, BF}
+                             mode::Mode=AdjointDiscrete(),
+                            force::BF=NoForce(),
+                            flags=FFTW.EXHAUSTIVE) where {T, G<:AbstractGrid{T}, BF}
     plans  = FFTPlans(g, flags=flags)
     scache = [VectorField([FTField(g)               for _ in 1:3]...) for _ in 1:4]
     pcache = [VectorField([  Field(g, dealias=true) for _ in 1:3]...) for _ in 1:8]
@@ -69,8 +69,8 @@ end
 # nonlinear NSE        #
 # -------------------- #
 function (eq::CartesianPrimitiveNSE)(::Real,
-                                      u::VectorField{3, F},
-                                    out::VectorField{3, F}) where {F<:FTField}
+                                    u::VectorField{3, F},
+                                  out::VectorField{3, F}) where {F<:FTField}
     dudx = eq.scache[1]; dudy = eq.scache[2]; dudz = eq.scache[3]
     U    = eq.pcache[1]; dUdx = eq.pcache[2]; dUdy = eq.pcache[3]; dUdz = eq.pcache[4]
 
@@ -96,9 +96,9 @@ end
 
 # 3-arg: set up base-flow cache then delegate to 2-arg
 function (eq::CartesianPrimitiveLNSE)(::Real,
-                                       u::VectorField{3, F},
-                                       v::VectorField{3, F},
-                                     out::VectorField{3, F}) where {F<:FTField}
+                                     u::VectorField{3, F},
+                                     v::VectorField{3, F},
+                                   out::VectorField{3, F}) where {F<:FTField}
     dudx = eq.scache[1]; dudy = eq.scache[2]; dudz = eq.scache[3]
     U    = eq.pcache[1]; dUdy = eq.pcache[3]; dUdz = eq.pcache[4]
 
@@ -136,8 +136,8 @@ end
 
 # continuous adjoint LNSE
 function (eq::CartesianPrimitiveLNSE{AdjointContinuous})(::Real,
-                                                          v::VectorField{3, F},
-                                                        out::VectorField{3, F}) where {F<:FTField}
+                                                        v::VectorField{3, F},
+                                                      out::VectorField{3, F}) where {F<:FTField}
     dudx = eq.scache[1]; dvdx = eq.scache[2]; dvdy = eq.scache[3]; dvdz = eq.scache[4]
     U    = eq.pcache[1]; dUdx = eq.pcache[2]; dUdy = eq.pcache[3]; dUdz = eq.pcache[4]
     V    = eq.pcache[5]; dVdx = eq.pcache[6]; dVdy = eq.pcache[7]; dVdz = eq.pcache[8]
