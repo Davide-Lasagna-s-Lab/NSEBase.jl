@@ -33,6 +33,8 @@
     u = Field(g,    dealias=false)
     v = Field(g, f, dealias=false)
     w = Field(g, f, dealias=false)
+    @test (v.*2 .+ w./3) isa Field
+    @test (u .= 0.0) isa Field
     @test foo(u, v, w) == 0
     @test u == 2*v + w/3
     @test bar(u) == 0
@@ -141,6 +143,8 @@ end
     u = FTField(g)
     v = FTField(g, randn(ComplexF64, Nx, (Ny >> 1) + 1))
     w = FTField(g, randn(ComplexF64, Nx, (Ny >> 1) + 1))
+    @test (v.*2 .+ w./3) isa FTField
+    @test (u .= 0.0) isa FTField
     @test foo(u, v, w) == 0
     @test u == 2*v + w/3
     @test bar(u) == 0
@@ -197,6 +201,8 @@ end
     w = VectorField(FTField(g, randn(ComplexF64, Nx, (Ny >> 1) + 1)),
                     FTField(g, randn(ComplexF64, Nx, (Ny >> 1) + 1)),
                     FTField(g, randn(ComplexF64, Nx, (Ny >> 1) + 1)))
+    @test (v.*2 .+ w./3) isa VectorField{3, <:FTField}
+    @test (u .= 0.0) isa VectorField{3, <:FTField}
     @test foo(u, v, w) == 0
     for n in 1:3; @test parent(u[n]) == 2*parent(v[n]) + parent(w[n])/3; end
     @test bar(u) == 0
@@ -240,6 +246,8 @@ end
     a = ProjectedField(g, Ψ)
     b = ProjectedField(g, randn(ComplexF64, M, (Ny >> 1) + 1), Ψ)
     c = ProjectedField(g, randn(ComplexF64, M, (Ny >> 1) + 1), Ψ)
+    @test (b.*2 .+ c./3) isa ProjectedField
+    @test (a .= 0.0) isa ProjectedField
     @test foo(a, b, c) == 0
     @test a == 2*b + c/3
     @test bar(a) == 0

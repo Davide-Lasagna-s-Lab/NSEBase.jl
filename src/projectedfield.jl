@@ -24,9 +24,10 @@ struct ProjectedField{G<:AbstractGrid, M, A<:AbstractArray, T, D} <: AbstractArr
     data::A
     modes::M
 
-    ProjectedField(grid::G, data::A, modes::M) where {T, D, H, G<:AbstractGrid{T, D, H}, A<:AbstractArray{<:Any, D}, M} =
-        new{G, M, A, T, D}(grid, Complex{T}.(normalise_mean!(apply_symmetry!(data, H), H)), modes)
+    ProjectedField(grid::G, data::A, modes::M) where {T, D, H, G<:AbstractGrid{T, D, H}, A<:AbstractArray{Complex{T}}, M} =
+        new{G, M, A, T, D}(grid, normalise_mean!(apply_symmetry!(data, H), H), modes)
 end
+ProjectedField(grid::AbstractGrid{T}, data::AbstractArray, modes) where {T} = ProjectedField(grid, Complex{T}.(data), modes)
 
 ProjectedField(grid::AbstractGrid{T, D, H}, modes) where {T, D, H} =
     ProjectedField(grid, zeros(Complex{T}, no_of_modes(modes), transform_size(grid)[collect(H)]...), modes)

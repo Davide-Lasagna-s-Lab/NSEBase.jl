@@ -14,13 +14,14 @@ struct Field{G<:AbstractGrid, A<:AbstractArray, T, D} <: AbstractArray{T, D}
     grid::G
     data::A
 
-    Field(grid::G, data::A) where {T, D, H, G<:AbstractGrid{T, D, H}, A<:AbstractArray{<:Any, D}} =
-        new{G, A, T, D}(grid, T.(data))
+    Field(grid::G, data::A) where {T, D, H, G<:AbstractGrid{T, D, H}, A<:AbstractArray{T, D}} =
+        new{G, A, T, D}(grid, data)
 end
+Field(grid::AbstractGrid{T}, data::AbstractArray) where {T} = Field(grid, T.(data))
 
 # construct from functions
-Field(grid::AbstractGrid,   func::Function; dealias=false)           = Field(grid, func.(points(grid, dealias=dealias)...))
-Field(grid::AbstractGrid{T}               ; dealias=false) where {T} = Field(grid, (pts...)->zero(T); dealias=dealias)
+Field(grid::AbstractGrid{T}, func::Function; dealias=false) where {T} = Field(grid, T.(func.(points(grid, dealias=dealias)...)))
+Field(grid::AbstractGrid{T}                ; dealias=false) where {T} = Field(grid, (pts...)->zero(T); dealias=dealias)
 
 Base.IndexStyle(::Type{<:Field})                                    = Base.IndexLinear()
 Base.parent(u::Field)                                               = u.data

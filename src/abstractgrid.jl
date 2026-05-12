@@ -14,7 +14,6 @@ transformed using [`FFTPlans`](@ref).
 """
 abstract type AbstractGrid{T<:Real, D, H} end
 
-Base.convert(::Type{T}, grid::AbstractGrid{T}) where {T}    = grid
 Base.convert(::Type{S}, grid::AbstractGrid{T}) where {S, T} = throw(NotImplementedError(grid, S))
    Base.size(           grid::AbstractGrid)                 = throw(NotImplementedError(grid))
       points(           grid::AbstractGrid; dealias=false)  = throw(NotImplementedError(grid))

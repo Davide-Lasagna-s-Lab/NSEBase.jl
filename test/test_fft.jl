@@ -18,16 +18,24 @@
     uv = VectorField(g, Field)
 
     # test transforms
-    @test parent( plans(    FTField(g),  plans(u,  U)))           ≈   parent(U)
-    @test parent(plansd(    FTField(g), plansd(ud, U)))           ≈   parent(U)
-    @test parent(plansd(       copy(U), plansd(ud, U), add=true)) ≈ 2*parent(U)
-    out = plans(VectorField(g),  plans(uv, Uv))
-    for n in 1:3; @test parent(out[n]) ≈ parent(Uv[n]); end
+    @test  plans(    FTField(g),  plans(u,  U))           ≈   U
+    @test plansd(    FTField(g), plansd(ud, U))           ≈   U
+    @test plansd(       copy(U), plansd(ud, U), add=true) ≈ 2*U
+    @test  plans(VectorField(g),  plans(uv, Uv))           ≈ Uv
+
+    # test allocation
+    funf(plan, A, B) = @allocated plan(A, B)
+    funb(plan, B, A) = @allocated plan(B, A, add=false)
+    # funf(plansd, ud, U) # run first to avoid initial allocation
+    # funb(plansd, U, ud)
+    @test funf(plans,  u,  U) == 0
+    # @test funf(plansd, ud, U) == 0 # ! where do allocations come from here? The views that davide mentioned?
+    @test funb(plans,  U,  u) == 0
+    # @test funb(plansd, U, ud) == 0
 
     # test constructing transforms
-    @test parent(FFT(plans(similar(u), U))) ≈ parent(U)
+    @test FFT(plans(similar(u), U)) ≈ U
     @test IFFT(U) == plans(similar(u), U)
-    out = FFT(plans(similar(uv), Uv))
-    for n in 1:3; @test parent(out[n]) ≈ parent(Uv[n]); end
+    @test FFT(plans(similar(uv), Uv)) ≈ Uv
     @test IFFT(Uv) == plans(similar(uv), Uv)
 end

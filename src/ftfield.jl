@@ -17,13 +17,14 @@ struct FTField{G<:AbstractGrid, A<:AbstractArray, T, D} <: AbstractArray{Complex
     data::A
 
     # generic constructor that bypasses sanitation
-    FTField(grid::G, data::A) where {T, D, G<:AbstractGrid{T, D}, A<:AbstractArray{<:Any, D}} =
-        new{G, A, T, D}(grid, Complex{T}.(data))
+    FTField(grid::G, data::A) where {T, D, G<:AbstractGrid{T, D}, A<:AbstractArray{Complex{T}, D}} =
+        new{G, typeof(data), T, D}(grid, data)
 
     # main constructor which sanitises data
-    FTField(grid::G, data::A) where {T, D, H, G<:AbstractGrid{T, D, H}, A<:Array{<:Any, D}} =
-        new{G, A, T, D}(grid, Complex{T}.(normalise_mean!(apply_symmetry!(data, H), H)))
+    FTField(grid::G, data::A) where {T, D, H, G<:AbstractGrid{T, D, H}, A<:Array{Complex{T}, D}} =
+        new{G, A, T, D}(grid, apply_symmetry!(normalise_mean!(data, H), H))
 end
+FTField(grid::AbstractGrid{T}, data::AbstractArray) where {T} = FTField(grid, Complex{T}.(data))
 
 # construct from standard array and sanitise input
 FTField(grid::AbstractGrid{T}) where {T} = FTField(grid, zeros(Complex{T}, transform_size(grid)))
