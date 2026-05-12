@@ -3,38 +3,52 @@
 # ---------------------- #
 # projected vector field #
 # ---------------------- #
-struct ProjectedField{S, T, D, A} <: AbstractArray{T, D}
-    data::Array{T, D}
-    modes::A
+"""
+    ProjectedField{G<:AbstractGrid, M}
 
-    function ProjectedField(::Type{S}, data::Array{T, D}, modes::A) where {S<:AbstractScalarField, T, D, A}
-        size(data) == size(modes)[2:end] || throw(ArgumentError("number of modes available not compatible with data"))
-        length(size(modes)) - 1 == D || throw(ArgumentError("dimension of data and modes are not compatible"))
-        new{S, T, D, A}(data, modes)
-    end
+A representation of a vector field derived from the projection
+of an `FTField` onto a set of basis `modes`.
+
+# Fields
+- `grid`: concrete instance of `AbstractGrid`
+- `data`: modal coefficients stored as a multi-dimensional array
+- `modes`: set of basis modes
+
+# Constructors
+- `ProjectedField(grid::AbstractGrid, M, modes)`
+- `ProjectedField(u::Union{FTField, Field, VectorField}, modes)`
+- `project(u::VectorField)`
+"""
+struct ProjectedField{G<:AbstractGrid, M, A<:AbstractArray, T, D} <: AbstractArray{Complex{T}, D}
+    grid::G
+    data::A
+    modes::M
+
+    ProjectedField(grid::G, data::A, modes::M) where {T, D, H, G<:AbstractGrid{T, D, H}, A<:AbstractArray{Complex{T}}, M} =
+        new{G, M, A, T, D}(grid, normalise_mean!(apply_symmetry!(data, H), H), modes)
 end
-ProjectedField(u::S,                 modes) where {S}    = ProjectedField(S, zeros(eltype(u),    size(modes, 2), hsize(u)...), modes)
-ProjectedField(u::VectorField{N, S}, modes) where {S, N} = ProjectedField(S, zeros(eltype(u[1]), size(modes, 2), hsize(u)...), modes)
+ProjectedField(grid::AbstractGrid{T}, data::AbstractArray, modes) where {T} = ProjectedField(grid, Complex{T}.(data), modes)
 
+ProjectedField(grid::AbstractGrid{T, D, H}, modes) where {T, D, H} =
+    ProjectedField(grid, zeros(Complex{T}, no_of_modes(modes), transform_size(grid)[collect(H)]...), modes)
+ProjectedField(u::Union{FTField, Field, VectorField}, modes) = ProjectedField(grid(u), modes)
 
-# --------------- #
-# utility methods #
-# --------------- #
-modes(a::ProjectedField) = a.modes
-
+no_of_modes(modes) = throw(NotImplementedError(modes))
 
 # ----------------- #
 # interface methods #
 # ----------------- #
-Base.IndexStyle(::Type{<:ProjectedField})                            = Base.IndexLinear()
-Base.parent(a::ProjectedField)                                       = a.data
-Base.eltype(::ProjectedField{G, T}) where {G, T}                     = T
-Base.size(a::ProjectedField)                                         = size(parent(a))
-# ! this method breakes the implicit contract that the eltype of the underlying data is the same as the eltype prescribed by the type `S`
-Base.similar(a::ProjectedField{S}, ::Type{T}=eltype(a)) where {S, T} = ProjectedField(S, similar(parent(a), T), modes(a))
-Base.copy(a::ProjectedField{S}) where {S}                            = ProjectedField(S, copy(parent(a)), modes(a))
-Base.zero(a::ProjectedField{S}) where {S}                            = ProjectedField(S, zero(parent(a)), modes(a))
-Base.abs(a::ProjectedField{S}) where {S}                             = (b = zero(a); b .= abs.(a); return b)
+Base.IndexStyle(::Type{<:ProjectedField})                                    = Base.IndexLinear()
+Base.parent(a::ProjectedField)                                               = a.data
+Base.eltype(::ProjectedField{<:AbstractGrid{T}}) where {T}                   = Complex{T}
+Base.size(a::ProjectedField)                                                 = size(parent(a))
+Base.similar(a::ProjectedField{<:AbstractGrid{T}}, ::Type{S}=T) where {S, T} = ProjectedField(convert(real(S), grid(a)), zero(parent(a)), modes(a))
+Base.copy(a::ProjectedField)                                                 = ProjectedField(grid(a), copy(parent(a)), modes(a))
+Base.zero(a::ProjectedField)                                                 = ProjectedField(grid(a), zero(parent(a)), modes(a))
+Base.abs(a::ProjectedField)                                                  = (b = zero(a); parent(b) .= abs.(parent(a)); return b)
+
+modes(a::ProjectedField) = a.modes
+grid(a::ProjectedField)  = a.grid
 
 
 # ---------------- #
@@ -56,6 +70,8 @@ end
 # ------------------- #
 # dot product methods #
 # ------------------- #
+# TODO: should be possible to just implement this as an appropriately weighted sum
+# TODO: of the dot of the all the elements of each component of the dot product
 LinearAlgebra.dot(a::ProjectedField, b::ProjectedField) = throw(NotImplementedError(a, b))
 LinearAlgebra.norm(a::ProjectedField) = sqrt(dot(a, a))
 
@@ -63,16 +79,15 @@ LinearAlgebra.norm(a::ProjectedField) = sqrt(dot(a, a))
 # ---------------- #
 # galerkin methods #
 # ---------------- #
-# ! required !
+# TODO: there might be a better interface that defines the vectorfield project on top of an FTField project method?
 project!(a::ProjectedField, u::VectorField) = throw(NotImplementedError(a, u))
-project(u::VectorField, modes) = project!(ProjectedField(u, modes), u)
+project(u::VectorField, modes) = project!(ProjectedField(grid(u), modes), u)
 
-# ! required !
 expand!(u::VectorField, a::ProjectedField) = throw(NotImplementedError(u, a))
+expand(a::ProjectedField) = expand!(VectorField(grid(a), FTField), a)
 
 
 # ------------------ #
 # derivative methods #
 # ------------------ #
-# ! required !
 dds!(out::ProjectedField, a::ProjectedField) = throw(NotImplementedError(out, a))
