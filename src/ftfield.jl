@@ -135,10 +135,10 @@ storing the rfft dim last would give stride-1 access to the DC plane.
         end)
     end
 
-    return Base.remove_linenums!(quote
+    return quote
         $(blocks...)
         return data
-    end)
+    end
 end
 apply_symmetry!(data, H::Dims) = apply_symmetry!(data, Val(H))
 
