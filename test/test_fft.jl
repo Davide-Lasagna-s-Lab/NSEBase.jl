@@ -1,4 +1,4 @@
-@testset "_get_padded_size                " begin
+@testset "_get_padded_size                  " begin
     # single transformed dimension
     @test NSEBase._get_padded_size((4,), (1,)) == (7,)
     @test NSEBase._get_padded_size((6,), (1,)) == (9,)
@@ -24,7 +24,7 @@
     end
 end
 
-@testset "_get_transform_size             " begin
+@testset "_get_transform_size               " begin
     # 1D: first (and only) dimension is halved + 1
     @test NSEBase._get_transform_size((4,), 1) == (3,)
     @test NSEBase._get_transform_size((6,), 1) == (4,)

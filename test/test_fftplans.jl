@@ -1,7 +1,7 @@
 import FFTW
 using FFTW: ESTIMATE
 
-@testset "FFTPlans constructor                " begin
+@testset "FFTPlans constructor              " begin
     for T in (Float32, Float64)
         # 1D, no dealiasing: cache is the standard spectral shape, norm = 1/N
         f = FFTPlans((8,), (1,), T, dealias=false, flags=ESTIMATE)
@@ -204,7 +204,7 @@ end
     @test û_out ≈ û_init
 end
 
-@testset "safe backward preserves û        " begin
+@testset "safe backward preserves û         " begin
     N = 16
     u  = randn(Float64, N)
     û  = zeros(ComplexF64, N ÷ 2 + 1)
@@ -218,7 +218,7 @@ end
     @test u2 ≈ u
 end
 
-@testset "unsafe+use_cache preserves û     " begin
+@testset "unsafe+use_cache preserves û      " begin
     N = 16
     u  = randn(Float64, N)
     û  = zeros(ComplexF64, N ÷ 2 + 1)
@@ -232,7 +232,7 @@ end
     @test u2 ≈ u
 end
 
-@testset "unsafe backward gives same result" begin
+@testset "unsafe backward gives same result " begin
     N = 16
     u  = randn(Float64, N)
     û  = zeros(ComplexF64, N ÷ 2 + 1)
@@ -294,7 +294,7 @@ end
     end
 end
 
-@testset "_copy_to/from_padded!, 1D        " begin
+@testset "_copy_to/from_padded!, 1D         " begin
     # NTuple{1}: only the rfft dim is transformed
     M, M_pad = 8, NSEBase._get_padded_size((8,), (1,))[1]
     M_spec, M_spec_pad = M ÷ 2 + 1, M_pad ÷ 2 + 1
@@ -315,7 +315,7 @@ end
     @test u2 ≈ u
 end
 
-@testset "_copy_to/from_padded!, 2D        " begin
+@testset "_copy_to/from_padded!, 2D         " begin
     # NTuple{2}: rfft dim + one full-spectrum dim
     M, N   = 8, 6
     M_pad, N_pad = NSEBase._get_padded_size((M, N), (1, 2))
@@ -343,7 +343,7 @@ end
     end
 end
 
-@testset "_copy_to/from_padded!, 3D        " begin
+@testset "_copy_to/from_padded!, 3D         " begin
     # NTuple{3}: rfft dim + two full-spectrum dims
     L, M, N  = 4, 6, 8
     L_pad, M_pad, N_pad = NSEBase._get_padded_size((L, M, N), (1, 2, 3))
@@ -360,7 +360,7 @@ end
     @test u2 ≈ u
 end
 
-@testset "_add_from_padded!, 1D            " begin
+@testset "_add_from_padded!, 1D             " begin
     M, M_pad = 8, NSEBase._get_padded_size((8,), (1,))[1]
     M_spec, M_spec_pad = M ÷ 2 + 1, M_pad ÷ 2 + 1
 
@@ -372,7 +372,7 @@ end
     @test accum ≈ accum0 .+ cache[1:M_spec]
 end
 
-@testset "_add_from_padded!, 2D            " begin
+@testset "_add_from_padded!, 2D             " begin
     M, N   = 8, 6
     M_pad, N_pad = NSEBase._get_padded_size((M, N), (1, 2))
     M_spec = M ÷ 2 + 1
