@@ -470,7 +470,7 @@ end
         # funf(plansd, ud, U) # run first to avoid initial allocation
         # funb(plansd, U, ud)
         @test funf(plans,  u,  U) == 0
-        # @test funf(plansd, ud, U) == 0 # ! where do allocations come from here? The views that davide mentioned?
+        # @test funf(plansd, ud, U) == 0
         @test funb(plans,  U,  u) == 0
         # @test funb(plansd, U, ud) == 0
 

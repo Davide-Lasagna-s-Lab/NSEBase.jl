@@ -21,8 +21,8 @@ struct FTField{G<:AbstractGrid, A<:AbstractArray, T, D} <: AbstractArray{Complex
         new{G, typeof(data), T, D}(grid, data)
 
     # main constructor which sanitises data
-    FTField(grid::G, data::A) where {T, D, H, G<:AbstractGrid{T, D, H}, A<:Array{Complex{T}, D}} =
-        new{G, A, T, D}(grid, apply_symmetry!(normalise_mean!(data, H), H))
+    FTField(grid::G, data::A) where {T, D, G<:AbstractGrid{T, D}, A<:Array{Complex{T}, D}} =
+        new{G, A, T, D}(grid, apply_symmetry!(normalise_mean!(data, fft_dims(grid)), fft_dims(grid)))
 end
 FTField(grid::AbstractGrid{T}, data::AbstractArray) where {T} = FTField(grid, Complex{T}.(data))
 

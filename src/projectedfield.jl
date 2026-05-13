@@ -24,13 +24,13 @@ struct ProjectedField{G<:AbstractGrid, M, A<:AbstractArray, T, D} <: AbstractArr
     data::A
     modes::M
 
-    ProjectedField(grid::G, data::A, modes::M) where {T, D, H, G<:AbstractGrid{T, D, H}, A<:AbstractArray{Complex{T}}, M} =
-        new{G, M, A, T, D}(grid, normalise_mean!(apply_symmetry!(data, H), H), modes)
+    ProjectedField(grid::G, data::A, modes::M) where {T, D, G<:AbstractGrid{T, D}, A<:AbstractArray{Complex{T}}, M} =
+        new{G, M, A, T, D}(grid, normalise_mean!(apply_symmetry!(data, fft_dims(grid)), fft_dims(grid)), modes)
 end
 ProjectedField(grid::AbstractGrid{T}, data::AbstractArray, modes) where {T} = ProjectedField(grid, Complex{T}.(data), modes)
 
 ProjectedField(grid::AbstractGrid{T, D, H}, modes) where {T, D, H} =
-    ProjectedField(grid, zeros(Complex{T}, no_of_modes(modes), transform_size(grid)[collect(H)]...), modes)
+    ProjectedField(grid, zeros(Complex{T}, no_of_modes(modes), transform_size(grid)[collect(fft_dims(grid))]...), modes)
 ProjectedField(u::Union{FTField, Field, VectorField}, modes) = ProjectedField(grid(u), modes)
 
 no_of_modes(modes) = throw(NotImplementedError(modes))

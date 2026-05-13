@@ -101,9 +101,9 @@ struct FFTPlans{DEALIAS, D, T, ORDER, PLAN, IPLAN}
     end
 end
 
-FFTPlans(g::AbstractGrid{T, <:Any, H}; kwargs...) where {T, H} = FFTPlans(size(g), H, T; kwargs...)
-FFTPlans(u::FTField;                   kwargs...)              = FFTPlans(grid(u); kwargs...)
-FFTPlans(u::Field;                     kwargs...)              = FFTPlans(grid(u); kwargs...)
+FFTPlans(g::AbstractGrid{T, <:Any, <:Any, ORDER}; kwargs...) where {T, ORDER} = FFTPlans(size(g), ORDER, T; kwargs...)
+FFTPlans(u::FTField;                              kwargs...)                  = FFTPlans(grid(u); kwargs...)
+FFTPlans(u::Field;                                kwargs...)                  = FFTPlans(grid(u); kwargs...)
 
 
 # ------------------------ #
@@ -293,10 +293,11 @@ Allocating forward transform: compute and return the Fourier coefficients of `u`
 normalised by the grid's `fft_norm`. Equivalent to planning and executing a fresh
 `rfft` on `parent(u)`.
 """
-function FFT(u::Field{G}) where {H, G<:AbstractGrid{<:Any, <:Any, H}}
-    û = FTField(grid(u))
-    parent(û) .= rfft(parent(u), H)
-    û .*= 1 / prod(fft_norm(grid(u)))
+function FFT(u::Field)
+    g = grid(u)
+    û = FTField(g)
+    parent(û) .= rfft(parent(u), fft_dims(g))
+    û .*= 1 / prod(fft_norm(g))
     return û
 end
 FFT(u::VectorField{N, <:Field}) where {N} = VectorField([FFT(u[n]) for n in 1:N]...)
@@ -309,9 +310,10 @@ corresponding to the Fourier coefficients `û`. No normalisation is applied
 (consistent with the convention that normalisation belongs to the forward
 transform). Equivalent to planning and executing a fresh `brfft` on `parent(û)`.
 """
-function IFFT(û::FTField{G}) where {H, G<:AbstractGrid{<:Any, <:Any, H}}
-    u = Field(grid(û))
-    parent(u) .= brfft(parent(û), size(grid(û))[H[1]], H)
+function IFFT(û::FTField)
+    g = grid(û)
+    u = Field(g)
+    parent(u) .= brfft(parent(û), size(g)[fft_dims(g)[1]], fft_dims(g))
     return u
 end
 IFFT(û::VectorField{N, <:FTField}) where {N} = VectorField([IFFT(û[n]) for n in 1:N]...)
