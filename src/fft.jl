@@ -60,10 +60,10 @@ scalar field on a `D`-dimensional grid.
   disable)
 """
 struct FFTPlans{DEALIAS, D, T, ORDER, PLAN, IPLAN}
-     plan :: PLAN
-    iplan :: IPLAN
-    cache :: Array{Complex{T}, D}
-     norm :: T
+     plan::PLAN
+    iplan::IPLAN
+    cache::Array{Complex{T}, D}
+     norm::T
 
     function FFTPlans(size::Dims{D},
                      order::NTuple{H, Int},

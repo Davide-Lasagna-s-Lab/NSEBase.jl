@@ -15,14 +15,22 @@
         Ψ[2][:, :, ny] .= tmp[  Nx+1:2*Nx, :]
         Ψ[3][:, :, ny] .= tmp[2*Nx+1:3*Nx, :]
     end
+    Ψ[1][:, :, 1] .= real.(Ψ[1][:, :, 1])
+    Ψ[2][:, :, 1] .= real.(Ψ[2][:, :, 1])
+    Ψ[3][:, :, 1] .= real.(Ψ[3][:, :, 1])
 
-    # test construction
+    # operator construction
+    nl = CartesianPrimitiveNSE(g, 100; flags=FFTW.ESTIMATE)
+    ln = CartesianPrimitiveLNSE(g, 100; mode=Forward(), flags=FFTW.ESTIMATE)
     op = ProjectedNSE(g)
     @test op.cache1 isa VectorField{3, <:FTField{FakeGrid}}
     @test op.cache2 isa VectorField{3, <:FTField{FakeGrid}}
 
     # test operation
     a = ProjectedField(g, randn(ComplexF64, M, (Ny >> 1) + 1), Ψ)
-    @test op(zero(a), a) ≈ 2*a
-    @test op(similar(a), a, a) ≈ 4*a
+    b = ProjectedField(g, randn(ComplexF64, M, (Ny >> 1) + 1), Ψ)
+    u = expand(a)
+    v = expand(b)
+    @test op(zero(a), a) ≈ project(nl(0.0, u, similar(u)), Ψ)
+    @test op(similar(a), a, b) ≈ project(ln(0.0, u, v, similar(u)), Ψ)
 end
