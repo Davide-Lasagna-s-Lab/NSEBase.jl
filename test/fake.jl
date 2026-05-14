@@ -46,6 +46,7 @@ NSEBase.inhomogeneous_laplacian!(out::FTField{FakeGrid}, u::FTField{FakeGrid}; a
 # ----------------------- #
 # projected field methods #
 # ----------------------- #
+# TODO: is there a way to move this constructor into the actual base package?
 function NSEBase.ProjectedNSE(grid::FakeGrid)
     plans = FFTPlans(grid, flags=FFTW.ESTIMATE)
     scache = [VectorField([FTField(grid)               for _ in 1:3]...) for _ in 1:4]
@@ -71,16 +72,4 @@ function NSEBase.expand!(u::VectorField{N, <:FTField{FakeGrid}}, a::ProjectedFie
         u[n][:, ny] .+= a[m, ny].*@view(modes(a)[n][:, m, ny])
     end
     return u
-end
-
-function LinearAlgebra.dot(a::ProjectedField{FakeGrid}, b::ProjectedField{FakeGrid})
-    M, Ny = size(a)
-    sum = 0.0
-    for m in 1:M
-        sum += 0.5*real(dot(a[m, 1], b[m, 1]))
-        for ny in 2:((Ny >> 1) + 1)
-            sum += real(dot(a[m, ny], b[m, ny]))
-        end
-    end
-    return sum
 end

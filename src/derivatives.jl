@@ -139,6 +139,7 @@ ddx_z!(out::FTField, u::FTField; kwargs...) = ddx!(out, u, Val(z_dim(grid(u))); 
 ddx_z!(out::VectorField{N}, u::VectorField{N}; kwargs...) where {N} =
     (for n in 1:N; ddx_z!(out[n], u[n]; kwargs...); end; return out)
 
+# TODO: add time derivative here
 
 """
     add_homogeneous_laplacian!(out::FTField, u::FTField)

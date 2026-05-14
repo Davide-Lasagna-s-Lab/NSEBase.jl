@@ -1,8 +1,5 @@
 # Field of modal coefficinets for a vectorfield projected onto a set of modes.
 
-# ---------------------- #
-# projected vector field #
-# ---------------------- #
 """
     ProjectedField{G<:AbstractGrid, M}
 
@@ -17,15 +14,19 @@ of an `FTField` onto a set of basis `modes`.
 # Constructors
 - `ProjectedField(grid::AbstractGrid, M, modes)`
 - `ProjectedField(u::Union{FTField, Field, VectorField}, modes)`
-- `project(u::VectorField)`
+- `project(u::VectorField, modes)`
 """
 struct ProjectedField{G<:AbstractGrid, M, A<:AbstractArray, T, D} <: AbstractArray{Complex{T}, D}
     grid::G
     data::A
     modes::M
 
-    ProjectedField(grid::G, data::A, modes::M) where {T, D, G<:AbstractGrid{T, D}, A<:AbstractArray{Complex{T}}, M} =
-        new{G, M, A, T, D}(grid, normalise_mean!(apply_symmetry!(data, fft_dims(grid)), fft_dims(grid)), modes)
+    ProjectedField(grid::G, data::A, modes::M) where {T, D, G<:AbstractGrid{T, D}, A<:AbstractArray{<:Any, D}, M} = begin
+        # ProjectedField storage is `(mode, fft_dims...)`, not physical grid
+        # storage.  The rfft dimension is therefore axis 2, followed by the
+        # remaining transformed axes in FFT order.
+        new{G, M, A, T, D}(grid, Complex{T}.(normalise_mean!(apply_symmetry!(data, fft_dims(grid)), fft_dims(grid))), modes)
+    end
 end
 ProjectedField(grid::AbstractGrid{T}, data::AbstractArray, modes) where {T} = ProjectedField(grid, Complex{T}.(data), modes)
 
@@ -54,7 +55,7 @@ grid(a::ProjectedField)  = a.grid
 # ---------------- #
 # indexing methods #
 # ---------------- #
-# linear indexing
+# Linear indexing — delegates straight to the underlying data array.
 Base.@propagate_inbounds function Base.getindex(u::ProjectedField, i::Int)
     @boundscheck checkbounds(parent(u), i)
     @inbounds val = parent(u)[i]
@@ -66,13 +67,31 @@ Base.@propagate_inbounds function Base.setindex!(u::ProjectedField, val, i::Int)
     return val
 end
 
+"""
+    dot(a::ProjectedField, b::ProjectedField)
 
-# ------------------- #
-# dot product methods #
-# ------------------- #
-# TODO: should be possible to just implement this as an appropriately weighted sum
-# TODO: of the dot of the all the elements of each component of the dot product
-LinearAlgebra.dot(a::ProjectedField, b::ProjectedField) = throw(NotImplementedError(a, b))
+Inner product of two projected fields, exploiting the rfft Hermitian symmetry.
+Modes with rfft index `> 1` (wavenumber `nx > 0`) are stored once but represent
+both `+nx` and `-nx`, so they contribute with weight 2; the `nx = 0` plane has
+weight 1.  The result is divided by 2 to account for the double-counting of
+signed-FFT pairs `(nz, nt)` and `(-nz, -nt)` that both appear in storage.
+"""
+function LinearAlgebra.dot(a::ProjectedField{G}, b::ProjectedField{G}) where {G<:AbstractGrid}
+    s = zero(real(eltype(a)))
+    for_each_mode(grid(a)) do args...
+        w = first(args) == 1 ? 1 : 2
+        for m in axes(a, 1)
+            @inbounds s += w * real(LinearAlgebra.dot(parent(a)[m, args...], parent(b)[m, args...]))
+        end
+    end
+    return s / 2
+end
+
+"""
+    norm(a::ProjectedField)
+
+Norm induced from [`dot(a::ProjectedField, b::ProjectedField)`](@ref).
+"""
 LinearAlgebra.norm(a::ProjectedField) = sqrt(dot(a, a))
 
 

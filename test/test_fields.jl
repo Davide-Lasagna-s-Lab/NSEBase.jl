@@ -236,6 +236,11 @@ end
     @test zero(a1) isa typeof(a1)
     @test norm(zero(a1)) == 0
 
+    # test inner-product
+    a = ProjectedField(g, ones(ComplexF64, M, (Ny >> 1) + 1), Ψ)
+    b = ProjectedField(g, ones(ComplexF64, M, (Ny >> 1) + 1), Ψ)
+    @test dot(a, b) == 55
+
     # test expand and project
     a1 .= randn(ComplexF64, 10, 6)
     @test project(expand(a1), Ψ) ≈ a1

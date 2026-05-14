@@ -13,6 +13,7 @@ export ProjectedNSE
 
 include("notimplementederror.jl")
 include("abstractgrid.jl")
+include("spectralloops.jl")
 include("ftfield.jl")
 include("field.jl")
 include("vectorfield.jl")
