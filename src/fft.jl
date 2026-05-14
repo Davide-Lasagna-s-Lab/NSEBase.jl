@@ -84,7 +84,7 @@ struct FFTPlans{DEALIAS, D, T, ORDER, PLAN, IPLAN}
                 throw(ArgumentError("padded_size must be ≥ size along each transformed dimension"))
             padded_size
         elseif dealias
-            _get_padded_size(size, order)
+            get_padded_size(size, order)
         else
             size
         end
@@ -323,13 +323,13 @@ IFFT(û::VectorField{N, <:FTField}) where {N} = VectorField([IFFT(û[n]) for n i
 # utility functions #
 # ----------------- #
 """
-    _get_padded_size(size, order) -> Dims
+    get_padded_size(size, order) -> Dims
 
 Return the physical grid size padded for 3/2-rule dealiasing: each dimension
 in `order` is rounded up to the nearest odd number ≥ 3s/2 (where `s` is the
 unpadded size). Odd sizes avoid Nyquist-frequency ambiguity in the brfft plan.
 """
-function _get_padded_size(size, order)
+function get_padded_size(size, order)
     return ntuple(length(size)) do i
         i ∈ order ? cld(3*size[i], 2) | 1 : size[i]
     end

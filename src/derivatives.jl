@@ -1,21 +1,21 @@
 # Generic derivative methods for each dimension of an FTField
 
 """
-    ddx!(out::FTField, u::FTField, ::Val{Dim}; adjoint=false)
-    ddx!(out::VectorField, u::VectorField, ::Val{Dim}; adjoint=false)
+    ddx!(out::FTField, u::FTField, ::Val{DIM}; adjoint=false)
+    ddx!(out::VectorField, u::VectorField, ::Val{DIM}; adjoint=false)
 
-In-place spectral derivative of `u` along array dimension `Dim`, writing into `out`.
+In-place spectral derivative of `u` along array dimension `DIM`, writing into `out`.
 
-For `Dim in ORDER` the derivative is multiplication by
-`±im * n * wavenumber_scale(grid, Dim)` where `n` is the signed wavenumber.
+For `DIM in ORDER` the derivative is multiplication by
+`±im * n * wavenumber_scale(grid, DIM)` where `n` is the signed wavenumber.
 `adjoint=false` (default) gives `+im·n·scale·u`; `adjoint=true` gives `-im·n·scale·u`
 (the L2 adjoint of the spectral derivative for homogeneous directions).
 
-For `Dim not in ORDER` the method throws `NotImplementedError`. Downstream packages
+For `DIM not in ORDER` the method throws `NotImplementedError`. Downstream packages
 should extend this for each non-homogeneous direction (e.g. matrix multiply
 with a differentiation matrix) and handle the `adjoint` keyword there too.
 
-For `AXES[Dim] === nothing` the function reduces to identity.
+For `AXES[DIM] === nothing` the function reduces to identity.
 
 # Generated loop shape
 
@@ -58,13 +58,13 @@ end
 """
 @generated function ddx!(out::F,
                            u::F,
-                            ::Val{Dim};
-                     adjoint::Bool=false) where {T, D, AXES, ORDER, G<:AbstractGrid{T, D, AXES, ORDER}, F<:Union{FTField{G}, ProjectedField{G}}, Dim}
-    (isnothing(Dim) || isnothing(AXES[Dim])) && return :(return out)
-    Dim ∉ ORDER && return :(throw(NotImplementedError(grid(u), Val($Dim))))
+                            ::Val{DIM};
+                     adjoint::Bool=false) where {T, D, AXES, ORDER, G<:AbstractGrid{T, D, AXES, ORDER}, F<:Union{FTField{G}, ProjectedField{G}}, DIM}
+    (isnothing(DIM) || isnothing(AXES[DIM])) && return :(return out)
+    DIM ∉ ORDER && return :(throw(NotImplementedError(grid(u), Val($DIM))))
 
     syms  = [Symbol("_i", d) for d in 1:D]
-    n_sym = Symbol("_n", Dim)
+    n_sym = Symbol("_n", DIM)
 
     # Hot scalar update. The scale and adjoint sign are hoisted outside the
     # loops; each generated block supplies the signed wavenumber variable.
@@ -79,7 +79,7 @@ end
         for d in 1:D
             sym = syms[d]
             rng = ranges[d]
-            body = if d == Dim
+            body = if d == DIM
                 :(for $sym in $rng
                       $n_sym = $(wavenumbers[d])
                       $body
@@ -96,20 +96,20 @@ end
     ranges = [:(1:Base.size(u, $d)) for d in 1:D]
     wnums  = Any[:nothing for _ in 1:D]
 
-    if Dim == ORDER[1]
+    if DIM == ORDER[1]
         # rfft dimension: only non-negative wavenumbers are stored.
-        wnums[Dim] = :($(syms[Dim]) - 1)
+        wnums[DIM] = :($(syms[DIM]) - 1)
         body = cache_ordered_loop(assign, ranges, wnums)
     else
         # ordinary fft dimension: split into positive and negative storage
         # blocks so no signed-wavenumber branch appears in the scalar loop.
         pos_ranges = copy(ranges)
         neg_ranges = copy(ranges)
-        pos_ranges[Dim] = :(1:(Base.size(u, $Dim) >> 1) + 1)
-        neg_ranges[Dim] = :((Base.size(u, $Dim) >> 1) + 2:Base.size(u, $Dim))
-        wnums[Dim] = :($(syms[Dim]) - 1)
+        pos_ranges[DIM] = :(1:(Base.size(u, $DIM) >> 1) + 1)
+        neg_ranges[DIM] = :((Base.size(u, $DIM) >> 1) + 2:Base.size(u, $DIM))
+        wnums[DIM] = :($(syms[DIM]) - 1)
         pos_body = cache_ordered_loop(assign, pos_ranges, wnums)
-        wnums[Dim] = :($(syms[Dim]) - Base.size(u, $Dim) - 1)
+        wnums[DIM] = :($(syms[DIM]) - Base.size(u, $DIM) - 1)
         neg_body = cache_ordered_loop(assign, neg_ranges, wnums)
         body = quote
             $pos_body
@@ -118,7 +118,7 @@ end
     end
 
     return quote
-        _ddx_scale = wavenumber_scale(grid(u), $Dim)
+        _ddx_scale = wavenumber_scale(grid(u), $DIM)
         _ddx_sign  = adjoint ? -1im : 1im
         $body
         return out
@@ -192,12 +192,13 @@ Inside every block, dimension 1 remains the innermost loop and the signed
 wavenumbers are plain loop-local integers.
 """
 @generated function add_homogeneous_laplacian!(out::FTField{G}, u::FTField{G}) where {T, D, AXES, ORDER, G<:AbstractGrid{T, D, AXES, ORDER}}
+    H = filter(d->d!=AXES[4], ORDER) # exclude time from derivative contributions
     syms = [Symbol("_i", d) for d in 1:D]
 
     # Build the symbolic k² expression from per-dimension scale and wavenumber
     # variables.  The loops below define `_n<dim>` for each dimension in ORDER.
     k2_terms = Expr[]
-    for d in ORDER
+    for d in H
         n_expr = Symbol("_n", d)
         scale = Symbol("_k_scale", d)
         push!(k2_terms, :(($scale * $n_expr)^2))
@@ -210,14 +211,14 @@ wavenumbers are plain loop-local integers.
         @inbounds parent(out)[$(syms...)] -= $k2_expr * parent(u)[$(syms...)]
     end
 
-    signed_dims = ORDER[2:end]
+    signed_dims = H[2:end]
     blocks = Expr[]
     for mask in 0:(1 << length(signed_dims)) - 1
         # One generated block for each sign combination of ORDER[2:end].
         # The rfft dimension ORDER[1] is not split because it stores only n >= 0.
         ranges = [:(1:Base.size(u, $d)) for d in 1:D]
         wnums  = Any[:nothing for _ in 1:D]
-        wnums[ORDER[1]] = :($(syms[ORDER[1]]) - 1)
+        wnums[H[1]] = :($(syms[H[1]]) - 1)
 
         for (j, d) in enumerate(signed_dims)
             if Bool((mask >> (j - 1)) & 1)
@@ -234,7 +235,7 @@ wavenumbers are plain loop-local integers.
             # As in ddx!, increasing wrapper order makes dimension 1 innermost.
             sym = syms[d]
             rng = ranges[d]
-            if d in ORDER
+            if d in H
                 n_sym = Symbol("_n", d)
                 block = :(for $sym in $rng
                               $n_sym = $(wnums[d])
@@ -249,11 +250,11 @@ wavenumbers are plain loop-local integers.
         push!(blocks, block)
     end
 
-    return quote
-        $([:($(Symbol("_k_scale", d)) = wavenumber_scale(grid(u), $d)) for d in ORDER]...)
+    return Base.remove_linenums!(quote
+        $([:($(Symbol("_k_scale", d)) = wavenumber_scale(grid(u), $d)) for d in H]...)
         $(blocks...)
         return out
-    end
+    end)
 end
 add_homogeneous_laplacian!(out::VectorField{N}, u::VectorField{N}) where {N} =
     (for n in 1:N; add_homogeneous_laplacian!(out[n], u[n]); end; return out)

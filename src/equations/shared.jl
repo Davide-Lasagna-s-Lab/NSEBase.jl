@@ -80,6 +80,7 @@ function construct_equations(grid::AbstractGrid{T},
                              mode=AdjointDiscrete(),
                             flags=FFTW.EXHAUSTIVE,
                           dealias=true) where {T}
+    mode isa Union{AdjointContinuous, AdjointDiscrete} || throw(ArgumentError("linearised operator has to operate in adjoint mode"))
     plans = FFTPlans(grid; flags=flags)
     scache = [VectorField([FTField(grid)                  for _ in 1:ncomp(formulation)]...) for _ in 1:cache_length(formulation, FTField)]
     pcache = [VectorField([  Field(grid; dealias=dealias) for _ in 1:ncomp(formulation)]...) for _ in 1:cache_length(formulation, Field)]
