@@ -21,8 +21,8 @@
 
     # operator construction
     nl = CartesianPrimitiveNSE(g, 100; flags=FFTW.ESTIMATE)
-    ln = CartesianPrimitiveLNSE(g, 100; mode=Forward(), flags=FFTW.ESTIMATE)
-    op = ProjectedNSE(g)
+    ln = CartesianPrimitiveLNSE(g, 100; mode=AdjointDiscrete(), flags=FFTW.ESTIMATE)
+    op = construct_equations(g, 100, nothing, CartesianPrimitive(); flags=FFTW.ESTIMATE)
     @test op.cache1 isa VectorField{3, <:FTField{FakeGrid}}
     @test op.cache2 isa VectorField{3, <:FTField{FakeGrid}}
 
@@ -31,6 +31,6 @@
     b = ProjectedField(g, randn(ComplexF64, M, (Ny >> 1) + 1), Ψ)
     u = expand(a)
     v = expand(b)
-    @test op(zero(a), a) ≈ project(nl(0.0, u, similar(u)), Ψ)
+    @test op(zero(a), a)       ≈ project(nl(0.0, u, similar(u)), Ψ)
     @test op(similar(a), a, b) ≈ project(ln(0.0, u, v, similar(u)), Ψ)
 end

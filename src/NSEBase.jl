@@ -9,6 +9,7 @@ export FTField, Field, VectorField, grid
 export FFTPlans, FFT, IFFT
 export ProjectedField, modes, project!, project, expand!, expand
 export CartesianPrimitiveNSE, CartesianPrimitiveLNSE, Forward, AdjointContinuous, AdjointDiscrete, NoForce
+export construct_equations, CartesianPrimitive, PolarPrimitive
 export ProjectedNSE
 
 include("notimplementederror.jl")
@@ -22,6 +23,7 @@ include("projectedfield.jl")
 include("broadcasting.jl")
 include("derivatives.jl")
 include("equations/cartesianprimitive.jl")
-include("projectednse.jl")
+include("equations/projectednse.jl")
+include("equations/shared.jl")
 
 end

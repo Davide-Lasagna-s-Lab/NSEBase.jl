@@ -46,7 +46,7 @@ scalar field on a `D`-dimensional grid.
 
     FFTPlans(size, order, T=Float64; dealias=true, padded_size=nothing, flags=EXHAUSTIVE, timelimit=NO_TIMELIMIT)
 
-## Arguments
+# Arguments
 - `size::Dims`: size of the physical domain
 - `order::NTuple{H,Int}`: dimensions to transform (first → rfft, rest → fft)
 - `T::Type`: real element type (default `Float64`)

@@ -46,16 +46,6 @@ NSEBase.inhomogeneous_laplacian!(out::FTField{FakeGrid}, u::FTField{FakeGrid}; a
 # ----------------------- #
 # projected field methods #
 # ----------------------- #
-# TODO: is there a way to move this constructor into the actual base package?
-function NSEBase.ProjectedNSE(grid::FakeGrid)
-    plans = FFTPlans(grid, flags=FFTW.ESTIMATE)
-    scache = [VectorField([FTField(grid)               for _ in 1:3]...) for _ in 1:4]
-    pcache = [VectorField([  Field(grid, dealias=true) for _ in 1:3]...) for _ in 1:8]
-    nl = CartesianPrimitiveNSE(100.0, plans, scache, pcache, NoForce())
-    ln = CartesianPrimitiveLNSE{Forward}(100.0, plans, scache, pcache, NoForce())
-    return ProjectedNSE(grid, 3, nl, ln, nothing)
-end
-
 NSEBase.no_of_modes(modes::Vector{Array{Complex{T}, 3}}) where {T} = size(modes[1], 2)
 
 function NSEBase.project!(a::ProjectedField{FakeGrid}, u::VectorField{N, <:FTField{FakeGrid}}) where {N}
