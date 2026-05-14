@@ -104,9 +104,3 @@ project(u::VectorField, modes) = project!(ProjectedField(grid(u), modes), u)
 
 expand!(u::VectorField, a::ProjectedField) = throw(NotImplementedError(u, a))
 expand(a::ProjectedField) = expand!(VectorField(grid(a), FTField), a)
-
-
-# ------------------ #
-# derivative methods #
-# ------------------ #
-dds!(out::ProjectedField, a::ProjectedField) = throw(NotImplementedError(out, a))

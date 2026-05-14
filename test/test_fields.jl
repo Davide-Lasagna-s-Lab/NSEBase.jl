@@ -7,9 +7,9 @@
     xd, yd = points(g, dealias=true )
 
     # test field constructors
-    f(x, y)=x^2*cos(2π*y/L)
-    u1 = Field(g, f, dealias=false)
-    u2 = Field(g, f, dealias=true )
+    fun(x, y)=x^2*cos(2π*y/L)
+    u1 = Field(g, fun, dealias=false)
+    u2 = Field(g, fun, dealias=true )
     u3 = Field(g,    dealias=false)
     u4 = Field(g,    dealias=true )
     @test size(u1) == size(u3) == (16, 11)
@@ -17,13 +17,13 @@
     @test begin
         res = true
         for nx in 1:16, ny in 1:11
-            u1[nx, ny] != f(x[nx], y[ny]) && (res = false; break)
+            u1[nx, ny] != fun(x[nx], y[ny]) && (res = false; break)
         end; res
     end
     @test begin
         res = true
         for nx in 1:16, ny in 1:17
-            u2[nx, ny] != f(xd[nx], yd[ny]) && (res = false; break)
+            u2[nx, ny] != fun(xd[nx], yd[ny]) && (res = false; break)
         end; res
     end
 
@@ -31,16 +31,16 @@
     foo(u, v, w) = (@allocated u .= v.*2 .+ w./3)
     bar(u)       = (@allocated u .= 0.0)
     u = Field(g,    dealias=false)
-    v = Field(g, f, dealias=false)
-    w = Field(g, f, dealias=false)
+    v = Field(g, fun, dealias=false)
+    w = Field(g, fun, dealias=false)
     @test (v.*2 .+ w./3) isa Field
     @test (u .= 0.0) isa Field
     @test foo(u, v, w) == 0
     @test u == 2*v + w/3
     @test bar(u) == 0
     u = Field(g,    dealias=true)
-    v = Field(g, f, dealias=true)
-    w = Field(g, f, dealias=true)
+    v = Field(g, fun, dealias=true)
+    w = Field(g, fun, dealias=true)
     @test foo(u, v, w) == 0
     @test u == 2*v + w/3
     @test bar(u) == 0

@@ -56,8 +56,10 @@ for _i4 in 1:size(u, 4)
 end
 ```
 """
-@generated function ddx!(out::FTField{G}, u::FTField{G}, ::Val{Dim};
-                         adjoint::Bool=false) where {T, D, AXES, ORDER, G<:AbstractGrid{T, D, AXES, ORDER}, Dim}
+@generated function ddx!(out::F,
+                           u::F,
+                            ::Val{Dim};
+                     adjoint::Bool=false) where {T, D, AXES, ORDER, G<:AbstractGrid{T, D, AXES, ORDER}, F<:Union{FTField{G}, ProjectedField{G}}, Dim}
     (isnothing(Dim) || isnothing(AXES[Dim])) && return :(return out)
     Dim ∉ ORDER && return :(throw(NotImplementedError(grid(u), Val($Dim))))
 
@@ -127,19 +129,33 @@ ddx!(out::VectorField{N}, u::VectorField{N}, d; kwargs...) where {N} =
 
 # These look up the array dim from the field's grid type (via x_dim/y_dim/z_dim)
 # and forward all kwargs to ddx!, so callers need not know array dim indices.
-ddx_x!(out::FTField, u::FTField; kwargs...) = ddx!(out, u, Val(x_dim(grid(u))); kwargs...)
+ddx_x!(out::ProjectedField, a::ProjectedField; kwargs...) =
+    ddx!(out, a, Val(x_dim(grid(a))); kwargs...)
+ddx_x!(out::FTField, u::FTField; kwargs...) =
+    ddx!(out, u, Val(x_dim(grid(u))); kwargs...)
 ddx_x!(out::VectorField{N}, u::VectorField{N}; kwargs...) where {N} =
     (for n in 1:N; ddx_x!(out[n], u[n]; kwargs...); end; return out)
 
-ddx_y!(out::FTField, u::FTField; kwargs...) = ddx!(out, u, Val(y_dim(grid(u))); kwargs...)
+ddx_y!(out::ProjectedField, a::ProjectedField; kwargs...) =
+    ddx!(out, a, Val(y_dim(grid(a))); kwargs...)
+ddx_y!(out::FTField, u::FTField; kwargs...) =
+    ddx!(out, u, Val(y_dim(grid(u))); kwargs...)
 ddx_y!(out::VectorField{N}, u::VectorField{N}; kwargs...) where {N} =
     (for n in 1:N; ddx_y!(out[n], u[n]; kwargs...); end; return out)
 
-ddx_z!(out::FTField, u::FTField; kwargs...) = ddx!(out, u, Val(z_dim(grid(u))); kwargs...)
+ddx_z!(out::ProjectedField, a::ProjectedField; kwargs...) =
+    ddx!(out, a, Val(z_dim(grid(a))); kwargs...)
+ddx_z!(out::FTField, u::FTField; kwargs...) =
+    ddx!(out, u, Val(z_dim(grid(u))); kwargs...)
 ddx_z!(out::VectorField{N}, u::VectorField{N}; kwargs...) where {N} =
     (for n in 1:N; ddx_z!(out[n], u[n]; kwargs...); end; return out)
 
-# TODO: add time derivative here
+dds!(out::ProjectedField, a::ProjectedField) =
+    ddx!(out, a, Val(t_dim(grid(a))); adjoint=false)
+dds!(out::FTField, u::FTField) =
+    ddx!(out, u, Val(t_dim(grid(u))); adjoint=false)
+dds!(out::VectorField{N}, u::VectorField{N}) where {N} =
+    (for n in 1:N; dds!(out[n], u[n]); end; return out)
 
 """
     add_homogeneous_laplacian!(out::FTField, u::FTField)
