@@ -23,6 +23,17 @@ add_base!(u::VectorField, base) = throw(NotImplementedError(u, base))
 
 grid(u::VectorField) = grid(u[1])
 
+"""
+    growto(u::VectorField, target_size)
+
+Return an equivalent vector field with a new homogeneous resolution.
+
+This is optional.  Packages should only implement it if they support
+resolution-changing transforms such as `FFT(u, target_size)` and
+`IFFT(û, target_size)`.
+"""
+growto(u::VectorField{N, <:FTField}, target_size) where {N} = VectorField([growto(u[n], target_size) for n in 1:N]...)
+
 
 # ------------------- #
 # constructor methods #

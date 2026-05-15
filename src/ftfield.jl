@@ -50,6 +50,17 @@ end
 
 grid(u::FTField) = u.grid
 
+"""
+    growto(u::FTField, target_size)
+
+Return an equivalent field with a new homogeneous resolution.
+
+This is optional.  Packages should only implement it if they support
+resolution-changing transforms such as `FFT(u, target_size)` and
+`IFFT(û, target_size)`.
+"""
+growto(u::FTField, target_size) = throw(NotImplementedError(u, target_size))
+
 
 # --------------------- #
 # inner-product methods #
