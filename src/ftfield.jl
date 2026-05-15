@@ -1,7 +1,5 @@
 # Fourier transformed scalar field.
 
-# TODO: implement some sort of norm interface?
-
 """
     FTField{G} where {G<:AbstractGrid}
 

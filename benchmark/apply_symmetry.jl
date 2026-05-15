@@ -17,7 +17,7 @@ for n in sizes
     shape = (n÷2 + 1, n, n, n)
     data  = rand(ComplexF64, shape)
 
-    result = @benchmark NSEBase.apply_symmetry!(d, Val($H)) setup=(d = copy($data)) evals=1
+    result = @benchmark NSEBase.apply_symmetry!(d, Val(H)) setup=(d = copy(data)) evals=1
 
     t = median(result).time
     a = median(result).memory

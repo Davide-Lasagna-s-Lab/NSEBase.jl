@@ -15,7 +15,6 @@ cases = [
 # ------------------------------------------------------------------ #
 # benchmark loop                                                       #
 # ------------------------------------------------------------------ #
-# results[case_idx][func_idx] = (ns=Float64[], kb=Float64[])
 results = [
     [(ns=Float64[], kb=Float64[]) for _ in 1:4]
     for _ in eachindex(cases)
@@ -23,12 +22,12 @@ results = [
 
 for (ci, c) in enumerate(cases)
     println("\n── D=$(c.D), order=$(c.order) ──────────────────────────────")
-    @printf("  %-6s  %-16s  %-16s  %-16s  %-16s\n",
+    @printf("  %-8s  %-20s  %-20s  %-20s  %-20s\n",
             "n", "copy_to_padded!", "copy_from_padded!", "add_from_padded!", "apply_mask!")
 
     for n in c.sizes
         sz      = ntuple(_ -> n, c.D)
-        pad_sz  = NSEBase._get_padded_size(sz, c.order)
+        pad_sz  = NSEBase.get_padded_size(sz, c.order)
         spec_sz = NSEBase._get_transform_size(sz,     c.order[1])
         cach_sz = NSEBase._get_transform_size(pad_sz, c.order[1])
 
@@ -75,13 +74,14 @@ for (ci, c) in enumerate(cases)
 
     for ax in (ax_t, ax_a)
         ax.set_xscale("log", base=2)
-        ax.set_yscale("log")
+        # ax.set_yscale("log")
         ax.set_xticks(c.sizes)
         ax.xaxis.set_major_formatter(PyPlot.matplotlib.ticker.ScalarFormatter())
         ax.grid(true, which="both", linestyle="--", alpha=0.4)
         ax.set_xlabel("n  (side length)")
         ax.set_title("D=$(c.D), order=$(c.order)")
     end
+    ax_t.set_yscale("log")
     ax_t.set_ylabel("median time  (ms)")
     ax_a.set_ylabel("allocations  (KB)")
     ax_t.legend(fontsize=7)
