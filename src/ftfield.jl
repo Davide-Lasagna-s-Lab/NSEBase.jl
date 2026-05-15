@@ -59,12 +59,114 @@ This is optional.  Packages should only implement it if they support
 resolution-changing transforms such as `FFT(u, target_size)` and
 `IFFT(û, target_size)`.
 """
-growto(u::FTField, target_size) = throw(NotImplementedError(u, target_size))
+# ! doesn't work using for_each_mode since, need a for_each_freq or something that gives wave numbers instead of raw indices
+function growto(u::FTField, target_size)
+    out = FTField(growto(grid(u), target_size))
+    for_each_mode(grid(u)) do args...
+        @show args
+        # @show _combine_indices(grid(u), I, args)
+        # out[_combine_indices(grid(u), I, args)] = u[_combine_indices(grid(u), I, args)]
+    end
+    return out
+end
+
+"""
+    u[n::ModeNumber, I...]
+
+Return the complex modal coefficient for index `I` at wavenumber tuple `n`.
+
+The wavenumbers in `n` follow the order of `fft_dims(grid(a)) = ORDER`.
+If the first (rfft) wavenumber `n.ns[1]` is negative the coefficient is
+obtained by conjugate symmetry: the entry stored at `(-n.ns[1], -n.ns[2:N]…)`
+is read and conjugated.
+"""
+Base.@propagate_inbounds function Base.getindex(u::FTField,
+                                                n::ModeNumber,
+                                                I::Vararg{Int})
+    tpl     = _modenumber_to_indices(grid(u), n)
+    do_conj = last(tpl)
+    indices = Base.front(tpl)
+    @boundscheck checkbounds(u, _combine_indices(grid(u), I, indices)...)
+    @inbounds val = parent(u)[_combine_indices(grid(u), I, indices)...]
+    return do_conj ? conj(val) : val
+end
+
+"""
+    u[n::ModeNumber, I...] = val
+
+Write the complex modal coefficient `val` for index `I` at wavenumber tuple `n`.
+
+Two symmetry invariants are maintained automatically:
+
+- **Hermitian symmetry** — when the rfft wavenumber `n.ns[1] == 0`, the
+  conjugate-symmetric entry at `(0, -n.ns[2:N]…)` is also updated so that
+  the physical field remains real-valued.
+- **Zero-mode reality** — the fully-zero mode `ModeNumber(0, 0, …)` is
+  forced to be real (imaginary part discarded).
+
+If `n.ns[1] < 0` the write targets the conjugate-symmetric storage location
+and `conj(val)` is stored, keeping the representation consistent with reads.
+"""
+Base.@propagate_inbounds function Base.setindex!(u::FTField{G},
+                                               val,
+                                                 n::ModeNumber{N},
+                                                 I::Vararg{Int}) where {T, N, G<:AbstractGrid{T}}
+    CT      = Complex{T}
+    tpl     = _modenumber_to_indices(grid(u), n)
+    do_conj = last(tpl)
+    indices = Base.front(tpl)
+    i0      = first(indices)      # rfft axis index (axis 2 of ProjectedField)
+    rest    = Base.tail(indices)  # signed-fft axis indices (axes 3…)
+
+    # Force the fully-zero mode to be real.
+    val = (i0 == 1 && all(==(1), rest)) ? CT(real(val)) : CT(val)
+
+    # Conjugate-symmetric indices for each signed-fft axis.
+    sym_rest = ntuple(j -> _fftw_sym_index(rest[j], size(u, j + 2)), Val(N-1))
+
+    @boundscheck checkbounds(u, _combine_indices(grid(u), I, (i0, rest...))...)
+    @inbounds parent(u)[_combine_indices(grid(u), I, (i0, rest...))...] = do_conj ? conj(val) : val
+    # When the rfft wavenumber is zero, also write the mirror entry so that
+    # the Hermitian-symmetry invariant is preserved across all signed dims.
+    i0 == 1 && @inbounds parent(u)[_combine_indices(grid(u), I, (i0, sym_rest...))...] = do_conj ? val  : conj(val)
+    return val
+end
+
+"""
+    _combine_indices(grid, I, K) -> Tuple
+
+Combine free indices `I` and constrained indices `K` into a single index tuple
+of length `D`, interleaving them according to the constrained dimensions `ORDER`
+defined by `grid`. Dimensions in `ORDER` draw from `K`; all others draw from `I`.
+
+The index layout is fully resolved at compile time via a generated function.
+"""
+@generated function _combine_indices(::AbstractGrid{T, D, AXES, ORDER}, I, K) where {T, D, AXES, ORDER}
+    inds = []; k = 1; i = 1
+    for d in 1:D
+        if d ∈ ORDER
+            push!(inds, :(K[$k])); k += 1
+        else
+            push!(inds, :(I[$i])); i += 1
+        end
+    end
+    return :(($(inds...),))
+end
 
 
 # --------------------- #
 # inner-product methods #
 # --------------------- #
+# TODO: can this be implemented with the ModeNumber indexing above?
+# TODO: Might need a special case to take a slice of `u` and `v` at ModeNumber `n`?
+# function LinearAlgebra.dot(u::FTField, v::FTField)
+#     s = real(eltype(u))
+#     for_each_mode(grid(u)) do args...
+#         w = first(args) == 1 ? 1 : 2
+#         s += w * dot(u[ModeNumber(args...)], v[ModeNumber(args...)])
+#     end
+#     return s/2
+# end
 LinearAlgebra.dot(u::FTField, v::FTField) = throw(NotImplementedError(u, v))
 LinearAlgebra.norm(u::FTField) = sqrt(dot(u, u))
 

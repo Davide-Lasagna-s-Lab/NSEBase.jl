@@ -148,6 +148,19 @@ end
     @test foo(u, v, w) == 0
     @test u == 2*v + w/3
     @test bar(u) == 0
+
+    # test mode number indexing
+    A = randn(ComplexF64, Nx, (Ny >> 1) +1)
+    A_new = NSEBase.apply_symmetry!(NSEBase.normalise_mean!(A, (2, 3, 4)), (2, 3, 4))
+    u = FTField(g, A)
+    for nx in 1:Nx
+        for ny in 0:(Ny >> 1)
+            @test u[ModeNumber(ny), nx] == A_new[nx, ny+1]
+        end
+        for ny in -(Ny >> 1):-1
+            @test u[ModeNumber(ny), nx] == conj(A_new[nx, -ny+1])
+        end
+    end
 end
 
 @testset "VectorField                         " begin
@@ -257,7 +270,7 @@ end
     @test a == 2*b + c/3
     @test bar(a) == 0
 
-    # mode number indexing of projected field
+    # test mode number indexing
     A = randn(ComplexF64, M, (Ny >> 1) + 1)
     A_new = NSEBase.apply_symmetry!(NSEBase.normalise_mean!(A, (2, 3, 4)), (2, 3, 4))
     a = ProjectedField(g, A, Ψ)

@@ -72,14 +72,14 @@ end
 
 Return the complex modal coefficient for mode `m` at wavenumber tuple `n`.
 
-The wavenumbers in `n` follow the order of `fft_dims(grid(a)) = (Hs…, Ht)`.
+The wavenumbers in `n` follow the order of `fft_dims(grid(a)) = ORDER`.
 If the first (rfft) wavenumber `n.ns[1]` is negative the coefficient is
 obtained by conjugate symmetry: the entry stored at `(-n.ns[1], -n.ns[2:N]…)`
 is read and conjugated.
 """
-Base.@propagate_inbounds function Base.getindex(a::ProjectedField{G},
+Base.@propagate_inbounds function Base.getindex(a::ProjectedField,
                                                 m::Int,
-                                                n::ModeNumber) where {G<:AbstractGrid}
+                                                n::ModeNumber)
     tpl     = _modenumber_to_indices(grid(a), n)
     do_conj = last(tpl)
     indices = Base.front(tpl)
@@ -122,10 +122,10 @@ Base.@propagate_inbounds function Base.setindex!(a::ProjectedField{G},
     sym_rest = ntuple(j -> _fftw_sym_index(rest[j], size(a, j + 2)), Val(N-1))
 
     @boundscheck checkbounds(a, m, i0, rest...)
-    @inbounds parent(a)[m, i0, rest...]     = do_conj ? conj(val) :      val
+    @inbounds parent(a)[m, i0, rest...] = do_conj ? conj(val) : val
     # When the rfft wavenumber is zero, also write the mirror entry so that
     # the Hermitian-symmetry invariant is preserved across all signed dims.
-    i0 == 1 && @inbounds parent(a)[m, i0, sym_rest...] = do_conj ?      val  : conj(val)
+    i0 == 1 && @inbounds parent(a)[m, i0, sym_rest...] = do_conj ? val  : conj(val)
     return val
 end
 
@@ -164,6 +164,7 @@ LinearAlgebra.norm(a::ProjectedField) = sqrt(dot(a, a))
 # galerkin methods #
 # ---------------- #
 # TODO: there might be a better interface that defines the vectorfield project on top of an FTField project method?
+# TODO: A GENERIC METHOD??????????????????????????????????????
 project!(a::ProjectedField, u::VectorField) = throw(NotImplementedError(a, u))
 project(u::VectorField, modes) = project!(ProjectedField(grid(u), modes), u)
 
