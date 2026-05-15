@@ -4,7 +4,7 @@ using LinearAlgebra, FFTW
 
 export FFTW
 
-export AbstractGrid, points
+export ModeNumber
 export FTField, Field, VectorField, grid
 export FFTPlans, FFT, IFFT
 export ProjectedField, modes, project!, project, expand!, expand
@@ -14,6 +14,7 @@ export ProjectedNSE
 
 include("notimplementederror.jl")
 include("abstractgrid.jl")
+include("modenumber.jl")
 include("spectralloops.jl")
 include("ftfield.jl")
 include("field.jl")

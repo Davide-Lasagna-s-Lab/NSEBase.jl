@@ -68,6 +68,71 @@ Base.@propagate_inbounds function Base.setindex!(u::ProjectedField, val, i::Int)
 end
 
 """
+    a[m, n::ModeNumber]
+
+Return the complex modal coefficient for mode `m` at wavenumber tuple `n`.
+
+The wavenumbers in `n` follow the order of `fft_dims(grid(a)) = (Hs…, Ht)`.
+If the first (rfft) wavenumber `n.ns[1]` is negative the coefficient is
+obtained by conjugate symmetry: the entry stored at `(-n.ns[1], -n.ns[2:N]…)`
+is read and conjugated.
+"""
+Base.@propagate_inbounds function Base.getindex(a::ProjectedField{G},
+                                                m::Int,
+                                                n::ModeNumber) where {G<:AbstractGrid}
+    tpl     = _modenumber_to_indices(grid(a), n)
+    do_conj = last(tpl)
+    indices = Base.front(tpl)
+    @boundscheck checkbounds(a, m, indices...)
+    @inbounds val = parent(a)[m, indices...]
+    return do_conj ? conj(val) : val
+end
+
+"""
+    a[m, n::ModeNumber] = val
+
+Write the complex modal coefficient `val` for mode `m` at wavenumber tuple `n`.
+
+Two symmetry invariants are maintained automatically:
+
+- **Hermitian symmetry** — when the rfft wavenumber `n.ns[1] == 0`, the
+  conjugate-symmetric entry at `(0, -n.ns[2:N]…)` is also updated so that
+  the physical field remains real-valued.
+- **Zero-mode reality** — the fully-zero mode `ModeNumber(0, 0, …)` is
+  forced to be real (imaginary part discarded).
+
+If `n.ns[1] < 0` the write targets the conjugate-symmetric storage location
+and `conj(val)` is stored, keeping the representation consistent with reads.
+"""
+Base.@propagate_inbounds function Base.setindex!(a::ProjectedField{G},
+                                               val,
+                                                 m::Int,
+                                                 n::ModeNumber{N}) where {T, N, G<:AbstractGrid{T}}
+    CT      = Complex{T}
+    tpl     = _modenumber_to_indices(grid(a), n)
+    do_conj = last(tpl)
+    indices = Base.front(tpl)
+    i0      = first(indices)      # rfft axis index (axis 2 of ProjectedField)
+    rest    = Base.tail(indices)  # signed-fft axis indices (axes 3…)
+
+    # Force the fully-zero mode to be real.
+    val = (i0 == 1 && all(==(1), rest)) ? CT(real(val)) : CT(val)
+
+    # Conjugate-symmetric indices for each signed-fft axis.
+    sym_rest = ntuple(j -> _fftw_sym_index(rest[j], size(a, j + 2)), Val(N-1))
+
+    @boundscheck checkbounds(a, m, i0, rest...)
+    @inbounds parent(a)[m, i0, rest...]     = do_conj ? conj(val) :      val
+    # When the rfft wavenumber is zero, also write the mirror entry so that
+    # the Hermitian-symmetry invariant is preserved across all signed dims.
+    i0 == 1 && @inbounds parent(a)[m, i0, sym_rest...] = do_conj ?      val  : conj(val)
+    return val
+end
+
+# --------------------- #
+# inner-product methods #
+# --------------------- #
+"""
     dot(a::ProjectedField, b::ProjectedField)
 
 Inner product of two projected fields, exploiting the rfft Hermitian symmetry.

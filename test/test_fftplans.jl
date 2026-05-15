@@ -1,7 +1,7 @@
 import FFTW
 using FFTW: ESTIMATE
 
-@testset "FFTPlans constructor              " begin
+@testset "FFTPlans constructor                " begin
     for T in (Float32, Float64)
         # 1D, no dealiasing: cache is the standard spectral shape, norm = 1/N
         f = FFTPlans((8,), (1,), T, dealias=false, flags=ESTIMATE)
@@ -57,8 +57,8 @@ using FFTW: ESTIMATE
     end
 end
 
-@testset verbose=true "Transform utilities               " begin
-    @testset "get_padded_size                  " begin
+@testset verbose=true "Transform utilities             " begin
+    @testset "get_padded_size                " begin
         # single transformed dimension
         @test NSEBase.get_padded_size((4,), (1,)) == (7,)
         @test NSEBase.get_padded_size((6,), (1,)) == (9,)

@@ -1,4 +1,4 @@
-@testset "Projected Navier-Stokes equations " begin
+@testset "Projected Navier-Stokes equations   " begin
     # construct grid
     Nx = 16; Ny = 11
     L = 10*rand()
