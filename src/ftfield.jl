@@ -69,6 +69,7 @@ function growto(u::FTField, target_size)
     return out
 end
 
+# TODO: an equivalent setindex! method?
 """
     u[n::ModeNumber]
 
