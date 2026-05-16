@@ -5,7 +5,7 @@
     for_each_mode(f, g::AbstractGrid)
 
 Call `f(i_H1, i_H2, …, i_HN)` for every stored spectral mode of a field on
-`g`, where `H = fft_dims(g) = ORDER` and each `i_Hk` is a 1-based FFTW
+`g`, where `ORDER = fft_dims(g) = ORDER` and each `i_Hk` is a 1-based FFTW
 storage index:
 
 - `i_H1` steps over `1:(size(g, ORDER[1]) >> 1) + 1` — the rfft dimension stores
@@ -16,7 +16,7 @@ storage index:
 
 Non-FFT dimensions (e.g. the wall-normal direction) are not iterated; loop
 over them inside `f` if needed.  The call order is innermost `ORDER[1]` to
-outermost `H[N]`, matching `ProjectedField` storage `(mode, ORDER[1], …, ORDER[N])`
+outermost `ORDER[N]`, matching `ProjectedField` storage `(mode, ORDER[1], …, ORDER[N])`
 for cache efficiency.
 
 # Example
@@ -58,6 +58,77 @@ end
         pos  = :(for $sym in 1:(Base.size(g, $dim) >> 1) + 1; $body; end)
         neg  = :(for $sym in (Base.size(g, $dim) >> 1) + 2:Base.size(g, $dim); $body; end)
         body = Expr(:block, pos, neg)
+    end
+
+    return body
+end
+
+
+"""
+    for_each_freq(f, g::AbstractGrid)
+
+Call `f(n_H1, n_H2, …, n_HN)` for every stored spectral mode of a field on
+`g`, where `ORDER = fft_dims(g) = ORDER` and each `n_Hk` is a signed wavenumber
+(frequency):
+
+- `n_H1` steps over `0:(size(g, ORDER[1]) >> 1)` — the rfft dimension stores
+  only non-negative wavenumbers, so frequencies are non-negative integers.
+- Each `n_Hk` for `k ≥ 2` steps over `-(size(g, ORDER[k]) >> 1)+1:(size(g, ORDER[k]) >> 1)`,
+  visited in two contiguous blocks (non-negative wavenumbers first, then
+  negative) to match FFTW storage order and avoid a per-call index-to-sign
+  branch inside `f`.
+
+Non-FFT dimensions (e.g. the wall-normal direction) are not iterated; loop
+over them inside `f` if needed.  The call order is innermost `ORDER[1]` to
+outermost `ORDER[N]`, matching `ProjectedField` storage `(mode, ORDER[1], …,
+ORDER[N])` for cache efficiency.
+
+Prefer `for_each_freq` over `for_each_mode` when `f` needs to reason about
+wavenumber values directly — for example, to look up the same mode in two
+grids of different sizes, or to apply a wavenumber-dependent filter.  Use
+`for_each_mode` when only storage indices are needed (e.g. inner products,
+in-place scaling).
+
+# Example
+
+Zero-pad (or truncate) a spectral field onto a larger (or smaller) grid by
+copying every mode whose wavenumber exists in both grids.  `_combine_indices`
+maps a `ModeNumber` (wavenumber tuple) to the correct storage index on a
+given grid, returning `nothing` for wavenumbers that lie outside that grid.
+
+```julia
+function growto(u::FTField, target_size)
+    out = FTField(growto(grid(u), target_size))
+    for_each_freq(grid(u)) do args...
+        idx_src = _combine_indices(grid(u),   I, ModeNumber(args...))
+        idx_dst = _combine_indices(grid(out), I, ModeNumber(args...))
+        if idx_src !== nothing && idx_dst !== nothing
+            out[idx_dst] = u[idx_src]
+        end
+    end
+    return out
+end
+```
+"""
+@generated function for_each_freq(f, g::AbstractGrid{T, D, AXES, ORDER}) where {T, D, AXES, ORDER}
+    N    = length(ORDER)
+    syms = [Symbol("_f", k) for k in 1:N]
+
+    # Innermost: rfft dimension — frequencies 0:(N>>1)
+    dim1 = ORDER[1]
+    body = :(for $(syms[1]) in 0:(Base.size(g, $dim1) >> 1)
+        f($(syms...))
+    end)
+
+    # Wrap in signed-FFT loops ORDER[2:end] from innermost to outermost.
+    # Frequencies: -(N>>1):(N>>1), split into positive and negative blocks
+    # to match contiguous memory layout (positive first, then negative).
+    for k in 2:N
+        dim = ORDER[k]
+        sym = syms[k]
+        body = :(for $sym in -(Base.size(g, $dim) >> 1):(Base.size(g, $dim) >> 1)
+            $body
+        end)
     end
 
     return body
