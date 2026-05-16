@@ -59,13 +59,12 @@ This is optional.  Packages should only implement it if they support
 resolution-changing transforms such as `FFT(u, target_size)` and
 `IFFT(û, target_size)`.
 """
-# ! doesn't work using for_each_mode since, need a for_each_freq or something that gives wave numbers instead of raw indices
 function growto(u::FTField, target_size)
     out = FTField(growto(grid(u), target_size))
-    for_each_mode(grid(u)) do args...
-        @show args
-        # @show _combine_indices(grid(u), I, args)
-        # out[_combine_indices(grid(u), I, args)] = u[_combine_indices(grid(u), I, args)]
+    for_each_freq(grid(u)) do args...
+        ar1 = out[ModeNumber(args...)]
+        ar2 = u[ModeNumber(args...)]
+        ar1 .= ar2
     end
     return out
 end
