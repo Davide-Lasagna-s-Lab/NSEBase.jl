@@ -286,13 +286,16 @@ end
 # --------------------- #
 # allocating transforms #
 # --------------------- #
-# TODO: size transforming transforms
 """
-    FFT(u::Field) -> FTField
+    FFT(u::Field, [target_size]) -> FTField
 
 Allocating forward transform: compute and return the Fourier coefficients of `u`
 normalised by the grid's `fft_norm`. Equivalent to planning and executing a fresh
 `rfft` on `parent(u)`.
+
+Optionally provide `target_size` to change the resulting size of the data in the
+transformed directions (`fft_dims(grid(u))=ORDER`). Requires [`growto(grid(u))`](@ref)
+to be implemented.
 """
 function FFT(u::Field)
     g = grid(u)
@@ -301,15 +304,20 @@ function FFT(u::Field)
     û .*= 1 / prod(fft_norm(g))
     return û
 end
+FFT(u::Field, target_size) = growto(FFT(u), target_size)
 FFT(u::VectorField{N, <:Field}) where {N} = VectorField([FFT(u[n]) for n in 1:N]...)
 
 """
-    IFFT(û::FTField) -> Field
+    IFFT(û::FTField, [target_size]) -> Field
 
 Allocating backward transform: compute and return the physical-space field
 corresponding to the Fourier coefficients `û`. No normalisation is applied
 (consistent with the convention that normalisation belongs to the forward
 transform). Equivalent to planning and executing a fresh `brfft` on `parent(û)`.
+
+Optionally provide `target_size` to change the resulting size of the data in the
+transformed directions (`fft_dims(grid(u))=ORDER`). Requires [`growto(grid(u))`](@ref)
+to be implemented.
 """
 function IFFT(û::FTField)
     g = grid(û)
@@ -317,6 +325,7 @@ function IFFT(û::FTField)
     parent(u) .= brfft(parent(û), size(g)[fft_dims(g)[1]], fft_dims(g))
     return u
 end
+IFFT(û::FTField, target_size) = IFFT(growto(û, target_size))
 IFFT(û::VectorField{N, <:FTField}) where {N} = VectorField([IFFT(û[n]) for n in 1:N]...)
 
 
