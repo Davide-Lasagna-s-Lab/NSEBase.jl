@@ -286,6 +286,7 @@ end
 # --------------------- #
 # allocating transforms #
 # --------------------- #
+# TODO: size transforming transforms
 """
     FFT(u::Field) -> FTField
 

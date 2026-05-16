@@ -36,13 +36,13 @@ Base.copy(u::FTField)                                                 = (v = Bas
 Base.zero(u::FTField{<:AbstractGrid{T}}) where {T}                    = (v = Base.similar(u); parent(v) .= zero(T)  ; return v)
 
 # linear indexing
-Base.@propagate_inbounds function Base.getindex(u::FTField, i)
+Base.@propagate_inbounds function Base.getindex(u::FTField, i::Int)
     @boundscheck checkbounds(parent(u), i)
     @inbounds v = parent(u)[i]
     return v
 end
 
-Base.@propagate_inbounds function Base.setindex!(u::FTField, v, i)
+Base.@propagate_inbounds function Base.setindex!(u::FTField, v, i::Int)
     @boundscheck checkbounds(parent(u), i)
     @inbounds parent(u)[i] = v
     return v
@@ -71,6 +71,29 @@ function growto(u::FTField, target_size)
 end
 
 """
+    u[n::ModeNumber]
+
+Return a view of the underlying array over all non-transform dimensions for
+the mode with wavenumber tuple `n`. The wavenumbers in `n` follow the order
+of `fft_dims(grid(u)) = ORDER`.
+
+If the first (rfft) wavenumber `n.ns[1]` is negative the view is into the
+conjugate-symmetric storage location `(-n.ns[1], -n.ns[2:N]…)`; the caller
+is responsible for applying conjugation if needed.
+
+The returned view has one dimension for each axis of `u` not in `ORDER`,
+in their original order.
+"""
+Base.@propagate_inbounds function Base.getindex(u::FTField{G},
+                                                n::ModeNumber) where {T, D, AXES, ORDER, G<:AbstractGrid{T, D, AXES, ORDER}}
+    tpl     = _modenumber_to_indices(grid(u), n)
+    indices = Base.front(tpl)
+    colons  = ntuple(_ -> Colon(), ndims(u) - length(ORDER))
+    @boundscheck checkbounds(u, _combine_indices(grid(u), colons, indices)...)
+    @inbounds return view(parent(u), _combine_indices(grid(u), colons, indices)...)
+end
+
+"""
     u[n::ModeNumber, I...]
 
 Return the complex modal coefficient for index `I` at wavenumber tuple `n`.
@@ -82,12 +105,13 @@ is read and conjugated.
 """
 Base.@propagate_inbounds function Base.getindex(u::FTField,
                                                 n::ModeNumber,
+                                               i1::Int,
                                                 I::Vararg{Int})
     tpl     = _modenumber_to_indices(grid(u), n)
     do_conj = last(tpl)
     indices = Base.front(tpl)
-    @boundscheck checkbounds(u, _combine_indices(grid(u), I, indices)...)
-    @inbounds val = parent(u)[_combine_indices(grid(u), I, indices)...]
+    @boundscheck checkbounds(u, _combine_indices(grid(u), (i1, I...), indices)...)
+    @inbounds val = parent(u)[_combine_indices(grid(u), (i1, I...), indices)...]
     return do_conj ? conj(val) : val
 end
 

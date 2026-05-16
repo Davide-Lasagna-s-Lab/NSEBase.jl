@@ -1,7 +1,7 @@
 @testset verbose=true "Mode number conversion              " begin
     # utility grid for testing
     struct TempGrid{S, H} <: AbstractGrid{Float64, 4, (1, 2, 3, 4), H} end
-    Base.size(g::TempGrid{S}) where {S} = S
+    Base.size(::TempGrid{S}) where {S} = S
 
     @testset "1D                            " begin
         N1 = 23 # N1 can be even or odd
