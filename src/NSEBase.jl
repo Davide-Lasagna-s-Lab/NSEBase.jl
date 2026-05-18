@@ -4,7 +4,8 @@ using LinearAlgebra, FFTW, JLD2
 
 export FFTW
 
-export AbstractGrid, points, growto, weights, fft_dims, inhomogeneous_dims
+export AbstractGrid, AbstractCartesianGrid, points, growto, weights, fft_dims, inhomogeneous_dims
+export x_dim, y_dim, z_dim, t_dim
 export ModeNumber
 export FTField, Field, VectorField, grid
 export add_base_flow!

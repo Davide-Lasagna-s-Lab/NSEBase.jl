@@ -10,31 +10,11 @@ Abstract type that represents a generic computational grid of a
 Type parameters:
 - `T`: scalar real type used by physical-space fields on this grid.
 - `D`: number of array dimensions.
-- `AXES`: length-4 tuple `(x_dim, y_dim, z_dim, t_dim)` giving the array
-  dimension associated with the streamwise, wall-normal, spanwise, and
-  temporal coordinates. If a direction isn't required, then a nothing
-  is given for that direction.
+- `AXES`: tuple whose meaning is defined by the concrete grid subtype.
+  For `AbstractCartesianGrid` subtypes `AXES = (x_dim, y_dim, z_dim, t_dim)`;
+  other coordinate systems may use a different convention.
 - `ORDER`: tuple of statistically homogeneous array dimensions. These are
   transformed by FFTs; `ORDER[1]` is the rfft dimension.
-
-# Examples
-
-A channel-flow grid stored as `(t, x, z, y)` uses:
-
-```julia
-struct ChannelGrid{T} <: AbstractGrid{T, 4, (2, 4, 3, 1), (1, 2, 3)} end
-```
-
-A streamwise independent square-duct flow stored as `(y, z, t)` uses:
-
-```julia
-struct DuctGrid{T} <: AbstractGrid{T, 3, (nothing, 1, 2, 3), (3,)}
-```
-
-Here `t` is the first array dimension and is the rfft direction. The direction
-`x` is array dimension 2, `z` is array dimension 3, both of which are ordinary
-FFT directions, and the inhomogeneous wall-normal direction `y` is array
-dimension 4.
 
 # Required downstream methods
 
@@ -63,43 +43,64 @@ homogeneous resolution.  Implementing grid growth is also required for
 """
 abstract type AbstractGrid{T<:Real, D, AXES, ORDER} end
 
+"""
+    AbstractCartesianGrid{T, D, AXES, ORDER} <: AbstractGrid{T, D, AXES, ORDER}
+
+Abstract supertype for grids with Cartesian `(x, y, z, t)` coordinate semantics.
+
+`AXES = (x_dim, y_dim, z_dim, t_dim)` gives the array dimension for each
+physical coordinate; a `nothing` entry marks a direction that is not an
+independent axis (e.g. streamwise-independent geometry).  Subtypes inherit the
+coordinate-dimension accessors `x_dim`, `y_dim`, `z_dim`, `t_dim` and the
+named derivative wrappers `ddx_x!`, `ddx_y!`, `ddx_z!`, `dds!`.
+
+# Example
+
+A channel-flow grid stored as `(y, x, z, t)` (wall-normal first):
+
+```julia
+struct ChannelGrid{T} <: AbstractCartesianGrid{T, 4, (2, 1, 3, 4), (2, 3, 4)} end
+```
+
+A streamwise-independent square-duct grid stored as `(y, z, t)`:
+
+```julia
+struct DuctGrid{T} <: AbstractCartesianGrid{T, 3, (nothing, 1, 2, 3), (3,)} end
+```
+"""
+abstract type AbstractCartesianGrid{T, D, AXES, ORDER} <: AbstractGrid{T, D, AXES, ORDER} end
 
 
 # ---------------------- #
 # compile-time accessors #
 # ---------------------- #
-# TODO: this should be made to work for any type of grid, e.g cartesian and cylindrical. It 
-# should also work for any number of dimensions, e.g. for 2D flows. Perhaps, this coule be part of the 
-# equations.jl file, so each package can define the rigth interface.. Perhaps, there needs to be
-# an AbstractCartesianGrid type, and and AbstractCylindricalGrid. We also need to rename D to N 
-# everywhere...
 """
-    x_dim(grid::AbstractGrid) -> Int
+    x_dim(grid::AbstractCartesianGrid) -> Int
 
-Return the array dimension corresponding to the streamwise coordinate.
+Return the array dimension corresponding to the streamwise coordinate `x`.
 """
-x_dim(::AbstractGrid{<:Any, <:Any, AXES}) where {AXES} = AXES[1]
+x_dim(::AbstractCartesianGrid{<:Any, <:Any, AXES}) where {AXES} = AXES[1]
 
 """
-    y_dim(grid::AbstractGrid) -> Int
+    y_dim(grid::AbstractCartesianGrid) -> Int
 
-Return the array dimension corresponding to the wall-normal coordinate.
+Return the array dimension corresponding to the wall-normal coordinate `y`.
 """
-y_dim(::AbstractGrid{<:Any, <:Any, AXES}) where {AXES} = AXES[2]
-
-"""
-    z_dim(grid::AbstractGrid) -> Int
-
-Return the array dimension corresponding to the spanwise coordinate.
-"""
-z_dim(::AbstractGrid{<:Any, <:Any, AXES}) where {AXES} = AXES[3]
+y_dim(::AbstractCartesianGrid{<:Any, <:Any, AXES}) where {AXES} = AXES[2]
 
 """
-    t_dim(grid::AbstractGrid) -> Int
+    z_dim(grid::AbstractCartesianGrid) -> Int
 
-Return the array dimension corresponding to time.
+Return the array dimension corresponding to the spanwise coordinate `z`.
 """
-t_dim(::AbstractGrid{<:Any, <:Any, AXES}) where {AXES} = AXES[4]
+z_dim(::AbstractCartesianGrid{<:Any, <:Any, AXES}) where {AXES} = AXES[3]
+
+"""
+    t_dim(grid::AbstractCartesianGrid) -> Int
+
+Return the array dimension corresponding to time `t`.
+"""
+t_dim(::AbstractCartesianGrid{<:Any, <:Any, AXES}) where {AXES} = AXES[4]
 
 """
     fft_dims(grid::AbstractGrid) -> Tuple

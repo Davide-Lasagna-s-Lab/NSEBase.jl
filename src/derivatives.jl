@@ -128,35 +128,32 @@ end
 ddx!(out::VectorField{N}, u::VectorField{N}, d; kwargs...) where {N} =
     (for n in 1:N; ddx!(out[n], u[n], d; kwargs...); end; return out)
 
-# TODO: these should be made to work, for any grid type.. probably, they should be defined in the equations files. Maybe
-# the main function can be renamed to ddi! and then we can have ddx!, ddy!, ddz! that call ddi! with the right dim.
-
-# These look up the array dim from the field's grid type (via x_dim/y_dim/z_dim)
-# and forward all kwargs to ddx!, so callers need not know array dim indices.
-ddx_x!(out::ProjectedField, a::ProjectedField; kwargs...) =
+# Named wrappers for AbstractCartesianGrid: look up the array dim via x_dim/y_dim/z_dim/t_dim
+# and forward to ddx!.  Non-Cartesian grids must call ddx! with an explicit Val(dim) instead.
+ddx_x!(out::ProjectedField{<:AbstractCartesianGrid}, a::ProjectedField{<:AbstractCartesianGrid}; kwargs...) =
     ddx!(out, a, Val(x_dim(grid(a))); kwargs...)
-ddx_x!(out::FTField, u::FTField; kwargs...) =
+ddx_x!(out::FTField{<:AbstractCartesianGrid}, u::FTField{<:AbstractCartesianGrid}; kwargs...) =
     ddx!(out, u, Val(x_dim(grid(u))); kwargs...)
 ddx_x!(out::VectorField{N}, u::VectorField{N}; kwargs...) where {N} =
     (for n in 1:N; ddx_x!(out[n], u[n]; kwargs...); end; return out)
 
-ddx_y!(out::ProjectedField, a::ProjectedField; kwargs...) =
+ddx_y!(out::ProjectedField{<:AbstractCartesianGrid}, a::ProjectedField{<:AbstractCartesianGrid}; kwargs...) =
     ddx!(out, a, Val(y_dim(grid(a))); kwargs...)
-ddx_y!(out::FTField, u::FTField; kwargs...) =
+ddx_y!(out::FTField{<:AbstractCartesianGrid}, u::FTField{<:AbstractCartesianGrid}; kwargs...) =
     ddx!(out, u, Val(y_dim(grid(u))); kwargs...)
 ddx_y!(out::VectorField{N}, u::VectorField{N}; kwargs...) where {N} =
     (for n in 1:N; ddx_y!(out[n], u[n]; kwargs...); end; return out)
 
-ddx_z!(out::ProjectedField, a::ProjectedField; kwargs...) =
+ddx_z!(out::ProjectedField{<:AbstractCartesianGrid}, a::ProjectedField{<:AbstractCartesianGrid}; kwargs...) =
     ddx!(out, a, Val(z_dim(grid(a))); kwargs...)
-ddx_z!(out::FTField, u::FTField; kwargs...) =
+ddx_z!(out::FTField{<:AbstractCartesianGrid}, u::FTField{<:AbstractCartesianGrid}; kwargs...) =
     ddx!(out, u, Val(z_dim(grid(u))); kwargs...)
 ddx_z!(out::VectorField{N}, u::VectorField{N}; kwargs...) where {N} =
     (for n in 1:N; ddx_z!(out[n], u[n]; kwargs...); end; return out)
 
-dds!(out::ProjectedField, a::ProjectedField) =
+dds!(out::ProjectedField{<:AbstractCartesianGrid}, a::ProjectedField{<:AbstractCartesianGrid}) =
     ddx!(out, a, Val(t_dim(grid(a))); adjoint=false)
-dds!(out::FTField, u::FTField) =
+dds!(out::FTField{<:AbstractCartesianGrid}, u::FTField{<:AbstractCartesianGrid}) =
     ddx!(out, u, Val(t_dim(grid(u))); adjoint=false)
 dds!(out::VectorField{N}, u::VectorField{N}) where {N} =
     (for n in 1:N; dds!(out[n], u[n]); end; return out)
