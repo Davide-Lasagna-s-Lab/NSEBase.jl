@@ -8,7 +8,7 @@ export AbstractGrid, points, growto, weights, fft_dims, inhomogeneous_dims
 export ModeNumber
 export FTField, Field, VectorField, grid
 export FFTPlans, FFT, IFFT
-export ProjectedField, modes, project!, project, expand!, expand
+export ProjectedField, modes, project!, project, expand!, expand, get_mode_coefficient
 export shift!, shift, normdiff, minnormdiff
 export save_field, load_field
 export CartesianPrimitiveNSE, CartesianPrimitiveLNSE, Forward, AdjointContinuous, AdjointDiscrete, NoForce

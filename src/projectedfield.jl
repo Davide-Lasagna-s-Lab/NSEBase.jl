@@ -27,9 +27,9 @@ full signed-FFT dimension.  This layout differs from the physical grid layout:
 non-FFT (inhomogeneous) dimensions are not present.
 """
 struct ProjectedField{G<:AbstractGrid, M, A<:AbstractArray, T, D} <: AbstractArray{Complex{T}, D}
-    grid::G
-    data::A
-    modes::M
+     grid :: G
+     data :: A
+    modes :: M
 
     ProjectedField(grid::G, data::A, modes::M) where {T, D, G<:AbstractGrid{T, D}, A<:AbstractArray{<:Any, D}, M} = begin
         # ProjectedField storage is `(mode, fft_dims...)`, not physical grid
@@ -38,10 +38,18 @@ struct ProjectedField{G<:AbstractGrid, M, A<:AbstractArray, T, D} <: AbstractArr
         new{G, M, A, T, D}(grid, Complex{T}.(normalise_mean!(apply_symmetry!(data, fft_dims(grid)), fft_dims(grid))), modes)
     end
 end
-ProjectedField(grid::AbstractGrid{T}, data::AbstractArray, modes) where {T} = ProjectedField(grid, Complex{T}.(data), modes)
+
+ProjectedField(grid::AbstractGrid{T}, data::AbstractArray, modes) where {T} = 
+    ProjectedField(grid, 
+                   Complex{T}.(data), 
+                   modes)
 
 ProjectedField(grid::AbstractGrid{T, D, H}, modes) where {T, D, H} =
-    ProjectedField(grid, zeros(Complex{T}, no_of_modes(modes), transform_size(grid)[collect(fft_dims(grid))]...), modes)
+    ProjectedField(grid, 
+                   zeros(Complex{T}, no_of_modes(modes), 
+                   transform_size(grid)[collect(fft_dims(grid))]...), 
+                   modes)
+
 ProjectedField(u::Union{FTField, Field, VectorField}, modes) = ProjectedField(grid(u), modes)
 
 no_of_modes(modes) = throw(NotImplementedError(modes))
@@ -176,10 +184,87 @@ LinearAlgebra.norm(a::ProjectedField) = sqrt(dot(a, a))
 # ---------------- #
 # galerkin methods #
 # ---------------- #
-# TODO: there might be a better interface that defines the vectorfield project on top of an FTField project method?
-# TODO: A GENERIC METHOD??????????????????????????????????????
-project!(a::ProjectedField, u::VectorField) = throw(NotImplementedError(a, u))
+raw"""
+    project!(a::ProjectedField, u::VectorField) -> a
+
+Project the spectral vector field `u` onto the basis stored by `a`:
+
+```math
+a_{m,\mathbf{k}} = \sum_n \sum_\mathbf{j} w_\mathbf{j}
+    \overline{\phi_{n,m,\mathbf{j},\mathbf{k}}} u_{n,\mathbf{j},\mathbf{k}}
+```
+
+where `φ` is returned by [`get_mode_coefficient`](@ref), `w` comes from
+[`weights`](@ref), `j` indexes inhomogeneous dimensions, and `k` indexes
+spectral dimensions in `fft_dims(grid)`.
+"""
+function project!(a::ProjectedField{G},
+                  u::VectorField{N, <:FTField{G}}) where {N, G<:AbstractGrid{T}} where {T}
+    a .= zero(Complex{T})
+    g        = grid(u)
+    w        = weights(g)
+    inh_size = map(d -> size(g, d), inhomogeneous_dims(g))
+    for_each_mode(g) do _, spectral...
+        for m in axes(a, 1)
+            acc = zero(Complex{T})
+            for I in CartesianIndices(inh_size)
+                inh = Tuple(I)
+                idx = _combine_indices(g, inh, spectral)
+                for n in 1:N
+                    @inbounds acc += w[I] * conj(get_mode_coefficient(modes(a), g, n, m, inh, spectral...)) * parent(u[n])[idx...]
+                end
+            end
+            @inbounds parent(a)[m, spectral...] = acc
+        end
+    end
+    return a
+end
 project(u::VectorField, modes) = project!(ProjectedField(grid(u), modes), u)
 
-expand!(u::VectorField, a::ProjectedField) = throw(NotImplementedError(u, a))
+"""
+    get_mode_coefficient(modes, grid::AbstractGrid, n::Int, m::Int,
+                         inh::NTuple, spectral...) -> Number
+
+Return the complex coefficient of basis mode `m` for vector field component `n`
+at inhomogeneous storage indices `inh` (one per inhomogeneous dimension in
+ascending array-dimension order) and spectral storage indices `spectral...`
+(in `fft_dims` order).
+
+Downstream packages must extend this for their specific `modes` representation.
+"""
+get_mode_coefficient(modes, grid::AbstractGrid, n::Int, m::Int, inh::NTuple, spectral...) =
+    throw(NotImplementedError(modes, grid, n, m, inh))
+
+"""
+    expand!(u::VectorField, a::ProjectedField) -> u
+
+Reconstruct the velocity field `u` from the projected coefficients `a`:
+
+```math
+u_n[\\mathbf{j}, \\mathbf{k}] = \\sum_m a_{m,\\mathbf{k}} \\, \\phi_{n,m,\\mathbf{j},\\mathbf{k}}
+```
+
+where `φ_{n,m,j,k}` is returned by [`get_mode_coefficient`](@ref) and
+`j`, `k` index inhomogeneous and spectral dimensions respectively.
+"""
+function expand!(u::VectorField{N, <:FTField{G}},
+                 a::ProjectedField{G}) where {N, G<:AbstractGrid{T, D, AXES, ORDER}} where {T, D, AXES, ORDER}
+    u .= zero(Complex{T})
+    g        = grid(u)
+    inh_size = map(d -> size(g, d), inhomogeneous_dims(g))
+    for_each_mode(g) do _, spectral...
+        for m in axes(a, 1)
+            coeff = @inbounds parent(a)[m, spectral...]
+            for I in CartesianIndices(inh_size)
+                inh = Tuple(I)
+                idx = _combine_indices(g, inh, spectral)
+                for n in 1:N
+                    @inbounds parent(u[n])[idx...] += coeff * get_mode_coefficient(modes(a), g, n, m, inh, spectral...)
+                end
+            end
+        end
+    end
+    return u
+end
+
 expand(a::ProjectedField) = expand!(VectorField(grid(a), FTField), a)
