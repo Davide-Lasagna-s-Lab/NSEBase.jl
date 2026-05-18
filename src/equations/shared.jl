@@ -5,15 +5,22 @@
 # -------------------------- #
 # Navier-Stokes formulations #
 # -------------------------- #
-abstract type                NSEFormulation end
-struct CartesianPrimitive <: NSEFormulation end
-struct PolarPrimitive     <: NSEFormulation end
+abstract type                 NSEFormulation end
+struct CartesianPrimitive  <: NSEFormulation end
+struct CartesianPrimitive2D<: NSEFormulation end
+struct PolarPrimitive      <: NSEFormulation end
 
 ncomp(              ::CartesianPrimitive)                    = 3
 cache_length(       ::CartesianPrimitive, ::Type{<:FTField}) = 4
 cache_length(       ::CartesianPrimitive, ::Type{<:Field})   = 8
-nonlinear_operator( ::CartesianPrimitive)                    = CartesianPrimitiveNSE
-linearised_operator(::CartesianPrimitive, ::M) where {M}     = CartesianPrimitiveLNSE{M}
+nonlinear_operator( ::CartesianPrimitive)                    = CartesianPrimitive3DNSE
+linearised_operator(::CartesianPrimitive, ::M) where {M}     = CartesianPrimitive3DLNSE{M}
+
+ncomp(              ::CartesianPrimitive2D)                    = 2
+cache_length(       ::CartesianPrimitive2D, ::Type{<:FTField}) = 3
+cache_length(       ::CartesianPrimitive2D, ::Type{<:Field})   = 6
+nonlinear_operator( ::CartesianPrimitive2D)                    = CartesianPrimitive2DNSE
+linearised_operator(::CartesianPrimitive2D, ::M) where {M}     = CartesianPrimitive2DLNSE{M}
 
 ncomp(              ::PolarPrimitive)                    = throw(error("polar primitive Navier-Stokes formulation has not been implemented"))
 cache_length(       ::PolarPrimitive, ::Type{<:FTField}) = throw(error("polar primitive Navier-Stokes formulation has not been implemented"))

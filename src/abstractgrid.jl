@@ -50,57 +50,14 @@ Abstract supertype for grids with Cartesian `(x, y, z, t)` coordinate semantics.
 
 `AXES = (x_dim, y_dim, z_dim, t_dim)` gives the array dimension for each
 physical coordinate; a `nothing` entry marks a direction that is not an
-independent axis (e.g. streamwise-independent geometry).  Subtypes inherit the
-coordinate-dimension accessors `x_dim`, `y_dim`, `z_dim`, `t_dim` and the
-named derivative wrappers `ddx_x!`, `ddx_y!`, `ddx_z!`, `dds!`.
+independent axis (e.g. streamwise-independent geometry).
 
-# Example
-
-A channel-flow grid stored as `(y, x, z, t)` (wall-normal first):
-
-```julia
-struct ChannelGrid{T} <: AbstractCartesianGrid{T, 4, (2, 1, 3, 4), (2, 3, 4)} end
-```
-
-A streamwise-independent square-duct grid stored as `(y, z, t)`:
-
-```julia
-struct DuctGrid{T} <: AbstractCartesianGrid{T, 3, (nothing, 1, 2, 3), (3,)} end
-```
+Concrete Cartesian grids should subtype either `AbstractCartesianGrid3D` (for
+3-component flows stored in 4D arrays) or `AbstractCartesianGrid2D` (for
+2-component flows stored in 3D arrays), both of which define the corresponding
+coordinate-dimension accessors `x_dim`, `y_dim`, (`z_dim`,) and `t_dim`.
 """
 abstract type AbstractCartesianGrid{T, D, AXES, ORDER} <: AbstractGrid{T, D, AXES, ORDER} end
-
-
-# ---------------------- #
-# compile-time accessors #
-# ---------------------- #
-"""
-    x_dim(grid::AbstractCartesianGrid) -> Int
-
-Return the array dimension corresponding to the streamwise coordinate `x`.
-"""
-x_dim(::AbstractCartesianGrid{<:Any, <:Any, AXES}) where {AXES} = AXES[1]
-
-"""
-    y_dim(grid::AbstractCartesianGrid) -> Int
-
-Return the array dimension corresponding to the wall-normal coordinate `y`.
-"""
-y_dim(::AbstractCartesianGrid{<:Any, <:Any, AXES}) where {AXES} = AXES[2]
-
-"""
-    z_dim(grid::AbstractCartesianGrid) -> Int
-
-Return the array dimension corresponding to the spanwise coordinate `z`.
-"""
-z_dim(::AbstractCartesianGrid{<:Any, <:Any, AXES}) where {AXES} = AXES[3]
-
-"""
-    t_dim(grid::AbstractCartesianGrid) -> Int
-
-Return the array dimension corresponding to time `t`.
-"""
-t_dim(::AbstractCartesianGrid{<:Any, <:Any, AXES}) where {AXES} = AXES[4]
 
 """
     fft_dims(grid::AbstractGrid) -> Tuple
