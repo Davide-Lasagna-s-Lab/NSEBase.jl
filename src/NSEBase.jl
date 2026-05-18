@@ -4,7 +4,7 @@ using LinearAlgebra, FFTW
 
 export FFTW
 
-export AbstractGrid, points, growto
+export AbstractGrid, points, growto, weights, fft_dims, inhomogeneous_dims
 export ModeNumber
 export FTField, Field, VectorField, grid
 export FFTPlans, FFT, IFFT

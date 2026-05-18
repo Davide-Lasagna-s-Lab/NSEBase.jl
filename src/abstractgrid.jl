@@ -104,6 +104,16 @@ t_dim(grid))`.
 """
 fft_dims(::AbstractGrid{<:Any, <:Any, <:Any, ORDER}) where {ORDER} = ORDER
 
+"""
+    inhomogeneous_dims(grid::AbstractGrid) -> Tuple
+
+Return the array dimensions that are NOT transformed by FFTs, i.e. the
+complement of `fft_dims(grid)` within `1:D`.  These are the directions over
+which quadrature weights are needed for inner products.
+"""
+inhomogeneous_dims(::AbstractGrid{<:Any, D, <:Any, ORDER}) where {D, ORDER} =
+    Tuple(d for d in 1:D if d ∉ ORDER)
+
 
 # ------------------ #
 # required interface #
@@ -148,6 +158,19 @@ temporal direction, return `1`.
 Downstream packages must extend this for each dimension in `fft_dims(grid)`.
 """
 wavenumber_scale(grid::AbstractGrid, dim::Int) = throw(NotImplementedError(grid, dim))
+
+"""
+    weights(grid::AbstractGrid) -> AbstractArray
+
+Return the quadrature weights for the inhomogeneous directions of `grid`.
+The returned array has one axis per dimension in `inhomogeneous_dims(grid)`,
+in ascending array-dimension order: a `Vector` when there is one inhomogeneous
+direction, a `Matrix` when there are two, and so on.
+
+Used by `dot(u::FTField, v::FTField)` to weight each inhomogeneous index
+combination.
+"""
+weights(grid::AbstractGrid) = throw(NotImplementedError(grid))
 
 
 # ------------------ #

@@ -180,18 +180,33 @@ end
 
 # --------------------- #
 # inner-product methods #
-# --------------------- #
-# TODO: can this be implemented with the ModeNumber indexing above?
-# TODO: Might need a special case to take a slice of `u` and `v` at ModeNumber `n`?
-# function LinearAlgebra.dot(u::FTField, v::FTField)
-#     s = real(eltype(u))
-#     for_each_mode(grid(u)) do args...
-#         w = first(args) == 1 ? 1 : 2
-#         s += w * dot(u[ModeNumber(args...)], v[ModeNumber(args...)])
-#     end
-#     return s/2
-# end
-LinearAlgebra.dot(u::FTField, v::FTField) = throw(NotImplementedError(u, v))
+"""
+    dot(u::FTField, v::FTField) -> Real
+
+Inner product of two spectral fields on the same grid, defined as
+
+```math
+\\langle u, v \\rangle = \\frac{1}{2} \\sum_{\\mathbf{k}} c_{k_1}\\, w(\\mathbf{j})\\,
+\\operatorname{Re}\\bigl(\\bar{u}_{\\mathbf{k},\\mathbf{j}}\\, v_{\\mathbf{k},\\mathbf{j}}\\bigr),
+```
+
+where the sum is over all stored spectral modes `k` and inhomogeneous indices
+`j`, `c_{k_1}` is `1` for the zero rfft wavenumber and `2` otherwise (Hermitian
+symmetry of the rfft), `w(j)` are the quadrature weights returned by
+[`weights`](@ref), and the overall factor of `1/2` removes the double-counting
+of conjugate-symmetric mode pairs in the signed FFT dimensions.
+"""
+function LinearAlgebra.dot(u::FTField{G}, v::FTField{G}) where {G<:AbstractGrid}
+    g  = grid(u)
+    s  = zero(real(eltype(u)))
+    pu = parent(u)
+    pv = parent(v)
+    ws = weights(g)
+    for_each_point(g) do one_or_two, inhom, idx
+        @inbounds s += one_or_two * ws[inhom...] * real(conj(pu[idx...]) * pv[idx...])
+    end
+    return s / 2
+end
 LinearAlgebra.norm(u::FTField) = sqrt(dot(u, u))
 
 

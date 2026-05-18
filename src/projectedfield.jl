@@ -15,6 +15,16 @@ of an `FTField` onto a set of basis `modes`.
 - `ProjectedField(grid::AbstractGrid, M, modes)`
 - `ProjectedField(u::Union{FTField, Field, VectorField}, modes)`
 - `project(u::VectorField, modes)`
+
+# Storage layout
+
+The parent array has axis 1 reserved for the mode index and the spectral
+dimensions (from `fft_dims(grid) = ORDER`) occupying the subsequent axes in
+ORDER order.  Concretely, `parent(a)[m, i_H1, i_H2, …]` gives the coefficient
+of mode `m` at the spectral storage index `(i_H1, i_H2, …)`, where `i_H1`
+indexes the rfft dimension (`ORDER[1]`) and each subsequent index steps over a
+full signed-FFT dimension.  This layout differs from the physical grid layout:
+non-FFT (inhomogeneous) dimensions are not present.
 """
 struct ProjectedField{G<:AbstractGrid, M, A<:AbstractArray, T, D} <: AbstractArray{Complex{T}, D}
     grid::G
@@ -140,13 +150,16 @@ Modes with rfft index `> 1` (wavenumber `nx > 0`) are stored once but represent
 both `+nx` and `-nx`, so they contribute with weight 2; the `nx = 0` plane has
 weight 1.  The result is divided by 2 to account for the double-counting of
 signed-FFT pairs `(nz, nt)` and `(-nz, -nt)` that both appear in storage.
+
+The loop uses axis 1 as the mode index `m` (see Storage layout in
+[`ProjectedField`](@ref)) and the spectral indices `args...` from
+`for_each_mode`, which correspond to axes 2 onward in ORDER order.
 """
 function LinearAlgebra.dot(a::ProjectedField{G}, b::ProjectedField{G}) where {G<:AbstractGrid}
     s = zero(real(eltype(a)))
-    for_each_mode(grid(a)) do args...
-        w = first(args) == 1 ? 1 : 2
-        for m in axes(a, 1)
-            @inbounds s += w * real(LinearAlgebra.dot(parent(a)[m, args...], parent(b)[m, args...]))
+    for_each_mode(grid(a)) do one_or_two, args...
+        for m in axes(a, 1)           # axis 1 is always the mode index
+            @inbounds s += one_or_two * real(LinearAlgebra.dot(parent(a)[m, args...], parent(b)[m, args...]))
         end
     end
     return s / 2
