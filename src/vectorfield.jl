@@ -61,3 +61,54 @@ Base.zero(q::VectorField{N}) where {N}                               = VectorFie
 # ------------ #
 LinearAlgebra.dot(q::VectorField{N}, p::VectorField{N}) where {N} = sum(dot(q[n], p[n]) for n in 1:N)
 LinearAlgebra.norm(q::VectorField)                                = sqrt(dot(q, q))
+
+function normdiff(u::VectorField{N, <:FTField{G}}, v::VectorField{N, <:FTField{G}},
+                  shifts=ntuple(Returns(0), length(ORDER)),
+                  tmp=nothing) where {N, G<:AbstractGrid{T, D, AXES, ORDER}} where {T, D, AXES, ORDER}
+    s = zero(real(eltype(u[1])))
+    for n in 1:N
+        s += normdiff(u[n], v[n], shifts, tmp)^2
+    end
+    return sqrt(s)
+end
+
+"""
+    minnormdiff(u, v, N=(32,32,32), tmp1=zero(v), tmp2=zero(v)) -> (Real, NTuple)
+
+Return `(min_diff, (s1, s2, s3))`: the minimum of `‖u − shift(v, shifts)‖` over
+a `N[1]×N[2]×N[3]` grid of shifts covering one full period in each of the three
+homogeneous directions (in `fft_dims` order), and the shift at which the minimum
+is attained.
+
+`tmp1` and `tmp2` are optional pre-allocated workspaces of the same type as `v`.
+"""
+function minnormdiff(u::Union{FTField{G}, VectorField{<:Any, <:FTField{G}}},
+                     v::Union{FTField{G}, VectorField{<:Any, <:FTField{G}}},
+                     N::NTuple{3, Int}=(32, 32, 32),
+                     tmp1=zero(v),
+                     tmp2=zero(v)) where {G<:AbstractGrid{T, D, AXES, ORDER}} where {T, D, AXES, ORDER}
+    g        = grid(u)
+    min_diff = typemax(real(eltype(u isa VectorField ? u[1] : u)))
+    s_min    = ntuple(k -> zero(T), 3)
+
+    steps = ntuple(k -> 2π / (wavenumber_scale(g, ORDER[k]) * N[k]), 3)
+    zero_step = ntuple(k -> zero(steps[1]), 3)
+
+    tmp1 .= v
+    for i3 in 0:N[3]-1
+        for i2 in 0:N[2]-1
+            for i1 in 0:N[1]-1
+                diff = normdiff(u, tmp1, ntuple(Returns(zero(T)), 3), tmp2)
+                if diff < min_diff
+                    min_diff = diff
+                    s_min = (steps[1]*i1, steps[2]*i2, steps[3]*i3)
+                end
+                shift!(tmp1, Base.setindex(zero_step, steps[1], 1))
+            end
+            shift!(tmp1, Base.setindex(zero_step, steps[2], 2))
+        end
+        shift!(tmp1, Base.setindex(zero_step, steps[3], 3))
+    end
+
+    return min_diff, s_min
+end

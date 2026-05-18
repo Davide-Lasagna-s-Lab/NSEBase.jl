@@ -245,16 +245,6 @@ function normdiff(u::FTField{G}, v::FTField{G},
     return sqrt(s / 2)
 end
 
-function normdiff(u::VectorField{N, <:FTField{G}}, v::VectorField{N, <:FTField{G}},
-                  shifts=ntuple(Returns(0), length(ORDER)),
-                  tmp=nothing) where {N, G<:AbstractGrid{T, D, AXES, ORDER}} where {T, D, AXES, ORDER}
-    s = zero(real(eltype(u[1])))
-    for n in 1:N
-        s += normdiff(u[n], v[n], shifts, tmp)^2
-    end
-    return sqrt(s)
-end
-
 
 # --------------- #
 # utility methods #
