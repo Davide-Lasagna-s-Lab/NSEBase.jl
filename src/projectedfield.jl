@@ -204,6 +204,9 @@ function project!(a::ProjectedField{G},
     g        = grid(u)
     w        = weights(g)
     inh_size = map(d -> size(g, d), inhomogeneous_dims(g))
+    # TODO: pull out the loop over N, because that's the easiest to improve.
+    # TODO: perhaps there is a better way to order the loops here, and accumulate the results in a different way
+    # maybe using a matrix multiplication for the reduction.
     for_each_mode(g) do _, spectral...
         for m in axes(a, 1)
             acc = zero(Complex{T})
@@ -249,6 +252,10 @@ where `φ_{n,m,j,k}` is returned by [`get_mode_coefficient`](@ref) and
 """
 function expand!(u::VectorField{N, <:FTField{G}},
                  a::ProjectedField{G}) where {N, G<:AbstractGrid{T, D, AXES, ORDER}} where {T, D, AXES, ORDER}
+    # TODO: look at this function to see what code it generates and how it is looping over the modes
+    # TODO: make an alternative version that use matrix multiplication, as it was being suggested in a chat with Claude
+    # TODO: maybe there is a better way to store the modes that makes it more efficient to perform the expansion. In
+    # the end, we do not care how the modes are stores, as long as this operation is efficient
     u .= zero(Complex{T})
     g        = grid(u)
     inh_size = map(d -> size(g, d), inhomogeneous_dims(g))

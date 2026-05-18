@@ -60,6 +60,7 @@ end
                            u::F,
                             ::Val{DIM};
                      adjoint::Bool=false) where {T, D, AXES, ORDER, G<:AbstractGrid{T, D, AXES, ORDER}, F<:Union{FTField{G}, ProjectedField{G}}, DIM}
+    # TODO: this needs to be made much more clear..
     (isnothing(DIM) || isnothing(AXES[DIM])) && return :(return out)
     DIM ∉ ORDER && return :(throw(NotImplementedError(grid(u), Val($DIM))))
 
@@ -127,6 +128,9 @@ end
 ddx!(out::VectorField{N}, u::VectorField{N}, d; kwargs...) where {N} =
     (for n in 1:N; ddx!(out[n], u[n], d; kwargs...); end; return out)
 
+# TODO: these should be made to work, for any grid type.. probably, they should be defined in the equations files. Maybe
+# the main function can be renamed to ddi! and then we can have ddx!, ddy!, ddz! that call ddi! with the right dim.
+
 # These look up the array dim from the field's grid type (via x_dim/y_dim/z_dim)
 # and forward all kwargs to ddx!, so callers need not know array dim indices.
 ddx_x!(out::ProjectedField, a::ProjectedField; kwargs...) =
@@ -192,6 +196,7 @@ Inside every block, dimension 1 remains the innermost loop and the signed
 wavenumbers are plain loop-local integers.
 """
 @generated function add_homogeneous_laplacian!(out::FTField{G}, u::FTField{G}) where {T, D, AXES, ORDER, G<:AbstractGrid{T, D, AXES, ORDER}}
+    # TODO: this needs to be made much more clear
     H = filter(d->d!=AXES[4], ORDER) # exclude time from derivative contributions
     syms = [Symbol("_i", d) for d in 1:D]
 
@@ -263,6 +268,8 @@ add_homogeneous_laplacian!(out::VectorField{N}, u::VectorField{N}) where {N} =
 # part is not knowable generically); add_homogeneous_laplacian! handles the rest.
 inhomogeneous_laplacian!(out::FTField, u::FTField) = throw(NotImplementedError(out, u))
 
+# TODO: the docstring is hardcoding that y is the inhomogeneous direction... fix the docstring 
+# everywhere to avoid this hardcoding, and make it more general
 """
     laplacian!(out::FTField{G}, u::FTField{G}; kwargs...)
     laplacian!(out::VectorField{N}, u::VectorField{N}; kwargs...)

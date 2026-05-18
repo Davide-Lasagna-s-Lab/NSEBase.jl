@@ -68,6 +68,11 @@ abstract type AbstractGrid{T<:Real, D, AXES, ORDER} end
 # ---------------------- #
 # compile-time accessors #
 # ---------------------- #
+# TODO: this should be made to work for any type of grid, e.g cartesian and cylindrical. It 
+# should also work for any number of dimensions, e.g. for 2D flows. Perhaps, this coule be part of the 
+# equations.jl file, so each package can define the rigth interface.. Perhaps, there needs to be
+# an AbstractCartesianGrid type, and and AbstractCylindricalGrid. We also need to rename D to N 
+# everywhere...
 """
     x_dim(grid::AbstractGrid) -> Int
 

@@ -18,8 +18,14 @@ struct VectorField{N, S} <: AbstractVector{S}
     end
 end
 
-# ! required !
-add_base!(u::VectorField, base) = throw(NotImplementedError(u, base))
+function add_base_flow!(u::VectorField{N, <:FTField{<:AbstractGrid}}, base::NTuple{N}) where {N}
+    g   = grid(u)
+    idx = ntuple(d -> d ∈ fft_dims(g) ? 1 : Colon(), ndims(parent(u[1])))
+    for n in 1:N
+        base[n] !== nothing && (parent(u[n])[idx...] .+= base[n])
+    end
+    return u
+end
 
 grid(u::VectorField) = grid(u[1])
 

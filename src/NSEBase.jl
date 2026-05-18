@@ -7,6 +7,7 @@ export FFTW
 export AbstractGrid, points, growto, weights, fft_dims, inhomogeneous_dims
 export ModeNumber
 export FTField, Field, VectorField, grid
+export add_base_flow!
 export FFTPlans, FFT, IFFT
 export ProjectedField, modes, project!, project, expand!, expand, get_mode_coefficient
 export shift!, shift, normdiff, minnormdiff

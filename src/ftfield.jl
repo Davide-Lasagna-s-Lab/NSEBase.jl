@@ -61,6 +61,7 @@ resolution-changing transforms such as `FFT(u, target_size)` and
 """
 function growto(u::FTField, target_size)
     out = FTField(growto(grid(u), target_size))
+    # TODO: this for_each_frequency needs to be better documented.. and this code too..
     for_each_freq(grid(u)) do args...
         ar1 = out[ModeNumber(args...)]
         ar2 = u[ModeNumber(args...)]

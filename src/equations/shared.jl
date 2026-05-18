@@ -23,8 +23,8 @@ linearised_operator(::PolarPrimitive, ::M) where {M}     = throw(error("polar pr
 
 
 """
-    construct_equations(grid::AbstractGrid, Re, formulation::NSEFormulation=CartesianPrimitive(),
-                        base; force=NoForce(), mode=AdjointDiscrete(), flags=FFTW.EXHAUSTIVE,
+    construct_equations(grid::AbstractGrid, Re, base, formulation::NSEFormulation=CartesianPrimitive();
+                        force=NoForce(), mode=AdjointDiscrete(), flags=FFTW.EXHAUSTIVE,
                         dealias=true)
 
 Construct a [`ProjectedNSE`](@ref) objective from a grid, Reynolds number, and NSE
@@ -33,9 +33,12 @@ formulation, pre-allocating all operator caches and FFTW plans.
 # Arguments
 - `grid`: computational grid defining the domain geometry and spectral structure.
 - `Re`: Reynolds number.
+- `base`: laminar base flow as a tuple with one entry per velocity component.
+  Each entry is either a vector of values at the inhomogeneous grid points or
+  `nothing` when that component has no base flow (e.g. `(U, nothing, nothing)`
+  for streamwise-only base flow in a channel).
 - `formulation`: NSE formulation determining the state-space representation and
   operator structure. Defaults to [`CartesianPrimitive`](@ref).
-- `base`: base flow used to recover the flow field after [`expand!`](@ref) call.
 
 # Keyword arguments
 - `force`: body forcing term. Defaults to [`NoForce`](@ref).
@@ -64,12 +67,8 @@ operators:
 
 # Example
 ```julia
-grid  = MyChannelGrid(Ny=64, Nx=32, Nz=32)
-base  = read_base_flow(grid)
-obj   = construct_equations(grid, 1000.0, CartesianPrimitive(), base;
-                            force=ConstantForce(grid),
-                            mode=AdjointDiscrete(),
-                            flags=FFTW.MEASURE)
+grid = ChannelGrid(y, Nx, Nz, Nt, α, β, D₁, D₂, ws)
+obj  = construct_equations(grid, 1000.0, (U, nothing, nothing); flags=FFTW.MEASURE)
 ```
 """
 function construct_equations(grid::AbstractGrid{T},

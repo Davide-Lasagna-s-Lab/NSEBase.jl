@@ -23,7 +23,7 @@ function (eq::ProjectedNSE)(out::ProjectedField,
 
     # expand coefficients into spectral field
     expand!(u, a)
-    add_base!(u, eq.base)
+    add_base_flow!(u, eq.base)
 
     # operator action
     eq.nl(0, u, N_u)
@@ -56,7 +56,7 @@ end
 
 
 
-
+# TODO: remove the stuff below
 
 
 
