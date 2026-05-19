@@ -62,7 +62,7 @@ inhomogeneous_dims(::AbstractGrid{<:Any, D, <:Any, ORDER}) where {D, ORDER} =
     Tuple(d for d in 1:D if d ∉ ORDER)
 
 """
-    storage_order(values, grid) -> Tuple
+    to_storage_order(values, grid) -> Tuple
 
 Permute a tuple from logical coordinate order into storage/array-dimension
 order.
@@ -70,9 +70,9 @@ order.
 The axis layout is read from the grid type parameter `AXES`, where `AXES[i]`
 is the array dimension occupied by logical coordinate `i`. For example, if
 `values = (X, Y, Z, T)` and `AXES = (2, 1, 3, 4)`, then
-`storage_order(values, grid)` returns `(Y, X, Z, T)`.
+`to_storage_order(values, grid)` returns `(Y, X, Z, T)`.
 """
-@generated function storage_order(values::Tuple{Vararg{Any, D}},
+@generated function to_storage_order(values::Tuple{Vararg{Any, D}},
                                         ::AbstractGrid{<:Any, D, AXES}) where {D, AXES}
     length(AXES) == D || throw(ArgumentError("values and axes have incompatible sizes"))
     order = invperm(AXES)

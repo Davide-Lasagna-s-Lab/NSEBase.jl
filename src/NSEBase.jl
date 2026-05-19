@@ -5,7 +5,7 @@ using LinearAlgebra, FFTW, JLD2
 export FFTW
 
 export AbstractGrid
-export points, growto, weights, fft_dims, inhomogeneous_dims, storage_order
+export points, growto, weights, fft_dims, inhomogeneous_dims, to_storage_order
 export ddx_1!, ddx_2!, ddx_3!, ddx_4!
 export ModeNumber
 export FTField, Field, VectorField, grid
