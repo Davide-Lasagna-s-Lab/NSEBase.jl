@@ -94,9 +94,8 @@ in-place scaling).
 # Example
 
 Zero-pad (or truncate) a spectral field onto a larger (or smaller) grid by
-copying every wavenumber that exists in both grids.  `_combine_indices`
-maps a `WaveNumberVector` (wavenumber tuple) to the correct storage index on a
-given grid, returning `nothing` for wavenumbers that lie outside that grid.
+copying every wavenumber that exists in both grids. `to_indices`
+maps a `WaveNumberVector` to the corresponding homogeneous storage indices.
 
 ```julia
 function growto(u::FTField, target_size)
@@ -134,29 +133,6 @@ end
     end
 
     return body
-end
-
-
-"""
-    indices_to_wavenumbers(g, homogeneous_indices) -> NTuple{N, Int}
-
-Convert the `N`-tuple of 1-based FFTW storage indices `homogeneous_indices`
-(as yielded by `for_each_wavenumber`) to a tuple of signed integer wavenumbers.
-
-- rfft dimension (k=1): storage index `i` → wavenumber `i - 1` (always ≥ 0).
-- Full-FFT dimensions (k≥2): positive block `i ≤ N÷2+1` → `i - 1`;
-  negative block `i > N÷2+1` → `i - 1 - N`.
-"""
-function indices_to_wavenumbers(g::AbstractGrid{T, D, AXES, ORDER}, homogeneous_indices) where {T, D, AXES, ORDER}
-    N = length(ORDER)
-    ntuple(N) do k
-        i = homogeneous_indices[k]
-        # rfft dim: only non-negative wavenumbers stored, so i=1 → k=0, i=2 → k=1, …
-        # Full-FFT dims: FFTW packs positive wavenumbers first (i ≤ N/2+1 → k=i-1),
-        # then negative (i > N/2+1 → k=i-1-N), matching the two-block loop in for_each_wavenumber.
-        k == 1 ? i - 1 :
-                 (i <= (size(g, ORDER[k]) >> 1) + 1 ? i - 1 : i - 1 - size(g, ORDER[k]))
-    end
 end
 
 

@@ -11,16 +11,17 @@
 
         # Non-conjugate half: n1 ≥ 0, forward ordering
         for _n1 in 1:(N1 >> 1) + 1
-            n = WaveNumberVector(n1s[_n1])
-            @test NSEBase._wavenumber_vector_to_indices(g, n) == (_n1, false)
+            k = WaveNumberVector(n1s[_n1])
+            @test NSEBase.to_indices(g, k) == (_n1, false)
+            @test NSEBase.to_wavenumber_vector(g, (_n1,)) == k
         end
 
         n1s = collect(0:-1:-(N1 >> 1))
 
         # Conjugate half: n1 < 0, reversed ordering
         for _n1 in 2:(N1 >> 1) + 1
-            n = WaveNumberVector(n1s[_n1])
-            @test NSEBase._wavenumber_vector_to_indices(g, n) == (_n1, true)
+            k = WaveNumberVector(n1s[_n1])
+            @test NSEBase.to_indices(g, k) == (_n1, true)
         end
     end
 
@@ -34,8 +35,9 @@
 
         # Non-conjugate half: n1 ≥ 0, forward ordering
         for _n1 in 1:(N1 >> 1) + 1, _n2 in 1:N2
-            n = WaveNumberVector(n1s[_n1], n2s[_n2])
-            @test NSEBase._wavenumber_vector_to_indices(g, n) == (_n1, _n2, false)
+            k = WaveNumberVector(n1s[_n1], n2s[_n2])
+            @test NSEBase.to_indices(g, k) == (_n1, _n2, false)
+            @test NSEBase.to_wavenumber_vector(g, (_n1, _n2)) == k
         end
 
         n1s = collect(0:-1:-(N1 >> 1))
@@ -43,8 +45,8 @@
 
         # Conjugate half: n1 < 0, reversed ordering
         for _n1 in 2:(N1 >> 1) + 1, _n2 in 1:N2
-            n = WaveNumberVector(n1s[_n1], n2s[_n2])
-            @test NSEBase._wavenumber_vector_to_indices(g, n) == (_n1, _n2, true)
+            k = WaveNumberVector(n1s[_n1], n2s[_n2])
+            @test NSEBase.to_indices(g, k) == (_n1, _n2, true)
         end
     end
 
@@ -60,8 +62,9 @@
 
         # Non-conjugate half: n1 ≥ 0, forward ordering
         for _n1 in 1:(N1 >> 1) + 1, _n2 in 1:N2, _n3 in 1:N3
-            n = WaveNumberVector(n1s[_n1], n2s[_n2], n3s[_n3])
-            @test NSEBase._wavenumber_vector_to_indices(g, n) == (_n1, _n2, _n3, false)
+            k = WaveNumberVector(n1s[_n1], n2s[_n2], n3s[_n3])
+            @test NSEBase.to_indices(g, k) == (_n1, _n2, _n3, false)
+            @test NSEBase.to_wavenumber_vector(g, (_n1, _n2, _n3)) == k
         end
 
         n1s = collect(0:-1:-(N1 >> 1))
@@ -70,8 +73,8 @@
 
         # Conjugate half: n1 < 0, reversed ordering
         for _n1 in 2:(N1 >> 1) + 1, _n2 in 1:N2, _n3 in 1:N3
-            n = WaveNumberVector(n1s[_n1], n2s[_n2], n3s[_n3])
-            @test NSEBase._wavenumber_vector_to_indices(g, n) == (_n1, _n2, _n3, true)
+            k = WaveNumberVector(n1s[_n1], n2s[_n2], n3s[_n3])
+            @test NSEBase.to_indices(g, k) == (_n1, _n2, _n3, true)
         end
     end
 

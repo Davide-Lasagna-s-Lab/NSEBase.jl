@@ -7,7 +7,7 @@ export FFTW
 export AbstractGrid
 export points, growto, weights, fft_dims, inhomogeneous_dims, to_storage_order
 export ddx_1!, ddx_2!, ddx_3!, ddx_4!
-export WaveNumberVector
+export WaveNumberVector, to_indices, to_wavenumber_vector
 export FTField, Field, VectorField, grid
 export add_base_flow!
 export FFTPlans, FFT, IFFT

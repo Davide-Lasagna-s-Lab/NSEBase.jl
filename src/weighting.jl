@@ -4,15 +4,15 @@
     FarazmandWeight{N, T}
 
 A spectral norm weight for the Farazmand et al. weighted inner product on
-projected fields. The weight at wavenumber `n::WaveNumberVector{N}` is
+projected fields. The weight at wavenumber `k::WaveNumberVector{N}` is
 
 ```math
-w(n) = \\frac{1}{1 + \\sum_{k=1}^{N} (\\sigma_k \\, n_k)^2}
+w(k) = \\frac{1}{1 + \\sum_{j=1}^{N} (\\sigma_j \\, k_j)^2}
 ```
 
-where `σ_k = wavenumber_scale(g, ORDER[k])` are the physical wavenumber scales
-of the grid in `fft_dims` order, and `n_k = n.ns[k]` are the signed integer
-wavenumbers stored in `n`.
+where `σ_j = wavenumber_scale(g, ORDER[j])` are the physical wavenumber scales
+of the grid in `fft_dims` order, and `k_j = k.ns[j]` are the signed integer
+wavenumbers stored in `k`.
 
 # Constructor
 
@@ -28,8 +28,8 @@ function FarazmandWeight(g::AbstractGrid{T, D, AXES, ORDER}) where {T, D, AXES, 
     FarazmandWeight(ntuple(k -> T(wavenumber_scale(g, ORDER[k])), length(ORDER)))
 end
 
-Base.getindex(A::FarazmandWeight{N}, n::WaveNumberVector{N}) where {N} =
-    1 / (1 + sum(k -> (A.scales[k] * n.ns[k])^2, 1:N))
+Base.getindex(A::FarazmandWeight{N}, k::WaveNumberVector{N}) where {N} =
+    1 / (1 + sum(j -> (A.scales[j] * k.ns[j])^2, 1:N))
 
 
 """
@@ -43,8 +43,8 @@ function LinearAlgebra.mul!(a::ProjectedField{G},
     pa = parent(a)
     for_each_wavenumber(g) do _, homogeneous_indices...
         # Look up the weight for this wavenumber vector.
-        n = WaveNumberVector(indices_to_wavenumbers(g, homogeneous_indices))
-        w = A[n]
+        k = to_wavenumber_vector(g, homogeneous_indices)
+        w = A[k]
         for m in axes(a, 1)
             @inbounds pa[m, homogeneous_indices...] *= w
         end
@@ -72,8 +72,8 @@ function LinearAlgebra.dot(a::ProjectedField{G},
     g = grid(a)
     for_each_wavenumber(g) do one_or_two, homogeneous_indices...
         # Weight for this wavenumber; one_or_two accounts for Hermitian conjugate pairs.
-        n = WaveNumberVector(indices_to_wavenumbers(g, homogeneous_indices))
-        w = A[n]
+        k = to_wavenumber_vector(g, homogeneous_indices)
+        w = A[k]
         for m in axes(a, 1)
             @inbounds s += one_or_two * w * real(LinearAlgebra.dot(parent(a)[m, homogeneous_indices...], parent(b)[m, homogeneous_indices...]))
         end

@@ -73,22 +73,22 @@ end
 
 # TODO: an equivalent setindex! method?
 """
-    u[n::WaveNumberVector]
+    u[k::WaveNumberVector]
 
 Return a view of the underlying array over all non-transform dimensions for
-the wavenumber tuple `n`. The wavenumbers in `n` follow the order
+the wavenumber vector `k`. The wavenumbers in `k` follow the order
 of `fft_dims(grid(u)) = ORDER`.
 
-If the first (rfft) wavenumber `n.ns[1]` is negative the view is into the
-conjugate-symmetric storage location `(-n.ns[1], -n.ns[2:N]…)`; the caller
+If the first (rfft) wavenumber `k.ns[1]` is negative the view is into the
+conjugate-symmetric storage location `(-k.ns[1], -k.ns[2:N]…)`; the caller
 is responsible for applying conjugation if needed.
 
 The returned view has one dimension for each axis of `u` not in `ORDER`,
 in their original order.
 """
 Base.@propagate_inbounds function Base.getindex(u::FTField{G},
-                                                n::WaveNumberVector) where {T, D, AXES, ORDER, G<:AbstractGrid{T, D, AXES, ORDER}}
-    tpl     = _wavenumber_vector_to_indices(grid(u), n)
+                                                k::WaveNumberVector) where {T, D, AXES, ORDER, G<:AbstractGrid{T, D, AXES, ORDER}}
+    tpl     = to_indices(grid(u), k)
     indices = Base.front(tpl)
     colons  = ntuple(_ -> Colon(), ndims(u) - length(ORDER))
     @boundscheck checkbounds(u, _combine_indices(grid(u), colons, indices)...)
@@ -96,20 +96,20 @@ Base.@propagate_inbounds function Base.getindex(u::FTField{G},
 end
 
 """
-    u[n::WaveNumberVector, I...]
+    u[k::WaveNumberVector, I...]
 
-Return the complex modal coefficient for index `I` at wavenumber tuple `n`.
+Return the complex modal coefficient for index `I` at wavenumber vector `k`.
 
-The wavenumbers in `n` follow the order of `fft_dims(grid(a)) = ORDER`.
-If the first (rfft) wavenumber `n.ns[1]` is negative the coefficient is
-obtained by conjugate symmetry: the entry stored at `(-n.ns[1], -n.ns[2:N]…)`
+The wavenumbers in `k` follow the order of `fft_dims(grid(a)) = ORDER`.
+If the first (rfft) wavenumber `k.ns[1]` is negative the coefficient is
+obtained by conjugate symmetry: the entry stored at `(-k.ns[1], -k.ns[2:N]…)`
 is read and conjugated.
 """
 Base.@propagate_inbounds function Base.getindex(u::FTField,
-                                                n::WaveNumberVector,
+                                                k::WaveNumberVector,
                                                i1::Int,
                                                 I::Vararg{Int})
-    tpl     = _wavenumber_vector_to_indices(grid(u), n)
+    tpl     = to_indices(grid(u), k)
     do_conj = last(tpl)
     indices = Base.front(tpl)
     @boundscheck checkbounds(u, _combine_indices(grid(u), (i1, I...), indices)...)
@@ -118,27 +118,27 @@ Base.@propagate_inbounds function Base.getindex(u::FTField,
 end
 
 """
-    u[n::WaveNumberVector, I...] = val
+    u[k::WaveNumberVector, I...] = val
 
-Write the complex modal coefficient `val` for index `I` at wavenumber tuple `n`.
+Write the complex modal coefficient `val` for index `I` at wavenumber vector `k`.
 
 Two symmetry invariants are maintained automatically:
 
-- **Hermitian symmetry** — when the rfft wavenumber `n.ns[1] == 0`, the
-  conjugate-symmetric entry at `(0, -n.ns[2:N]…)` is also updated so that
+- **Hermitian symmetry** — when the rfft wavenumber `k.ns[1] == 0`, the
+  conjugate-symmetric entry at `(0, -k.ns[2:N]…)` is also updated so that
   the physical field remains real-valued.
 - **Zero-wavenumber reality** — the fully-zero wavenumber `WaveNumberVector(0, 0, …)` is
   forced to be real (imaginary part discarded).
 
-If `n.ns[1] < 0` the write targets the conjugate-symmetric storage location
+If `k.ns[1] < 0` the write targets the conjugate-symmetric storage location
 and `conj(val)` is stored, keeping the representation consistent with reads.
 """
 Base.@propagate_inbounds function Base.setindex!(u::FTField{G},
                                                val,
-                                                 n::WaveNumberVector{N},
+                                                 k::WaveNumberVector{N},
                                                  I::Vararg{Int}) where {T, N, G<:AbstractGrid{T}}
     CT      = Complex{T}
-    tpl     = _wavenumber_vector_to_indices(grid(u), n)
+    tpl     = to_indices(grid(u), k)
     do_conj = last(tpl)
     indices = Base.front(tpl)
     i0      = first(indices)      # rfft axis index (axis 2 of ProjectedField)

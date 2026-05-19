@@ -42,7 +42,7 @@ _fftw_index(n::Int, N::Int) = n >= 0 ? n + 1 : N + n + 1
 _fftw_sym_index(i::Int, N::Int) = i == 1 ? 1 : N - i + 2
 
 """
-    _wavenumber_vector_to_indices(g::AbstractGrid, n::WaveNumberVector{N}) where {N}
+    to_indices(g::AbstractGrid, k::WaveNumberVector{N}) where {N}
 
 Convert a `WaveNumberVector` to 1-based `ProjectedField` axis indices plus a
 conjugate flag.  Returns the `(N+1)`-tuple `(i_H1, i_H2, …, i_HN, do_conj)`
@@ -50,16 +50,39 @@ where each `i_Hk` is the 1-based index along axis `k+1` of the
 `ProjectedField` array (axes follow the order of `fft_dims(g) = ORDER`).
 
 `do_conj = true` means the stored entry is the complex conjugate of the
-requested mode (the rfft axis stores only `n ≥ 0`, so negative wavenumbers
+requested wavenumber (the rfft axis stores only `n ≥ 0`, so negative wavenumbers
 are reached via conjugate symmetry).
 """
-function _wavenumber_vector_to_indices(g::AbstractGrid, n::WaveNumberVector{N}) where {N}
+function to_indices(g::AbstractGrid, k::WaveNumberVector{N}) where {N}
     H = fft_dims(g)
-    if n.ns[1] >= 0
-        rest = ntuple(j -> _fftw_index( n.ns[j+1], size(g, H[j+1])), Val(N-1))
-        return (n.ns[1] + 1, rest..., false)
+    if k.ns[1] >= 0
+        rest = ntuple(j -> _fftw_index( k.ns[j+1], size(g, H[j+1])), Val(N-1))
+        return (k.ns[1] + 1, rest..., false)
     else
-        rest = ntuple(j -> _fftw_index(-n.ns[j+1], size(g, H[j+1])), Val(N-1))
-        return (-n.ns[1] + 1, rest..., true)
+        rest = ntuple(j -> _fftw_index(-k.ns[j+1], size(g, H[j+1])), Val(N-1))
+        return (-k.ns[1] + 1, rest..., true)
     end
+end
+
+"""
+    to_wavenumber_vector(g, homogeneous_indices) -> WaveNumberVector
+
+Convert the `N`-tuple of 1-based FFTW storage indices `homogeneous_indices`
+(as yielded by `for_each_wavenumber`) to a `WaveNumberVector`.
+
+- rfft dimension (k=1): storage index `i` → wavenumber `i - 1` (always ≥ 0).
+- Full-FFT dimensions (k≥2): positive block `i ≤ N÷2+1` → `i - 1`;
+  negative block `i > N÷2+1` → `i - 1 - N`.
+"""
+function to_wavenumber_vector(g::AbstractGrid{T, D, AXES, ORDER}, homogeneous_indices) where {T, D, AXES, ORDER}
+    N = length(ORDER)
+    ns = ntuple(N) do k
+        i = homogeneous_indices[k]
+        # rfft dim: only non-negative wavenumbers stored, so i=1 → k=0, i=2 → k=1, …
+        # Full-FFT dims: FFTW packs positive wavenumbers first (i ≤ N/2+1 → k=i-1),
+        # then negative (i > N/2+1 → k=i-1-N), matching the two-block loop in for_each_wavenumber.
+        k == 1 ? i - 1 :
+                 (i <= (size(g, ORDER[k]) >> 1) + 1 ? i - 1 : i - 1 - size(g, ORDER[k]))
+    end
+    return WaveNumberVector(ns)
 end

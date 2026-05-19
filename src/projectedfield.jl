@@ -87,19 +87,19 @@ Base.@propagate_inbounds function Base.setindex!(u::ProjectedField, val, i::Int)
 end
 
 """
-    a[m, n::WaveNumberVector]
+    a[m, k::WaveNumberVector]
 
-Return the complex modal coefficient for mode `m` at wavenumber tuple `n`.
+Return the complex modal coefficient for mode `m` at wavenumber vector `k`.
 
-The wavenumbers in `n` follow the order of `fft_dims(grid(a)) = ORDER`.
-If the first (rfft) wavenumber `n.ns[1]` is negative the coefficient is
-obtained by conjugate symmetry: the entry stored at `(-n.ns[1], -n.ns[2:N]…)`
+The wavenumbers in `k` follow the order of `fft_dims(grid(a)) = ORDER`.
+If the first (rfft) wavenumber `k.ns[1]` is negative the coefficient is
+obtained by conjugate symmetry: the entry stored at `(-k.ns[1], -k.ns[2:N]…)`
 is read and conjugated.
 """
 Base.@propagate_inbounds function Base.getindex(a::ProjectedField,
                                                 m::Int,
-                                                n::WaveNumberVector)
-    tpl     = _wavenumber_vector_to_indices(grid(a), n)
+                                                k::WaveNumberVector)
+    tpl     = to_indices(grid(a), k)
     do_conj = last(tpl)
     indices = Base.front(tpl)
     @boundscheck checkbounds(a, m, indices...)
@@ -108,27 +108,27 @@ Base.@propagate_inbounds function Base.getindex(a::ProjectedField,
 end
 
 """
-    a[m, n::WaveNumberVector] = val
+    a[m, k::WaveNumberVector] = val
 
-Write the complex modal coefficient `val` for mode `m` at wavenumber tuple `n`.
+Write the complex modal coefficient `val` for mode `m` at wavenumber vector `k`.
 
 Two symmetry invariants are maintained automatically:
 
-- **Hermitian symmetry** — when the rfft wavenumber `n.ns[1] == 0`, the
-  conjugate-symmetric entry at `(0, -n.ns[2:N]…)` is also updated so that
+- **Hermitian symmetry** — when the rfft wavenumber `k.ns[1] == 0`, the
+  conjugate-symmetric entry at `(0, -k.ns[2:N]…)` is also updated so that
   the physical field remains real-valued.
 - **Zero-wavenumber reality** — the fully-zero wavenumber `WaveNumberVector(0, 0, …)` is
   forced to be real (imaginary part discarded).
 
-If `n.ns[1] < 0` the write targets the conjugate-symmetric storage location
+If `k.ns[1] < 0` the write targets the conjugate-symmetric storage location
 and `conj(val)` is stored, keeping the representation consistent with reads.
 """
 Base.@propagate_inbounds function Base.setindex!(a::ProjectedField{G},
                                                val,
                                                  m::Int,
-                                                 n::WaveNumberVector{N}) where {T, N, G<:AbstractGrid{T}}
+                                                 k::WaveNumberVector{N}) where {T, N, G<:AbstractGrid{T}}
     CT      = Complex{T}
-    tpl     = _wavenumber_vector_to_indices(grid(a), n)
+    tpl     = to_indices(grid(a), k)
     do_conj = last(tpl)
     indices = Base.front(tpl)
     i0      = first(indices)      # rfft axis index (axis 2 of ProjectedField)
