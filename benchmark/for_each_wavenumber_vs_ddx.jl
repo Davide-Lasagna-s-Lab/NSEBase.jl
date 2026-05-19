@@ -1,4 +1,4 @@
-# Barebone benchmark: @generated inline body (ddx! style) vs for_each_mode closure.
+# Barebone benchmark: @generated inline body (ddx! style) vs for_each_wavenumber closure.
 #
 # FTField channel-flow layout: (Nt, Nx_half, Nz, Ny)
 #   fft_dims = (nx=2, nz=3, nt=1)  →  nt is a signed FFT dim in array axis 1.
@@ -8,13 +8,13 @@
 # The key difference between the two approaches:
 #   A  ddx! style: split-block @generated loop — nt is computed branch-free
 #      because each block covers either the positive or negative half of nt.
-#   B  for_each_mode style: single pass — the closure receives the raw FFTW
+#   B  for_each_wavenumber style: single pass — the closure receives the raw FFTW
 #      index and must recover the signed wavenumber with a conditional.
-#   C  for_each_mode style: with the split-block structure retained and signed
-#      wavenumber pre-computed per block (i.e. for_each_mode extended to pass
+#   C  for_each_wavenumber style: with the split-block structure retained and signed
+#      wavenumber pre-computed per block (i.e. for_each_wavenumber extended to pass
 #      both FFTW index AND signed wavenumber to f).
 #
-# Run: julia perf/benchmark_for_each_mode_vs_ddx.jl
+# Run: julia perf/benchmark_for_each_wavenumber_vs_ddx.jl
 
 const Nt      = 63
 const Nx      = 32
@@ -46,8 +46,8 @@ function ddx_splitblock!(out, u)
 end
 
 # ──────────────────────────────────────────────────────────────────────────────
-# B: single-pass, conditional wavenumber  (current for_each_mode + closure)
-#    for_each_mode passes only the FFTW index; the closure must recover the
+# B: single-pass, conditional wavenumber  (current for_each_wavenumber + closure)
+#    for_each_wavenumber passes only the FFTW index; the closure must recover the
 #    signed wavenumber with a branch.
 # ──────────────────────────────────────────────────────────────────────────────
 function ddx_conditional!(out, u)
@@ -59,7 +59,7 @@ function ddx_conditional!(out, u)
 end
 
 # ──────────────────────────────────────────────────────────────────────────────
-# C: split-block, closure  (for_each_mode extended to also supply signed nt)
+# C: split-block, closure  (for_each_wavenumber extended to also supply signed nt)
 #    Retains the split-block structure of A but invokes the body via a function
 #    call — isolates closure overhead from conditional overhead.
 # ──────────────────────────────────────────────────────────────────────────────
@@ -106,7 +106,7 @@ t_c = bench(ddx_closure_splitblock!, out, u)
 
 println("\nResults (Nt=$Nt, Nx=$Nx, Nz=$Nz, Ny=$Ny):")
 println("  A  split-block inline      (ddx! style)          : $(round(t_a*1e6, digits=2)) μs")
-println("  B  single-pass conditional (for_each_mode)       : $(round(t_b*1e6, digits=2)) μs")
-println("  C  split-block closure     (for_each_mode+wnum)  : $(round(t_c*1e6, digits=2)) μs")
+println("  B  single-pass conditional (for_each_wavenumber)       : $(round(t_b*1e6, digits=2)) μs")
+println("  C  split-block closure     (for_each_wavenumber+wnum)  : $(round(t_c*1e6, digits=2)) μs")
 println("  ratio B/A : $(round(t_b/t_a, digits=3))   (conditional cost vs inline)")
 println("  ratio C/A : $(round(t_c/t_a, digits=3))   (closure overhead vs inline)")

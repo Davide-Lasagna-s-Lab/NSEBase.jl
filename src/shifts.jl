@@ -21,7 +21,7 @@ function shift!(u::FTField{G}, shifts) where {G<:AbstractGrid{T, D, AXES, ORDER}
     inh_dims  = inhomogeneous_dims(g)
     inh_sizes = map(d -> size(g, d), inh_dims)
 
-    for_each_mode(g) do _, homogeneous_indices...
+    for_each_wavenumber(g) do _, homogeneous_indices...
         # Convert storage indices to signed wavenumbers, then accumulate the
         # total phase as a product over all homogeneous directions.
         ks    = indices_to_wavenumbers(g, homogeneous_indices)
@@ -30,7 +30,7 @@ function shift!(u::FTField{G}, shifts) where {G<:AbstractGrid{T, D, AXES, ORDER}
                             cis(ks[i] * shifts[i] * wavenumber_scale(g, ORDER[i]))
         end
 
-        # Apply phase to every inhomogeneous index combination for this mode.
+        # Apply phase to every inhomogeneous index combination for this wavenumber.
         # CartesianIndices loop is the innermost, matching the column-major
         # layout of dim 1 in the parent array.
         for I in CartesianIndices(inh_sizes)
@@ -64,7 +64,7 @@ function shift!(a::ProjectedField{G}, shifts) where {G<:AbstractGrid{T, D, AXES,
     g  = grid(a)
     pa = parent(a)
     N  = length(ORDER)
-    for_each_mode(g) do _, homogeneous_indices...
+    for_each_wavenumber(g) do _, homogeneous_indices...
         # Same phase computation as FTField shift; applied uniformly across
         # all mode indices m at this spectral location.
         ks    = indices_to_wavenumbers(g, homogeneous_indices)

@@ -7,7 +7,7 @@ export FFTW
 export AbstractGrid
 export points, growto, weights, fft_dims, inhomogeneous_dims, to_storage_order
 export ddx_1!, ddx_2!, ddx_3!, ddx_4!
-export ModeNumber
+export WaveNumberVector
 export FTField, Field, VectorField, grid
 export add_base_flow!
 export FFTPlans, FFT, IFFT
@@ -23,7 +23,7 @@ export ProjectedNSE
 
 include("notimplementederror.jl")
 include("abstractgrid.jl")
-include("modenumber.jl")
+include("wavenumbervector.jl")
 include("spectralloops.jl")
 include("ftfield.jl")
 include("field.jl")

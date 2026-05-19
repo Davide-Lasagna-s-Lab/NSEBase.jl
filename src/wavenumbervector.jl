@@ -1,16 +1,16 @@
-# ModeNumber: integer wavenumber index for spectral fields.
+# WaveNumberVector: integer wavenumber index for spectral fields.
 
-# A ModeNumber{N} holds N integer wavenumbers ordered to match
+# A WaveNumberVector{N} holds N integer wavenumbers ordered to match
 # fft_dims(g) = ORDER.  The first wavenumber (ns[1]) is for the rfft
 # dimension ORDER[1]; negative values trigger conjugate-symmetry lookup. All
 # others are signed FFT wavenumbers in FFTW order: 0, 1, ..., N/2, -(N/2-1), ..., -1.
 
-# ProjectedField[m, ModeNumber] indexing lives in projectedfield.jl.
-# FTField[..., ModeNumber] is grid-layout-specific and belongs downstream.
+# ProjectedField[m, WaveNumberVector] indexing lives in projectedfield.jl.
+# FTField[..., WaveNumberVector] is grid-layout-specific and belongs downstream.
 
 """
-    ModeNumber(ns::Int...)
-    ModeNumber{N}(ns::NTuple{N, Int})
+    WaveNumberVector(ns::Int...)
+    WaveNumberVector{N}(ns::NTuple{N, Int})
 
 Integer wavenumber index for spectral fields.  Holds `N` wavenumbers ordered
 to match `fft_dims(g) = ORDER`:
@@ -24,10 +24,10 @@ Requesting a negative first wavenumber `ns[1] < 0` is valid: the implementation
 reads (or writes) the entry at `(-ns[1], -ns[2:N]...)` and applies a complex
 conjugate, exploiting the Hermitian symmetry of a real-valued field.
 """
-struct ModeNumber{N}
+struct WaveNumberVector{N}
     ns::NTuple{N, Int}
 end
-ModeNumber(ns::Int...) = ModeNumber(ns)
+WaveNumberVector(ns::Int...) = WaveNumberVector(ns)
 
 # ------------------------------------------------------------------ #
 # Index arithmetic helpers                                             #
@@ -42,9 +42,9 @@ _fftw_index(n::Int, N::Int) = n >= 0 ? n + 1 : N + n + 1
 _fftw_sym_index(i::Int, N::Int) = i == 1 ? 1 : N - i + 2
 
 """
-    _modenumber_to_indices(g::AbstractGrid, n::ModeNumber{N}) where {N}
+    _wavenumber_vector_to_indices(g::AbstractGrid, n::WaveNumberVector{N}) where {N}
 
-Convert a `ModeNumber` to 1-based `ProjectedField` axis indices plus a
+Convert a `WaveNumberVector` to 1-based `ProjectedField` axis indices plus a
 conjugate flag.  Returns the `(N+1)`-tuple `(i_H1, i_H2, …, i_HN, do_conj)`
 where each `i_Hk` is the 1-based index along axis `k+1` of the
 `ProjectedField` array (axes follow the order of `fft_dims(g) = ORDER`).
@@ -53,7 +53,7 @@ where each `i_Hk` is the 1-based index along axis `k+1` of the
 requested mode (the rfft axis stores only `n ≥ 0`, so negative wavenumbers
 are reached via conjugate symmetry).
 """
-function _modenumber_to_indices(g::AbstractGrid, n::ModeNumber{N}) where {N}
+function _wavenumber_vector_to_indices(g::AbstractGrid, n::WaveNumberVector{N}) where {N}
     H = fft_dims(g)
     if n.ns[1] >= 0
         rest = ntuple(j -> _fftw_index( n.ns[j+1], size(g, H[j+1])), Val(N-1))

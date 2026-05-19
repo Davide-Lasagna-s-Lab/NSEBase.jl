@@ -1,7 +1,7 @@
-# Helper: collect all index/frequency tuples visited by for_each_mode / for_each_freq
-function collect_modes(g)
+# Helper: collect all index/frequency tuples visited by for_each_wavenumber / for_each_freq
+function collect_wavenumbers(g)
     result = NTuple{length(NSEBase.fft_dims(g)), Int}[]
-    NSEBase.for_each_mode(g) do args...
+    NSEBase.for_each_wavenumber(g) do _, args...
         push!(result, args)
     end
     return result
@@ -19,16 +19,16 @@ end
     struct TestGrid{S, D, AXES, ORDER} <: AbstractGrid{Float64, D, AXES, ORDER} end
     Base.size(::TestGrid{S}) where {S} = S
 
-    @testset "for_each_mode" begin
+    @testset "for_each_wavenumber" begin
         # Grid with one rfft dimension of size 7, ORDER = (1,)
         g = TestGrid{(7,), 1, nothing, (1,)}()
-        modes = collect_modes(g)
+        modes = collect_wavenumbers(g)
         @test modes == [(1,), (2,), (3,), (4,)]   # 1:(7>>1)+1 = 1:4
         @test length(modes) == (7 >> 1) + 1
 
         # Grid with rfft along dim 1 (size 7) and signed fft along dim 2 (size 5), ORDER = (1, 2)
         g = TestGrid{(7, 5), 2, nothing, (1, 2)}()
-        modes = collect_modes(g)
+        modes = collect_wavenumbers(g)
 
         # rfft indices: 1:4, signed-fft indices: 1:3 (pos) then 4:5 (neg)
         rfft_indices  = 1:(7 >> 1) + 1          # 1:4
@@ -41,12 +41,12 @@ end
 
         # no duplicate indices
         g = TestGrid{(7, 5), 2, nothing, (1, 2)}()
-        modes = collect_modes(g)
+        modes = collect_wavenumbers(g)
         @test length(modes) == length(unique(modes))
 
         # all storage indices covered
         g = TestGrid{(7, 5), 2, nothing, (1, 2)}()
-        modes = collect_modes(g)
+        modes = collect_wavenumbers(g)
         all_i1 = sort(unique(first.(modes)))
         all_i2 = sort(unique(last.(modes)))
         @test all_i1 == collect(1:(7 >> 1) + 1)
@@ -54,7 +54,7 @@ end
 
         # zero allocations
         g = TestGrid{(7, 5), 2, nothing, (1, 2)}()
-        f(grid) = @allocated NSEBase.for_each_mode((args...)->nothing, grid)
+        f(grid) = @allocated NSEBase.for_each_wavenumber((args...)->nothing, grid)
         # Warm up
         f(g)
         allocs = f(g)
@@ -108,7 +108,7 @@ end
     @testset "f_e_m and f_e_f agree" begin
         for sz in [(7,), (5, 7), (5, 7, 9)]
             g = TestGrid{sz, length(sz), nothing, ntuple(identity, length(sz))}()
-            n_modes = 0; NSEBase.for_each_mode(g) do args...; n_modes += 1; end
+            n_modes = 0; NSEBase.for_each_wavenumber(g) do args...; n_modes += 1; end
             n_freqs = 0; NSEBase.for_each_freq(g) do args...; n_freqs += 1; end
             @test n_modes == n_freqs
         end

@@ -34,7 +34,7 @@ function project!(a::ProjectedField{G},
     g        = grid(u)
     w        = weights(g)
     inh_size = map(d -> size(g, d), inhomogeneous_dims(g))
-    for_each_mode(g) do _, homogeneous_indices...
+    for_each_wavenumber(g) do _, homogeneous_indices...
         for m in axes(a, 1)
             acc = zero(Complex{T})
             for I in CartesianIndices(inh_size)
@@ -74,7 +74,7 @@ function expand!(u::VectorField{N, <:FTField{G}},
     u .= zero(Complex{T})
     g        = grid(u)
     inh_size = map(d -> size(g, d), inhomogeneous_dims(g))
-    for_each_mode(g) do _, homogeneous_indices...
+    for_each_wavenumber(g) do _, homogeneous_indices...
         for m in axes(a, 1)
             coeff = @inbounds parent(a)[m, homogeneous_indices...]
             for I in CartesianIndices(inh_size)

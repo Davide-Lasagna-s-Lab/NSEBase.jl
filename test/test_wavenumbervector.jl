@@ -1,4 +1,4 @@
-@testset verbose=true "Mode number conversion              " begin
+@testset verbose=true "WaveNumberVector conversion               " begin
     # utility grid for testing
     struct TempGrid{S, H} <: AbstractGrid{Float64, 4, (1, 2, 3, 4), H} end
     Base.size(::TempGrid{S}) where {S} = S
@@ -11,16 +11,16 @@
 
         # Non-conjugate half: n1 ≥ 0, forward ordering
         for _n1 in 1:(N1 >> 1) + 1
-            n = ModeNumber(n1s[_n1])
-            @test NSEBase._modenumber_to_indices(g, n) == (_n1, false)
+            n = WaveNumberVector(n1s[_n1])
+            @test NSEBase._wavenumber_vector_to_indices(g, n) == (_n1, false)
         end
 
         n1s = collect(0:-1:-(N1 >> 1))
 
         # Conjugate half: n1 < 0, reversed ordering
         for _n1 in 2:(N1 >> 1) + 1
-            n = ModeNumber(n1s[_n1])
-            @test NSEBase._modenumber_to_indices(g, n) == (_n1, true)
+            n = WaveNumberVector(n1s[_n1])
+            @test NSEBase._wavenumber_vector_to_indices(g, n) == (_n1, true)
         end
     end
 
@@ -34,8 +34,8 @@
 
         # Non-conjugate half: n1 ≥ 0, forward ordering
         for _n1 in 1:(N1 >> 1) + 1, _n2 in 1:N2
-            n = ModeNumber(n1s[_n1], n2s[_n2])
-            @test NSEBase._modenumber_to_indices(g, n) == (_n1, _n2, false)
+            n = WaveNumberVector(n1s[_n1], n2s[_n2])
+            @test NSEBase._wavenumber_vector_to_indices(g, n) == (_n1, _n2, false)
         end
 
         n1s = collect(0:-1:-(N1 >> 1))
@@ -43,8 +43,8 @@
 
         # Conjugate half: n1 < 0, reversed ordering
         for _n1 in 2:(N1 >> 1) + 1, _n2 in 1:N2
-            n = ModeNumber(n1s[_n1], n2s[_n2])
-            @test NSEBase._modenumber_to_indices(g, n) == (_n1, _n2, true)
+            n = WaveNumberVector(n1s[_n1], n2s[_n2])
+            @test NSEBase._wavenumber_vector_to_indices(g, n) == (_n1, _n2, true)
         end
     end
 
@@ -60,8 +60,8 @@
 
         # Non-conjugate half: n1 ≥ 0, forward ordering
         for _n1 in 1:(N1 >> 1) + 1, _n2 in 1:N2, _n3 in 1:N3
-            n = ModeNumber(n1s[_n1], n2s[_n2], n3s[_n3])
-            @test NSEBase._modenumber_to_indices(g, n) == (_n1, _n2, _n3, false)
+            n = WaveNumberVector(n1s[_n1], n2s[_n2], n3s[_n3])
+            @test NSEBase._wavenumber_vector_to_indices(g, n) == (_n1, _n2, _n3, false)
         end
 
         n1s = collect(0:-1:-(N1 >> 1))
@@ -70,8 +70,8 @@
 
         # Conjugate half: n1 < 0, reversed ordering
         for _n1 in 2:(N1 >> 1) + 1, _n2 in 1:N2, _n3 in 1:N3
-            n = ModeNumber(n1s[_n1], n2s[_n2], n3s[_n3])
-            @test NSEBase._modenumber_to_indices(g, n) == (_n1, _n2, _n3, true)
+            n = WaveNumberVector(n1s[_n1], n2s[_n2], n3s[_n3])
+            @test NSEBase._wavenumber_vector_to_indices(g, n) == (_n1, _n2, _n3, true)
         end
     end
 

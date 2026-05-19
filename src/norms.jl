@@ -13,7 +13,7 @@ Inner product of two spectral fields on the same grid, defined as
 \\operatorname{Re}\\bigl(\\bar{u}_{\\mathbf{k},\\mathbf{j}}\\, v_{\\mathbf{k},\\mathbf{j}}\\bigr),
 ```
 
-where the sum is over all stored spectral modes `k` and inhomogeneous indices
+where the sum is over all stored spectral wavenumbers `k` and inhomogeneous indices
 `j`, `c_{k_1}` is `1` for the zero rfft wavenumber and `2` otherwise (Hermitian
 symmetry of the rfft), `w(j)` are the quadrature weights returned by
 [`weights`](@ref), and the overall factor of `1/2` removes the double-counting
@@ -159,18 +159,18 @@ end
     dot(a::ProjectedField, b::ProjectedField)
 
 Inner product of two projected fields, exploiting the rfft Hermitian symmetry.
-Modes with rfft index `> 1` (wavenumber `nx > 0`) are stored once but represent
+Wavenumbers with rfft index `> 1` (wavenumber `nx > 0`) are stored once but represent
 both `+nx` and `-nx`, so they contribute with weight 2; the `nx = 0` plane has
 weight 1.  The result is divided by 2 to account for the double-counting of
 signed-FFT pairs `(nz, nt)` and `(-nz, -nt)` that both appear in storage.
 
 The loop uses axis 1 as the mode index `m` (see Storage layout in
 [`ProjectedField`](@ref)) and the spectral indices `args...` from
-`for_each_mode`, which correspond to axes 2 onward in ORDER order.
+`for_each_wavenumber`, which correspond to axes 2 onward in ORDER order.
 """
 function LinearAlgebra.dot(a::ProjectedField{G}, b::ProjectedField{G}) where {G<:AbstractGrid}
     s = zero(real(eltype(a)))
-    for_each_mode(grid(a)) do one_or_two, homogeneous_indices...
+    for_each_wavenumber(grid(a)) do one_or_two, homogeneous_indices...
         for m in axes(a, 1)
             @inbounds s += one_or_two * real(LinearAlgebra.dot(parent(a)[m, homogeneous_indices...], parent(b)[m, homogeneous_indices...]))
         end
@@ -199,7 +199,7 @@ shifting `b` along the homogeneous directions.
 shifted copy of `b` when shifts are non-zero; if `nothing` a temporary is
 allocated internally.
 
-Follows the same rfft/signed-FFT weighting as [`dot`](@ref): rfft modes with
+Follows the same rfft/signed-FFT weighting as [`dot`](@ref): rfft wavenumbers with
 `nx > 0` contribute with weight 2 (they represent both `±nx`), and the result
 is divided by 2 to remove signed-FFT double-counting.
 """
@@ -213,7 +213,7 @@ function normdiff(a::ProjectedField{G}, b::ProjectedField{G},
         b = tmp
     end
     s = zero(real(eltype(a)))
-    for_each_mode(grid(a)) do one_or_two, homogeneous_indices...
+    for_each_wavenumber(grid(a)) do one_or_two, homogeneous_indices...
         for m in axes(a, 1)
             @inbounds s += one_or_two * abs2(parent(a)[m, homogeneous_indices...] - parent(b)[m, homogeneous_indices...])
         end

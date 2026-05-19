@@ -87,7 +87,7 @@ Base.@propagate_inbounds function Base.setindex!(u::ProjectedField, val, i::Int)
 end
 
 """
-    a[m, n::ModeNumber]
+    a[m, n::WaveNumberVector]
 
 Return the complex modal coefficient for mode `m` at wavenumber tuple `n`.
 
@@ -98,8 +98,8 @@ is read and conjugated.
 """
 Base.@propagate_inbounds function Base.getindex(a::ProjectedField,
                                                 m::Int,
-                                                n::ModeNumber)
-    tpl     = _modenumber_to_indices(grid(a), n)
+                                                n::WaveNumberVector)
+    tpl     = _wavenumber_vector_to_indices(grid(a), n)
     do_conj = last(tpl)
     indices = Base.front(tpl)
     @boundscheck checkbounds(a, m, indices...)
@@ -108,7 +108,7 @@ Base.@propagate_inbounds function Base.getindex(a::ProjectedField,
 end
 
 """
-    a[m, n::ModeNumber] = val
+    a[m, n::WaveNumberVector] = val
 
 Write the complex modal coefficient `val` for mode `m` at wavenumber tuple `n`.
 
@@ -117,7 +117,7 @@ Two symmetry invariants are maintained automatically:
 - **Hermitian symmetry** — when the rfft wavenumber `n.ns[1] == 0`, the
   conjugate-symmetric entry at `(0, -n.ns[2:N]…)` is also updated so that
   the physical field remains real-valued.
-- **Zero-mode reality** — the fully-zero mode `ModeNumber(0, 0, …)` is
+- **Zero-wavenumber reality** — the fully-zero wavenumber `WaveNumberVector(0, 0, …)` is
   forced to be real (imaginary part discarded).
 
 If `n.ns[1] < 0` the write targets the conjugate-symmetric storage location
@@ -126,15 +126,15 @@ and `conj(val)` is stored, keeping the representation consistent with reads.
 Base.@propagate_inbounds function Base.setindex!(a::ProjectedField{G},
                                                val,
                                                  m::Int,
-                                                 n::ModeNumber{N}) where {T, N, G<:AbstractGrid{T}}
+                                                 n::WaveNumberVector{N}) where {T, N, G<:AbstractGrid{T}}
     CT      = Complex{T}
-    tpl     = _modenumber_to_indices(grid(a), n)
+    tpl     = _wavenumber_vector_to_indices(grid(a), n)
     do_conj = last(tpl)
     indices = Base.front(tpl)
     i0      = first(indices)      # rfft axis index (axis 2 of ProjectedField)
     rest    = Base.tail(indices)  # signed-fft axis indices (axes 3…)
 
-    # Force the fully-zero mode to be real.
+    # Force the fully-zero wavenumber to be real.
     val = (i0 == 1 && all(==(1), rest)) ? CT(real(val)) : CT(val)
 
     # Conjugate-symmetric indices for each signed-fft axis.
@@ -147,4 +147,3 @@ Base.@propagate_inbounds function Base.setindex!(a::ProjectedField{G},
     i0 == 1 && @inbounds parent(a)[m, i0, sym_rest...] = do_conj ? val  : conj(val)
     return val
 end
-
