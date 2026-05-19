@@ -138,6 +138,29 @@ end
 
 
 """
+    indices_to_wavenumbers(g, spectral) -> NTuple{N, Int}
+
+Convert the `N`-tuple of 1-based FFTW storage indices `spectral` (as yielded
+by `for_each_mode`) to a tuple of signed integer wavenumbers.
+
+- rfft dimension (k=1): storage index `i` → wavenumber `i - 1` (always ≥ 0).
+- Full-FFT dimensions (k≥2): positive block `i ≤ N÷2+1` → `i - 1`;
+  negative block `i > N÷2+1` → `i - 1 - N`.
+"""
+function indices_to_wavenumbers(g::AbstractGrid{T, D, AXES, ORDER}, spectral) where {T, D, AXES, ORDER}
+    N = length(ORDER)
+    ntuple(N) do k
+        i = spectral[k]
+        # rfft dim: only non-negative wavenumbers stored, so i=1 → k=0, i=2 → k=1, …
+        # Full-FFT dims: FFTW packs positive wavenumbers first (i ≤ N/2+1 → k=i-1),
+        # then negative (i > N/2+1 → k=i-1-N), matching the two-block loop in for_each_mode.
+        k == 1 ? i - 1 :
+                 (i <= (size(g, ORDER[k]) >> 1) + 1 ? i - 1 : i - 1 - size(g, ORDER[k]))
+    end
+end
+
+
+"""
     for_each_point(f, g::AbstractGrid)
 
 Call `f(one_or_two, inhom, idx)` for every element of an `FTField` on `g`, where:

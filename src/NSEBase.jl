@@ -14,6 +14,7 @@ export FFTPlans, FFT, IFFT
 export ProjectedField, modes, project!, project, expand!, expand, get_mode_coefficient
 export shift!, shift, normdiff, minnormdiff
 export save_grid, load_grid, save_field, load_field
+export FarazmandWeight
 export CartesianPrimitive3DNSE, CartesianPrimitive3DLNSE
 export CartesianPrimitive2DNSE, CartesianPrimitive2DLNSE
 export Forward, AdjointContinuous, AdjointDiscrete, NoForce, CompoundForcing, Mode
@@ -32,6 +33,7 @@ include("projectedfield.jl")
 include("galerkin.jl")
 include("shifts.jl")
 include("norms.jl")
+include("weighting.jl")
 include("broadcasting.jl")
 include("derivatives.jl")
 include("io.jl")

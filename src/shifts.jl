@@ -22,19 +22,12 @@ function shift!(u::FTField{G}, shifts) where {G<:AbstractGrid{T, D, AXES, ORDER}
     inh_sizes = map(d -> size(g, d), inh_dims)
 
     for_each_mode(g) do _, spectral...
-        # Convert each 1-based storage index to a signed wavenumber.
-        # rfft dim (k=1): storage i → wavenumber i-1 (always ≥ 0).
-        # Full-FFT dims (k≥2): positive block i ≤ N/2+1 → i-1,
-        #                       negative block i >  N/2+1 → i-1-N.
-        freqs = ntuple(N) do k
-            i = spectral[k]
-            k == 1 ? i - 1 :
-                     (i <= (size(g, ORDER[k]) >> 1) + 1 ? i - 1 : i - 1 - size(g, ORDER[k]))
-        end
-
-        phase = prod(1:N) do k
-            iszero(freqs[k]) ? one(Complex{T}) :
-                               cis(freqs[k] * shifts[k] * wavenumber_scale(g, ORDER[k]))
+        # Convert storage indices to signed wavenumbers, then accumulate the
+        # total phase as a product over all homogeneous directions.
+        ks    = indices_to_wavenumbers(g, spectral)
+        phase = prod(1:N) do i
+            iszero(ks[i]) ? one(Complex{T}) :
+                            cis(ks[i] * shifts[i] * wavenumber_scale(g, ORDER[i]))
         end
 
         # Apply phase to every inhomogeneous index combination for this mode.
@@ -72,14 +65,12 @@ function shift!(a::ProjectedField{G}, shifts) where {G<:AbstractGrid{T, D, AXES,
     pa = parent(a)
     N  = length(ORDER)
     for_each_mode(g) do _, spectral...
-        freqs = ntuple(N) do k
-            i = spectral[k]
-            k == 1 ? i - 1 :
-                     (i <= (size(g, ORDER[k]) >> 1) + 1 ? i - 1 : i - 1 - size(g, ORDER[k]))
-        end
-        phase = prod(1:N) do k
-            iszero(freqs[k]) ? one(Complex{T}) :
-                               cis(freqs[k] * shifts[k] * wavenumber_scale(g, ORDER[k]))
+        # Same phase computation as FTField shift; applied uniformly across
+        # all mode indices m at this spectral location.
+        ks    = indices_to_wavenumbers(g, spectral)
+        phase = prod(1:N) do i
+            iszero(ks[i]) ? one(Complex{T}) :
+                            cis(ks[i] * shifts[i] * wavenumber_scale(g, ORDER[i]))
         end
         for m in axes(a, 1)
             @inbounds pa[m, spectral...] *= phase
