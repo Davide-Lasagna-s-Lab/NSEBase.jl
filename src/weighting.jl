@@ -33,12 +33,12 @@ Base.getindex(A::FarazmandWeight{N}, k::WaveNumberVector{N}) where {N} =
 
 
 """
-    mul!(a::ProjectedField, A::FarazmandWeight) -> a
+    lmul!(A::FarazmandWeight, a::ProjectedField) -> a
 
 Apply the spectral weight `A` in-place to every coefficient of `a`.
 """
-function LinearAlgebra.mul!(a::ProjectedField{G},
-                            A::FarazmandWeight{N}) where {N, G<:AbstractGrid{T, D, AXES, ORDER}} where {T, D, AXES, ORDER}
+function LinearAlgebra.lmul!(A::FarazmandWeight{N},
+                             a::ProjectedField{G}) where {N, G<:AbstractGrid}
     g  = grid(a)
     pa = parent(a)
     for_each_wavenumber(g) do _, homogeneous_indices...
@@ -66,8 +66,9 @@ Compute the `A`-weighted inner product
 where `c_{k_1}` is `1` for the zero rfft wavenumber and `2` otherwise.
 """
 function LinearAlgebra.dot(a::ProjectedField{G},
-                            A::FarazmandWeight{N},
-                            b::ProjectedField{G}) where {N, G<:AbstractGrid{T, D, AXES, ORDER}} where {T, D, AXES, ORDER}
+                           A::FarazmandWeight{N},
+                           b::ProjectedField{G}) where {N, G<:AbstractGrid}
+    T = real(eltype(a))
     s = zero(T)
     g = grid(a)
     for_each_wavenumber(g) do one_or_two, homogeneous_indices...
