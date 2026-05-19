@@ -13,7 +13,7 @@ export add_base_flow!
 export FFTPlans, FFT, IFFT
 export ProjectedField, modes, project!, project, expand!, expand, get_mode_coefficient
 export shift!, shift, normdiff, minnormdiff
-export save_field, load_field
+export save_grid, load_grid, save_field, load_field
 export CartesianPrimitive3DNSE, CartesianPrimitive3DLNSE
 export CartesianPrimitive2DNSE, CartesianPrimitive2DLNSE
 export Forward, AdjointContinuous, AdjointDiscrete, NoForce, Mode
