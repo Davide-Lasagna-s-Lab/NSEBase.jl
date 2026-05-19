@@ -52,19 +52,37 @@ end
 grid(u::FTField) = u.grid
 
 """
-    growto(u::FTField, target_size)
+    growto(u::FTField{G}, target_size::NTuple{D, Int}) where {G<:AbstractGrid{<:Any, D}}
 
-Return an equivalent field with a new homogeneous resolution.
+Return an equivalent spectral field on a grid with size `target_size`.
+
+`target_size` is the full physical-space grid size, so it must be an
+`NTuple{D, Int}`, where `D` is the dimension of `grid(u)`. The grid-specific
+`growto(grid(u), target_size)` method defines how the new grid is constructed.
+
+The spectral coefficients are copied by wavenumber vector: each stored
+wavenumber of `u` is converted to a [`WaveNumberVector`](@ref), then copied to
+the same wavenumber in the output field. This requires the target grid to
+represent every copied source wavenumber, so this method is primarily intended
+for increasing homogeneous resolution.
 
 This is optional.  Packages should only implement it if they support
 resolution-changing transforms such as `FFT(u, target_size)` and
 `IFFT(û, target_size)`.
 """
-function growto(u::FTField, target_size)
+function growto(u::FTField{G}, target_size::NTuple{D, Int}) where {T, D, G<:AbstractGrid{T, D}}
     out = FTField(growto(grid(u), target_size))
+    # Iterate source storage indices, convert them to signed wavenumbers,
+    # and copy the matching wavenumber slice in the target grid.
     for_each_wavenumber(grid(u)) do _, homogeneous_indices...
         k = to_wavenumber_vector(grid(u), homogeneous_indices)
-        out[k] .= u[k]
+
+        # Bind the views explicitly.  `out[k] .= u[k]` can route through
+        # broadcast's dotview machinery, which expects ordinary array indices;
+        # these temporaries force our WaveNumberVector getindex method first.
+        dst = out[k]
+        src = u[k]
+        dst .= src
     end
     return out
 end
