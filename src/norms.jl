@@ -25,8 +25,8 @@ function LinearAlgebra.dot(u::FTField{G}, v::FTField{G}) where {G<:AbstractGrid}
     pu = parent(u)
     pv = parent(v)
     ws = weights(g)
-    for_each_point(g) do one_or_two, inhom, idx
-        @inbounds s += one_or_two * ws[inhom...] * real(conj(pu[idx...]) * pv[idx...])
+    for_each_point(g) do one_or_two, inhomogeneous_indices, idx
+        @inbounds s += one_or_two * ws[inhomogeneous_indices...] * real(conj(pu[idx...]) * pv[idx...])
     end
     return s / 2
 end
@@ -68,8 +68,8 @@ function normdiff(u::FTField{G}, v::FTField{G},
     pu = parent(u)
     pv = parent(v)
     ws = weights(grid(u))
-    for_each_point(grid(u)) do one_or_two, inhom, idx
-        @inbounds s += one_or_two * ws[inhom...] * abs2(pu[idx...] - pv[idx...])
+    for_each_point(grid(u)) do one_or_two, inhomogeneous_indices, idx
+        @inbounds s += one_or_two * ws[inhomogeneous_indices...] * abs2(pu[idx...] - pv[idx...])
     end
     return sqrt(s / 2)
 end
@@ -170,9 +170,9 @@ The loop uses axis 1 as the mode index `m` (see Storage layout in
 """
 function LinearAlgebra.dot(a::ProjectedField{G}, b::ProjectedField{G}) where {G<:AbstractGrid}
     s = zero(real(eltype(a)))
-    for_each_mode(grid(a)) do one_or_two, args...
+    for_each_mode(grid(a)) do one_or_two, homogeneous_indices...
         for m in axes(a, 1)
-            @inbounds s += one_or_two * real(LinearAlgebra.dot(parent(a)[m, args...], parent(b)[m, args...]))
+            @inbounds s += one_or_two * real(LinearAlgebra.dot(parent(a)[m, homogeneous_indices...], parent(b)[m, homogeneous_indices...]))
         end
     end
     return s / 2
@@ -213,9 +213,9 @@ function normdiff(a::ProjectedField{G}, b::ProjectedField{G},
         b = tmp
     end
     s = zero(real(eltype(a)))
-    for_each_mode(grid(a)) do one_or_two, args...
+    for_each_mode(grid(a)) do one_or_two, homogeneous_indices...
         for m in axes(a, 1)
-            @inbounds s += one_or_two * abs2(parent(a)[m, args...] - parent(b)[m, args...])
+            @inbounds s += one_or_two * abs2(parent(a)[m, homogeneous_indices...] - parent(b)[m, homogeneous_indices...])
         end
     end
     return sqrt(s / 2)

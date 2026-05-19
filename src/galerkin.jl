@@ -2,17 +2,17 @@
 
 """
     get_mode_coefficient(modes, grid::AbstractGrid, n::Int, m::Int,
-                         inh::NTuple, spectral...) -> Number
+                         inhomogeneous_indices::NTuple, homogeneous_indices...) -> Number
 
 Return the complex coefficient of basis mode `m` for vector field component `n`
-at inhomogeneous storage indices `inh` (one per inhomogeneous dimension in
-ascending array-dimension order) and spectral storage indices `spectral...`
-(in `fft_dims` order).
+at inhomogeneous storage indices `inhomogeneous_indices` (one per inhomogeneous
+dimension in ascending array-dimension order) and homogeneous storage indices
+`homogeneous_indices...` (in `fft_dims` order).
 
 Downstream packages must extend this for their specific `modes` representation.
 """
-get_mode_coefficient(modes, grid::AbstractGrid, n::Int, m::Int, inh::NTuple, spectral...) =
-    throw(NotImplementedError(modes, grid, n, m, inh))
+get_mode_coefficient(modes, grid::AbstractGrid, n::Int, m::Int, inhomogeneous_indices::NTuple, homogeneous_indices...) =
+    throw(NotImplementedError(modes, grid, n, m, inhomogeneous_indices))
 
 raw"""
     project!(a::ProjectedField, u::VectorField) -> a
@@ -34,17 +34,17 @@ function project!(a::ProjectedField{G},
     g        = grid(u)
     w        = weights(g)
     inh_size = map(d -> size(g, d), inhomogeneous_dims(g))
-    for_each_mode(g) do _, spectral...
+    for_each_mode(g) do _, homogeneous_indices...
         for m in axes(a, 1)
             acc = zero(Complex{T})
             for I in CartesianIndices(inh_size)
-                inh = Tuple(I)
-                idx = _combine_indices(g, inh, spectral)
+                inhomogeneous_indices = Tuple(I)
+                idx = _combine_indices(g, inhomogeneous_indices, homogeneous_indices)
                 for n in 1:N
-                    @inbounds acc += w[I] * conj(get_mode_coefficient(modes(a), g, n, m, inh, spectral...)) * parent(u[n])[idx...]
+                    @inbounds acc += w[I] * conj(get_mode_coefficient(modes(a), g, n, m, inhomogeneous_indices, homogeneous_indices...)) * parent(u[n])[idx...]
                 end
             end
-            @inbounds parent(a)[m, spectral...] = acc
+            @inbounds parent(a)[m, homogeneous_indices...] = acc
         end
     end
     return a
@@ -74,14 +74,14 @@ function expand!(u::VectorField{N, <:FTField{G}},
     u .= zero(Complex{T})
     g        = grid(u)
     inh_size = map(d -> size(g, d), inhomogeneous_dims(g))
-    for_each_mode(g) do _, spectral...
+    for_each_mode(g) do _, homogeneous_indices...
         for m in axes(a, 1)
-            coeff = @inbounds parent(a)[m, spectral...]
+            coeff = @inbounds parent(a)[m, homogeneous_indices...]
             for I in CartesianIndices(inh_size)
-                inh = Tuple(I)
-                idx = _combine_indices(g, inh, spectral)
+                inhomogeneous_indices = Tuple(I)
+                idx = _combine_indices(g, inhomogeneous_indices, homogeneous_indices)
                 for n in 1:N
-                    @inbounds parent(u[n])[idx...] += coeff * get_mode_coefficient(modes(a), g, n, m, inh, spectral...)
+                    @inbounds parent(u[n])[idx...] += coeff * get_mode_coefficient(modes(a), g, n, m, inhomogeneous_indices, homogeneous_indices...)
                 end
             end
         end

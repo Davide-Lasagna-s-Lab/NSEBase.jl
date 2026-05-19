@@ -41,12 +41,12 @@ function LinearAlgebra.mul!(a::ProjectedField{G},
                              A::FarazmandWeight{N}) where {N, G<:AbstractGrid{T, D, AXES, ORDER}} where {T, D, AXES, ORDER}
     g  = grid(a)
     pa = parent(a)
-    for_each_mode(g) do _, spectral...
+    for_each_mode(g) do _, homogeneous_indices...
         # Look up the weight for this mode's wavenumber vector.
-        n = ModeNumber(indices_to_wavenumbers(g, spectral))
+        n = ModeNumber(indices_to_wavenumbers(g, homogeneous_indices))
         w = A[n]
         for m in axes(a, 1)
-            @inbounds pa[m, spectral...] *= w
+            @inbounds pa[m, homogeneous_indices...] *= w
         end
     end
     return a
@@ -70,12 +70,12 @@ function LinearAlgebra.dot(a::ProjectedField{G},
                             b::ProjectedField{G}) where {N, G<:AbstractGrid{T, D, AXES, ORDER}} where {T, D, AXES, ORDER}
     s = zero(T)
     g = grid(a)
-    for_each_mode(g) do one_or_two, spectral...
+    for_each_mode(g) do one_or_two, homogeneous_indices...
         # Weight for this wavenumber; one_or_two accounts for Hermitian conjugate pairs.
-        n = ModeNumber(indices_to_wavenumbers(g, spectral))
+        n = ModeNumber(indices_to_wavenumbers(g, homogeneous_indices))
         w = A[n]
         for m in axes(a, 1)
-            @inbounds s += one_or_two * w * real(LinearAlgebra.dot(parent(a)[m, spectral...], parent(b)[m, spectral...]))
+            @inbounds s += one_or_two * w * real(LinearAlgebra.dot(parent(a)[m, homogeneous_indices...], parent(b)[m, homogeneous_indices...]))
         end
     end
     return s / 2
