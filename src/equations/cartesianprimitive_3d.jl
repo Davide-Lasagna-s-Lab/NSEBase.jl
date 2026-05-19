@@ -16,8 +16,8 @@ Abstract supertype for 3-component Cartesian grids stored in 4D arrays
 `(x, y, z, t)`.
 
 `AXES = (x_dim, y_dim, z_dim, t_dim)` gives the array dimension for each
-coordinate.  Subtypes inherit the accessors `x_dim`, `y_dim`, `z_dim`, `t_dim`
-and the named derivative wrappers `ddx_x!`, `ddx_y!`, `ddx_z!`, `dds!`.
+coordinate.  Subtypes inherit the coordinate-indexed derivative wrappers
+`ddx_1!` (x), `ddx_2!` (y), `ddx_3!` (z), `ddx_4!` (t).
 
 # Example
 
@@ -119,9 +119,9 @@ function (eq::CartesianPrimitive3DNSE)(::Real,
     laplacian!(out, u)
     out .*= 1/eq.Re
 
-    ddx_x!(dudx, u)
-    ddx_y!(dudy, u)
-    ddx_z!(dudz, u)
+    ddx_1!(dudx, u)
+    ddx_2!(dudy, u)
+    ddx_3!(dudz, u)
 
     eq.plans(U, u); eq.plans(dUdx, dudx); eq.plans(dUdy, dudy); eq.plans(dUdz, dudz)
     for n in 1:3
@@ -145,7 +145,7 @@ function (eq::CartesianPrimitive3DLNSE)(::Real,
     dudx = eq.scache[1]; dudy = eq.scache[2]; dudz = eq.scache[3]
     U    = eq.pcache[1]; dUdy = eq.pcache[3]; dUdz = eq.pcache[4]
 
-    ddx_x!(dudx, u); ddx_y!(dudy, u); ddx_z!(dudz, u)
+    ddx_1!(dudx, u); ddx_2!(dudy, u); ddx_3!(dudz, u)
     eq.plans(U, u); eq.plans(dUdy, dudy); eq.plans(dUdz, dudz)
 
     eq(0, v, out)
@@ -163,7 +163,7 @@ function (eq::CartesianPrimitive3DLNSE{Forward})(::Real,
     laplacian!(out, v)
     out .*= 1/eq.Re
 
-    ddx_x!(dvdx, v); ddx_y!(dvdy, v); ddx_z!(dvdz, v)
+    ddx_1!(dvdx, v); ddx_2!(dvdy, v); ddx_3!(dvdz, v)
 
     eq.plans(V, v); eq.plans(dUdx, dudx)
     eq.plans(dVdx, dvdx); eq.plans(dVdy, dvdy); eq.plans(dVdz, dvdz)
@@ -188,7 +188,7 @@ function (eq::CartesianPrimitive3DLNSE{AdjointContinuous})(::Real,
     laplacian!(out, v)
     out .*= 1/eq.Re
 
-    ddx_x!(dvdx, v); ddx_y!(dvdy, v); ddx_z!(dvdz, v)
+    ddx_1!(dvdx, v); ddx_2!(dvdy, v); ddx_3!(dvdz, v)
 
     eq.plans(V, v); eq.plans(dUdx, dudx)
     eq.plans(dVdx, dvdx); eq.plans(dVdy, dvdy); eq.plans(dVdz, dvdz)
@@ -228,9 +228,9 @@ function (eq::CartesianPrimitive3DLNSE{AdjointDiscrete})(::Real,
 
     eq.plans(dUdx, dudx)
     for n in 1:3
-        out[n] .-= ddx_x!(dudx[1], u1v[n], adjoint=true) .+
-                   ddx_y!(dudx[2], u2v[n], adjoint=true) .+
-                   ddx_z!(dudx[3], u3v[n], adjoint=true)
+        out[n] .-= ddx_1!(dudx[1], u1v[n], adjoint=true) .+
+                   ddx_2!(dudx[2], u2v[n], adjoint=true) .+
+                   ddx_3!(dudx[3], u3v[n], adjoint=true)
     end
     U1V .= 0
     for n in 1:3

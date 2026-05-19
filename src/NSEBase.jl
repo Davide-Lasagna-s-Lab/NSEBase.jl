@@ -6,7 +6,7 @@ export FFTW
 
 export AbstractGrid, AbstractCartesianGrid, AbstractCartesianGrid3D, AbstractCartesianGrid2D
 export points, growto, weights, fft_dims, inhomogeneous_dims, storage_order
-export x_dim, y_dim, z_dim, t_dim
+export ddx_1!, ddx_2!, ddx_3!, ddx_4!
 export ModeNumber
 export FTField, Field, VectorField, grid
 export add_base_flow!

@@ -43,6 +43,7 @@ homogeneous resolution.  Implementing grid growth is also required for
 """
 abstract type AbstractGrid{T<:Real, D, AXES, ORDER} end
 
+# TODO: get rid of this...
 """
     AbstractCartesianGrid{T, D, AXES, ORDER} <: AbstractGrid{T, D, AXES, ORDER}
 
