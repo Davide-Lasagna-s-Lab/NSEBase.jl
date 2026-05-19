@@ -52,13 +52,15 @@ end
 grid(u::FTField) = u.grid
 
 """
-    growto(u::FTField{G}, target_size::NTuple{D, Int}) where {G<:AbstractGrid{<:Any, D}}
+    growto(u::FTField{G}, target_size::NTuple{N, Int}) where {G<:AbstractGrid, N}
 
-Return an equivalent spectral field on a grid with size `target_size`.
+Return an equivalent spectral field with a new homogeneous resolution.
 
-`target_size` is the full physical-space grid size, so it must be an
-`NTuple{D, Int}`, where `D` is the dimension of `grid(u)`. The grid-specific
-`growto(grid(u), target_size)` method defines how the new grid is constructed.
+`target_size` contains one physical-space grid size for each homogeneous
+direction in `fft_dims(grid(u)) = ORDER`, in `ORDER` order. It must therefore
+have length `length(ORDER)`, not the full dimension `D` of `grid(u)`.
+Inhomogeneous directions are preserved by the grid-specific
+`growto(grid(u), target_size)` method.
 
 The spectral coefficients are copied by wavenumber vector: each stored
 wavenumber of `u` is converted to a [`WaveNumberVector`](@ref), then copied to
@@ -70,7 +72,10 @@ This is optional.  Packages should only implement it if they support
 resolution-changing transforms such as `FFT(u, target_size)` and
 `IFFT(û, target_size)`.
 """
-function growto(u::FTField{G}, target_size::NTuple{D, Int}) where {T, D, G<:AbstractGrid{T, D}}
+function growto(u::FTField{G}, target_size::NTuple{N, Int}) where {T, D, AXES, ORDER, N, G<:AbstractGrid{T, D, AXES, ORDER}}
+    N == length(ORDER) ||
+        throw(ArgumentError("target_size has incompatible size: expected a tuple of length $(length(ORDER)), got length $N"))
+
     out = FTField(growto(grid(u), target_size))
     # Iterate source storage indices, convert them to signed wavenumbers,
     # and copy the matching wavenumber slice in the target grid.
