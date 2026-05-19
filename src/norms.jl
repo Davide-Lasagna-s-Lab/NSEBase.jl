@@ -184,3 +184,39 @@ end
 Norm induced from [`dot(a::ProjectedField, b::ProjectedField)`](@ref).
 """
 LinearAlgebra.norm(a::ProjectedField) = sqrt(dot(a, a))
+
+"""
+    normdiff(a::ProjectedField, b::ProjectedField,
+             shifts=zeros, tmp=nothing) -> Real
+
+Return `‖a − shift(b, shifts)‖`, the norm of the difference after optionally
+shifting `b` along the homogeneous directions.
+
+`shifts` is a tuple with one entry per homogeneous dimension in
+`fft_dims(grid(a)) = ORDER` order, defaulting to all zeros (no shift).
+
+`tmp` is an optional pre-allocated `ProjectedField` workspace used to hold the
+shifted copy of `b` when shifts are non-zero; if `nothing` a temporary is
+allocated internally.
+
+Follows the same rfft/signed-FFT weighting as [`dot`](@ref): rfft modes with
+`nx > 0` contribute with weight 2 (they represent both `±nx`), and the result
+is divided by 2 to remove signed-FFT double-counting.
+"""
+function normdiff(a::ProjectedField{G}, b::ProjectedField{G},
+                  shifts=ntuple(Returns(0), length(ORDER)),
+                  tmp=nothing) where {G<:AbstractGrid{T, D, AXES, ORDER}} where {T, D, AXES, ORDER}
+    if any(!iszero, shifts)
+        tmp = tmp === nothing ? zero(b) : tmp
+        tmp .= b
+        shift!(tmp, shifts)
+        b = tmp
+    end
+    s = zero(real(eltype(a)))
+    for_each_mode(grid(a)) do one_or_two, args...
+        for m in axes(a, 1)
+            @inbounds s += one_or_two * abs2(parent(a)[m, args...] - parent(b)[m, args...])
+        end
+    end
+    return sqrt(s / 2)
+end
