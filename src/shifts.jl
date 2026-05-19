@@ -26,7 +26,7 @@ function shift!(u::FTField{G}, shifts) where {G<:AbstractGrid{T, D, AXES, ORDER}
         # total phase as a product over all homogeneous directions.
         k     = to_wavenumber_vector(g, homogeneous_indices)
         phase = prod(1:N) do i
-            n = k.ns[i]
+            n = k[i]
             iszero(n) ? one(Complex{T}) :
                         cis(n * shifts[i] * wavenumber_scale(g, ORDER[i]))
         end
@@ -70,7 +70,7 @@ function shift!(a::ProjectedField{G}, shifts) where {G<:AbstractGrid{T, D, AXES,
         # all mode indices m at this spectral location.
         k     = to_wavenumber_vector(g, homogeneous_indices)
         phase = prod(1:N) do i
-            n = k.ns[i]
+            n = k[i]
             iszero(n) ? one(Complex{T}) :
                         cis(n * shifts[i] * wavenumber_scale(g, ORDER[i]))
         end

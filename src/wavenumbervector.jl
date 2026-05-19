@@ -1,7 +1,7 @@
 # WaveNumberVector: integer wavenumber index for spectral fields.
 
 # A WaveNumberVector{N} holds N integer wavenumbers ordered to match
-# fft_dims(g) = ORDER.  The first wavenumber (ns[1]) is for the rfft
+# fft_dims(g) = ORDER.  The first wavenumber (k[1]) is for the rfft
 # dimension ORDER[1]; negative values trigger conjugate-symmetry lookup. All
 # others are signed FFT wavenumbers in FFTW order: 0, 1, ..., N/2, -(N/2-1), ..., -1.
 
@@ -15,19 +15,22 @@
 Integer wavenumber index for spectral fields.  Holds `N` wavenumbers ordered
 to match `fft_dims(g) = ORDER`:
 
-- `ns[1]` — wavenumber for the rfft dimension `H[1]` (may be negative; see below).
-- `ns[2:N]` — signed wavenumbers for the remaining FFT dimensions, in FFTW
+- `k[1]` — wavenumber for the rfft dimension `H[1]` (may be negative; see below).
+- `k[2:N]` — signed wavenumbers for the remaining FFT dimensions, in FFTW
   storage order: `0, 1, …, N÷2, -(N÷2-1), …, -1`.
 
 **Conjugate symmetry.**  The rfft dimension stores only non-negative wavenumbers.
-Requesting a negative first wavenumber `ns[1] < 0` is valid: the implementation
-reads (or writes) the entry at `(-ns[1], -ns[2:N]...)` and applies a complex
+Requesting a negative first wavenumber `k[1] < 0` is valid: the implementation
+reads (or writes) the entry at `(-k[1], -k[2:N]...)` and applies a complex
 conjugate, exploiting the Hermitian symmetry of a real-valued field.
 """
 struct WaveNumberVector{N}
     ns::NTuple{N, Int}
 end
 WaveNumberVector(ns::Int...) = WaveNumberVector(ns)
+
+Base.@propagate_inbounds Base.getindex(k::WaveNumberVector, i) = @inbounds getindex(k.ns, i)
+Base.length(::WaveNumberVector{N}) where {N} = N
 
 # ------------------------------------------------------------------ #
 # Index arithmetic helpers                                             #
@@ -55,12 +58,12 @@ are reached via conjugate symmetry).
 """
 function to_indices(g::AbstractGrid, k::WaveNumberVector{N}) where {N}
     H = fft_dims(g)
-    if k.ns[1] >= 0
-        rest = ntuple(j -> _fftw_index( k.ns[j+1], size(g, H[j+1])), Val(N-1))
-        return (k.ns[1] + 1, rest..., false)
+    if k[1] >= 0
+        rest = ntuple(j -> _fftw_index( k[j+1], size(g, H[j+1])), Val(N-1))
+        return (k[1] + 1, rest..., false)
     else
-        rest = ntuple(j -> _fftw_index(-k.ns[j+1], size(g, H[j+1])), Val(N-1))
-        return (-k.ns[1] + 1, rest..., true)
+        rest = ntuple(j -> _fftw_index(-k[j+1], size(g, H[j+1])), Val(N-1))
+        return (-k[1] + 1, rest..., true)
     end
 end
 

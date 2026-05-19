@@ -79,8 +79,8 @@ Return a view of the underlying array over all non-transform dimensions for
 the wavenumber vector `k`. The wavenumbers in `k` follow the order
 of `fft_dims(grid(u)) = ORDER`.
 
-If the first (rfft) wavenumber `k.ns[1]` is negative the view is into the
-conjugate-symmetric storage location `(-k.ns[1], -k.ns[2:N]…)`; the caller
+If the first (rfft) wavenumber `k[1]` is negative the view is into the
+conjugate-symmetric storage location `(-k[1], -k[2:N]…)`; the caller
 is responsible for applying conjugation if needed.
 
 The returned view has one dimension for each axis of `u` not in `ORDER`,
@@ -101,8 +101,8 @@ end
 Return the complex modal coefficient for index `I` at wavenumber vector `k`.
 
 The wavenumbers in `k` follow the order of `fft_dims(grid(a)) = ORDER`.
-If the first (rfft) wavenumber `k.ns[1]` is negative the coefficient is
-obtained by conjugate symmetry: the entry stored at `(-k.ns[1], -k.ns[2:N]…)`
+If the first (rfft) wavenumber `k[1]` is negative the coefficient is
+obtained by conjugate symmetry: the entry stored at `(-k[1], -k[2:N]…)`
 is read and conjugated.
 """
 Base.@propagate_inbounds function Base.getindex(u::FTField,
@@ -124,13 +124,13 @@ Write the complex modal coefficient `val` for index `I` at wavenumber vector `k`
 
 Two symmetry invariants are maintained automatically:
 
-- **Hermitian symmetry** — when the rfft wavenumber `k.ns[1] == 0`, the
-  conjugate-symmetric entry at `(0, -k.ns[2:N]…)` is also updated so that
+- **Hermitian symmetry** — when the rfft wavenumber `k[1] == 0`, the
+  conjugate-symmetric entry at `(0, -k[2:N]…)` is also updated so that
   the physical field remains real-valued.
 - **Zero-wavenumber reality** — the fully-zero wavenumber `WaveNumberVector(0, 0, …)` is
   forced to be real (imaginary part discarded).
 
-If `k.ns[1] < 0` the write targets the conjugate-symmetric storage location
+If `k[1] < 0` the write targets the conjugate-symmetric storage location
 and `conj(val)` is stored, keeping the representation consistent with reads.
 """
 Base.@propagate_inbounds function Base.setindex!(u::FTField{G},

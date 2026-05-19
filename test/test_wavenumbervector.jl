@@ -3,6 +3,14 @@
     struct TempGrid{S, H} <: AbstractGrid{Float64, 4, (1, 2, 3, 4), H} end
     Base.size(::TempGrid{S}) where {S} = S
 
+    @testset "indexing                      " begin
+        k = WaveNumberVector(2, -1, 0)
+        @test k[1] == 2
+        @test k[2] == -1
+        @test k[1:3] == (2, -1, 0)
+        @test length(k) == 3
+    end
+
     @testset "1D                            " begin
         N1 = 23 # N1 can be even or odd
         g = TempGrid{(16, N1, 16, 16), (2,)}()

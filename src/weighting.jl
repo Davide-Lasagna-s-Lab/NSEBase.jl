@@ -11,7 +11,7 @@ w(k) = \\frac{1}{1 + \\sum_{j=1}^{N} (\\sigma_j \\, k_j)^2}
 ```
 
 where `σ_j = wavenumber_scale(g, ORDER[j])` are the physical wavenumber scales
-of the grid in `fft_dims` order, and `k_j = k.ns[j]` are the signed integer
+of the grid in `fft_dims` order, and `k_j = k[j]` are the signed integer
 wavenumbers stored in `k`.
 
 # Constructor
@@ -29,7 +29,7 @@ function FarazmandWeight(g::AbstractGrid{T, D, AXES, ORDER}) where {T, D, AXES, 
 end
 
 Base.getindex(A::FarazmandWeight{N}, k::WaveNumberVector{N}) where {N} =
-    1 / (1 + sum(j -> (A.scales[j] * k.ns[j])^2, 1:N))
+    1 / (1 + sum(j -> (A.scales[j] * k[j])^2, 1:N))
 
 
 """
