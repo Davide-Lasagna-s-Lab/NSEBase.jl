@@ -148,40 +148,6 @@ Base.@propagate_inbounds function Base.setindex!(a::ProjectedField{G},
     return val
 end
 
-# --------------------- #
-# inner-product methods #
-# --------------------- #
-"""
-    dot(a::ProjectedField, b::ProjectedField)
-
-Inner product of two projected fields, exploiting the rfft Hermitian symmetry.
-Modes with rfft index `> 1` (wavenumber `nx > 0`) are stored once but represent
-both `+nx` and `-nx`, so they contribute with weight 2; the `nx = 0` plane has
-weight 1.  The result is divided by 2 to account for the double-counting of
-signed-FFT pairs `(nz, nt)` and `(-nz, -nt)` that both appear in storage.
-
-The loop uses axis 1 as the mode index `m` (see Storage layout in
-[`ProjectedField`](@ref)) and the spectral indices `args...` from
-`for_each_mode`, which correspond to axes 2 onward in ORDER order.
-"""
-function LinearAlgebra.dot(a::ProjectedField{G}, b::ProjectedField{G}) where {G<:AbstractGrid}
-    s = zero(real(eltype(a)))
-    for_each_mode(grid(a)) do one_or_two, args...
-        for m in axes(a, 1)           # axis 1 is always the mode index
-            @inbounds s += one_or_two * real(LinearAlgebra.dot(parent(a)[m, args...], parent(b)[m, args...]))
-        end
-    end
-    return s / 2
-end
-
-"""
-    norm(a::ProjectedField)
-
-Norm induced from [`dot(a::ProjectedField, b::ProjectedField)`](@ref).
-"""
-LinearAlgebra.norm(a::ProjectedField) = sqrt(dot(a, a))
-
-
 # ---------------- #
 # galerkin methods #
 # ---------------- #
@@ -256,7 +222,7 @@ function expand!(u::VectorField{N, <:FTField{G}},
     # TODO: look at this function to see what code it generates and how it is looping over the modes
     # TODO: make an alternative version that use matrix multiplication, as it was being suggested in a chat with Claude
     # TODO: maybe there is a better way to store the modes that makes it more efficient to perform the expansion. In
-    # the end, we do not care how the modes are stores, as long as this operation is efficient
+    # the end, we do not care how the modes are stored, as long as this operation is efficient
     u .= zero(Complex{T})
     g        = grid(u)
     inh_size = map(d -> size(g, d), inhomogeneous_dims(g))
