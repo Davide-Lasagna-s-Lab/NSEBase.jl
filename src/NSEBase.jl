@@ -5,7 +5,7 @@ using LinearAlgebra, FFTW, JLD2
 export FFTW
 
 export AbstractGrid, AbstractCartesianGrid, AbstractCartesianGrid3D, AbstractCartesianGrid2D
-export points, growto, weights, fft_dims, inhomogeneous_dims
+export points, growto, weights, fft_dims, inhomogeneous_dims, storage_order
 export x_dim, y_dim, z_dim, t_dim
 export ModeNumber
 export FTField, Field, VectorField, grid
