@@ -6,58 +6,6 @@
 # Use NoForce() for flows with no body force.
 
 
-# -------------------------------- #
-# Abstract 3D Cartesian grid type  #
-# -------------------------------- #
-"""
-    AbstractCartesianGrid3D{T, AXES, ORDER} <: AbstractCartesianGrid{T, 4, AXES, ORDER}
-
-Abstract supertype for 3-component Cartesian grids stored in 4D arrays
-`(x, y, z, t)`.
-
-`AXES = (x_dim, y_dim, z_dim, t_dim)` gives the array dimension for each
-coordinate.  Subtypes inherit the coordinate-indexed derivative wrappers
-`ddx_1!` (x), `ddx_2!` (y), `ddx_3!` (z), `ddx_4!` (t).
-
-# Example
-
-A channel-flow grid stored as `(y, x, z, t)` (wall-normal first):
-
-```julia
-struct ChannelGrid{T} <: AbstractCartesianGrid3D{T, (2, 1, 3, 4), (2, 3, 4)} end
-```
-"""
-abstract type AbstractCartesianGrid3D{T, AXES, ORDER} <: AbstractCartesianGrid{T, 4, AXES, ORDER} end
-
-"""
-    x_dim(grid::AbstractCartesianGrid3D) -> Int
-
-Return the array dimension corresponding to the streamwise coordinate `x`.
-"""
-x_dim(::AbstractCartesianGrid3D{<:Any, AXES}) where {AXES} = AXES[1]
-
-"""
-    y_dim(grid::AbstractCartesianGrid3D) -> Int
-
-Return the array dimension corresponding to the wall-normal coordinate `y`.
-"""
-y_dim(::AbstractCartesianGrid3D{<:Any, AXES}) where {AXES} = AXES[2]
-
-"""
-    z_dim(grid::AbstractCartesianGrid3D) -> Int
-
-Return the array dimension corresponding to the spanwise coordinate `z`.
-"""
-z_dim(::AbstractCartesianGrid3D{<:Any, AXES}) where {AXES} = AXES[3]
-
-"""
-    t_dim(grid::AbstractCartesianGrid3D) -> Int
-
-Return the array dimension corresponding to time `t`.
-"""
-t_dim(::AbstractCartesianGrid3D{<:Any, AXES}) where {AXES} = AXES[4]
-
-
 # ----------------------- #
 # concrete 3D NSE struct  #
 # ----------------------- #

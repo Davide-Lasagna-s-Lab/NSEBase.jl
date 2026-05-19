@@ -136,11 +136,11 @@ the result in `out`.  The array dimension is read from `AXES[1]` of the grid
 type parameter at compile time and forwarded to [`ddx!`](@ref).
 
 Defined for `FTField`, `ProjectedField`, and `VectorField` arguments on any
-`AbstractCartesianGrid`.
+`AbstractGrid`.
 """
-ddx_1!(out::ProjectedField{G}, a::ProjectedField{G}; kwargs...) where {AXES, D, G<:AbstractCartesianGrid{<:Any, D, AXES}} =
+ddx_1!(out::ProjectedField{G}, a::ProjectedField{G}; kwargs...) where {AXES, D, G<:AbstractGrid{<:Any, D, AXES}} =
     ddx!(out, a, Val(AXES[1]); kwargs...)
-ddx_1!(out::FTField{G}, u::FTField{G}; kwargs...) where {AXES, D, G<:AbstractCartesianGrid{<:Any, D, AXES}} =
+ddx_1!(out::FTField{G}, u::FTField{G}; kwargs...) where {AXES, D, G<:AbstractGrid{<:Any, D, AXES}} =
     ddx!(out, u, Val(AXES[1]); kwargs...)
 ddx_1!(out::VectorField{N}, u::VectorField{N}; kwargs...) where {N} =
     (for n in 1:N; ddx_1!(out[n], u[n]; kwargs...); end; return out)
@@ -156,9 +156,9 @@ For inhomogeneous (non-FFT) directions this dispatches to the downstream
 package's extension of `ddx!` (e.g. a matrix–vector product with the
 wall-normal differentiation matrix).
 """
-ddx_2!(out::ProjectedField{G}, a::ProjectedField{G}; kwargs...) where {AXES, D, G<:AbstractCartesianGrid{<:Any, D, AXES}} =
+ddx_2!(out::ProjectedField{G}, a::ProjectedField{G}; kwargs...) where {AXES, D, G<:AbstractGrid{<:Any, D, AXES}} =
     ddx!(out, a, Val(AXES[2]); kwargs...)
-ddx_2!(out::FTField{G}, u::FTField{G}; kwargs...) where {AXES, D, G<:AbstractCartesianGrid{<:Any, D, AXES}} =
+ddx_2!(out::FTField{G}, u::FTField{G}; kwargs...) where {AXES, D, G<:AbstractGrid{<:Any, D, AXES}} =
     ddx!(out, u, Val(AXES[2]); kwargs...)
 ddx_2!(out::VectorField{N}, u::VectorField{N}; kwargs...) where {N} =
     (for n in 1:N; ddx_2!(out[n], u[n]; kwargs...); end; return out)
@@ -173,9 +173,9 @@ parameter at compile time and forwarded to [`ddx!`](@ref).
 For 2D grids `AXES[3] === nothing`, so this call is a compile-time no-op that
 leaves `out` unchanged.
 """
-ddx_3!(out::ProjectedField{G}, a::ProjectedField{G}; kwargs...) where {AXES, D, G<:AbstractCartesianGrid{<:Any, D, AXES}} =
+ddx_3!(out::ProjectedField{G}, a::ProjectedField{G}; kwargs...) where {AXES, D, G<:AbstractGrid{<:Any, D, AXES}} =
     ddx!(out, a, Val(AXES[3]); kwargs...)
-ddx_3!(out::FTField{G}, u::FTField{G}; kwargs...) where {AXES, D, G<:AbstractCartesianGrid{<:Any, D, AXES}} =
+ddx_3!(out::FTField{G}, u::FTField{G}; kwargs...) where {AXES, D, G<:AbstractGrid{<:Any, D, AXES}} =
     ddx!(out, u, Val(AXES[3]); kwargs...)
 ddx_3!(out::VectorField{N}, u::VectorField{N}; kwargs...) where {N} =
     (for n in 1:N; ddx_3!(out[n], u[n]; kwargs...); end; return out)
@@ -187,9 +187,9 @@ Differentiate `u` in the fourth physical coordinate (`t`), storing
 the result in `out`.  The array dimension is read from `AXES[4]` of the grid
 type parameter at compile time and forwarded to [`ddx!`](@ref).
 """
-ddx_4!(out::ProjectedField{G}, a::ProjectedField{G}; kwargs...) where {AXES, D, G<:AbstractCartesianGrid{<:Any, D, AXES}} =
+ddx_4!(out::ProjectedField{G}, a::ProjectedField{G}; kwargs...) where {AXES, D, G<:AbstractGrid{<:Any, D, AXES}} =
     ddx!(out, a, Val(AXES[4]); kwargs...)
-ddx_4!(out::FTField{G}, u::FTField{G}; kwargs...) where {AXES, D, G<:AbstractCartesianGrid{<:Any, D, AXES}} =
+ddx_4!(out::FTField{G}, u::FTField{G}; kwargs...) where {AXES, D, G<:AbstractGrid{<:Any, D, AXES}} =
     ddx!(out, u, Val(AXES[4]); kwargs...)
 ddx_4!(out::VectorField{N}, u::VectorField{N}; kwargs...) where {N} =
     (for n in 1:N; ddx_4!(out[n], u[n]; kwargs...); end; return out)

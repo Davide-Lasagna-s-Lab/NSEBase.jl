@@ -4,7 +4,7 @@ using LinearAlgebra, FFTW, JLD2
 
 export FFTW
 
-export AbstractGrid, AbstractCartesianGrid, AbstractCartesianGrid3D, AbstractCartesianGrid2D
+export AbstractGrid
 export points, growto, weights, fft_dims, inhomogeneous_dims, storage_order
 export ddx_1!, ddx_2!, ddx_3!, ddx_4!
 export ModeNumber

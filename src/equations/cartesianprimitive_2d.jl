@@ -5,52 +5,6 @@
 # (cartesianprimitive_3d.jl); z-derivative terms are simply absent.
 
 
-# -------------------------------- #
-# Abstract 2D Cartesian grid type  #
-# -------------------------------- #
-"""
-    AbstractCartesianGrid2D{T, AXES, ORDER} <: AbstractCartesianGrid{T, 3, AXES, ORDER}
-
-Abstract supertype for 2-component Cartesian grids stored in 3D arrays
-`(x, y, t)` (no spanwise z direction).
-
-`AXES = (x_dim, y_dim, nothing, t_dim)` gives the array dimension for each
-coordinate; `AXES[3] = nothing` marks the absent z direction.  Subtypes
-inherit the coordinate-indexed derivative wrappers `ddx_1!` (x), `ddx_2!` (y),
-`ddx_4!` (t).
-
-# Example
-
-A 2D channel grid stored as `(y, x, t)` (wall-normal first):
-
-```julia
-struct Channel2DGrid{T} <: AbstractCartesianGrid2D{T, (2, 1, nothing, 3), (2, 3)} end
-```
-"""
-abstract type AbstractCartesianGrid2D{T, AXES, ORDER} <: AbstractCartesianGrid{T, 3, AXES, ORDER} end
-
-"""
-    x_dim(grid::AbstractCartesianGrid2D) -> Int
-
-Return the array dimension corresponding to the streamwise coordinate `x`.
-"""
-x_dim(::AbstractCartesianGrid2D{<:Any, AXES}) where {AXES} = AXES[1]
-
-"""
-    y_dim(grid::AbstractCartesianGrid2D) -> Int
-
-Return the array dimension corresponding to the wall-normal coordinate `y`.
-"""
-y_dim(::AbstractCartesianGrid2D{<:Any, AXES}) where {AXES} = AXES[2]
-
-"""
-    t_dim(grid::AbstractCartesianGrid2D) -> Int
-
-Return the array dimension corresponding to time `t`.
-"""
-t_dim(::AbstractCartesianGrid2D{<:Any, AXES}) where {AXES} = AXES[4]
-
-
 # ----------------------- #
 # concrete 2D NSE struct  #
 # ----------------------- #

@@ -11,7 +11,7 @@ Type parameters:
 - `T`: scalar real type used by physical-space fields on this grid.
 - `D`: number of array dimensions.
 - `AXES`: tuple whose meaning is defined by the concrete grid subtype.
-  For `AbstractCartesianGrid` subtypes `AXES = (x_dim, y_dim, z_dim, t_dim)`;
+  For Cartesian grid subtypes `AXES = (x_dim, y_dim, z_dim, t_dim)`;
   other coordinate systems may use a different convention.
 - `ORDER`: tuple of statistically homogeneous array dimensions. These are
   transformed by FFTs; `ORDER[1]` is the rfft dimension.
@@ -42,23 +42,6 @@ homogeneous resolution.  Implementing grid growth is also required for
 - `transform_size(grid)`: returns the size of the corresponding `FTField`.
 """
 abstract type AbstractGrid{T<:Real, D, AXES, ORDER} end
-
-# TODO: get rid of this...
-"""
-    AbstractCartesianGrid{T, D, AXES, ORDER} <: AbstractGrid{T, D, AXES, ORDER}
-
-Abstract supertype for grids with Cartesian `(x, y, z, t)` coordinate semantics.
-
-`AXES = (x_dim, y_dim, z_dim, t_dim)` gives the array dimension for each
-physical coordinate; a `nothing` entry marks a direction that is not an
-independent axis (e.g. streamwise-independent geometry).
-
-Concrete Cartesian grids should subtype either `AbstractCartesianGrid3D` (for
-3-component flows stored in 4D arrays) or `AbstractCartesianGrid2D` (for
-2-component flows stored in 3D arrays), both of which define the corresponding
-coordinate-dimension accessors `x_dim`, `y_dim`, (`z_dim`,) and `t_dim`.
-"""
-abstract type AbstractCartesianGrid{T, D, AXES, ORDER} <: AbstractGrid{T, D, AXES, ORDER} end
 
 """
     fft_dims(grid::AbstractGrid) -> Tuple
