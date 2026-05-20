@@ -1,7 +1,7 @@
-# Helper: collect all index tuples visited by for_each_wavenumber.
+# Helper: collect all index tuples visited by for_each_homogeneous_index.
 function collect_wavenumbers(g)
     result = NTuple{length(NSEBase.fft_dims(g)), Int}[]
-    NSEBase.for_each_wavenumber(g) do _, args...
+    NSEBase.for_each_homogeneous_index(g) do _, args...
         push!(result, args)
     end
     return result
@@ -9,7 +9,7 @@ end
 
 function collect_wavenumber_vectors(g)
     result = NTuple{length(NSEBase.fft_dims(g)), Int}[]
-    NSEBase.for_each_wavenumber(g) do _, args...
+    NSEBase.for_each_homogeneous_index(g) do _, args...
         k = NSEBase.to_wavenumber_vector(g, args)
         push!(result, ntuple(i -> k[i], length(k)))
     end
@@ -20,7 +20,7 @@ end
     struct TestGrid{S, D, AXES, ORDER} <: AbstractGrid{Float64, D, AXES, ORDER} end
     Base.size(::TestGrid{S}) where {S} = S
 
-    @testset "for_each_wavenumber" begin
+    @testset "for_each_homogeneous_index" begin
         # Grid with one rfft dimension of size 7, ORDER = (1,)
         g = TestGrid{(7,), 1, nothing, (1,)}()
         modes = collect_wavenumbers(g)
@@ -55,7 +55,7 @@ end
 
         # zero allocations
         g = TestGrid{(7, 5), 2, nothing, (1, 2)}()
-        f(grid) = @allocated NSEBase.for_each_wavenumber((args...)->nothing, grid)
+        f(grid) = @allocated NSEBase.for_each_homogeneous_index((args...)->nothing, grid)
         # Warm up
         f(g)
         allocs = f(g)
