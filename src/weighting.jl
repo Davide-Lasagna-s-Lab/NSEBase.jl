@@ -45,6 +45,7 @@ function LinearAlgebra.lmul!(A::FarazmandWeight{N},
         # Look up the weight for this wavenumber vector.
         k = to_wavenumber_vector(g, homogeneous_indices)
         w = A[k]
+        # the index over modes is the first in the array a so this loop ordering is efficient
         for m in axes(a, 1)
             @inbounds pa[m, homogeneous_indices...] *= w
         end
