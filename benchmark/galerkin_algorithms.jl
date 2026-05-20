@@ -60,7 +60,7 @@ Base.convert(::Type{Float64}, g::BenchGrid) = g
 # Parameters                                                     #
 # ─────────────────────────────────────────────────────────────── #
 const NCOMP = 3
-const REFERENCE_SIZE = (8, 8, 4, 16)
+const REFERENCE_SIZE = (16, 4, 4, 16)
 
 function parse_int_tuple(value)
     return tuple((parse(Int, strip(x)) for x in split(value, ","))...)
@@ -164,15 +164,13 @@ end
 # ─────────────────────────────────────────────────────────────── #
 # BenchmarkTools helpers                                          #
 # ─────────────────────────────────────────────────────────────── #
-function benchmark_kernel(f!, out, args...)
-    # One warmup keeps compilation out of the reported BenchmarkTools trial.
-    f!(out, args...)
-
-    kernel = let f! = f!, out = out, args = args
-        () -> f!(out, args...)
-    end
-
-    trial = BenchmarkTools.@benchmark $kernel() evals=1 samples=BENCHMARK_SAMPLES seconds=BENCHMARK_SECONDS
+function benchmark_kernel(thunk)
+    # Each call site passes a concrete zero-arg closure capturing its own
+    # arguments, e.g. `() -> NSEBase.project!(a, u, NSEBase.LoopGalerkin())`.
+    # Avoiding varargs + splatting here keeps Julia's inference happy on the
+    # heavily-parametric kernels.
+    thunk()  # warmup keeps compilation out of the reported BenchmarkTools trial.
+    trial = BenchmarkTools.@benchmark $thunk() evals=1 samples=BENCHMARK_SAMPLES seconds=BENCHMARK_SECONDS
     estimate = BenchmarkTools.median(trial)
     return estimate.time / 1e9, estimate.memory
 end
@@ -268,9 +266,10 @@ function benchmark_project!(results, scale, dims)
         @assert maximum(abs, parent(a_loop) .- parent(a_nsloop)) < 1e-8 "project! NSLOOP mismatch (scale=$scale, Nm=$Nm)"
         @assert maximum(abs, parent(a_loop) .- parent(a_gemm))   < 1e-8 "project! GEMM mismatch (scale=$scale, Nm=$Nm)"
 
-        t_loop,   alloc_loop   = benchmark_kernel(loop_project!, a_loop, u_data, modes, NSEBase.weights(g))
-        t_nsloop, alloc_nsloop = benchmark_kernel(NSEBase.project!, a_nsloop, u_data, NSEBase.LoopGalerkin())
-        t_gemm,   alloc_gemm   = benchmark_kernel(NSEBase.project!, a_gemm,   u_data, NSEBase.GemmGalerkin())
+        ws = NSEBase.weights(g)
+        t_loop,   alloc_loop   = benchmark_kernel(() -> loop_project!(a_loop, u_data, modes, ws))
+        t_nsloop, alloc_nsloop = benchmark_kernel(() -> NSEBase.project!(a_nsloop, u_data, NSEBase.LoopGalerkin()))
+        t_gemm,   alloc_gemm   = benchmark_kernel(() -> NSEBase.project!(a_gemm,   u_data, NSEBase.GemmGalerkin()))
 
         record!(results; scale, dims, op="project", Nm, alg="LOOP",   time_s=t_loop,   alloc_bytes=alloc_loop)
         record!(results; scale, dims, op="project", Nm, alg="NSLOOP", time_s=t_nsloop, alloc_bytes=alloc_nsloop)
@@ -313,9 +312,9 @@ function benchmark_expand!(results, scale, dims)
             @assert maximum(abs, parent(u_loop[n]) .- parent(u_gemm[n]))   < 1e-8 "expand! GEMM mismatch (scale=$scale, Nm=$Nm, component=$n)"
         end
 
-        t_loop,   alloc_loop   = benchmark_kernel(loop_expand!, u_loop, a_loop, modes)
-        t_nsloop, alloc_nsloop = benchmark_kernel(NSEBase.expand!, u_nsloop, a_nsloop, NSEBase.LoopGalerkin())
-        t_gemm,   alloc_gemm   = benchmark_kernel(NSEBase.expand!, u_gemm,   a_gemm,   NSEBase.GemmGalerkin())
+        t_loop,   alloc_loop   = benchmark_kernel(() -> loop_expand!(u_loop, a_loop, modes))
+        t_nsloop, alloc_nsloop = benchmark_kernel(() -> NSEBase.expand!(u_nsloop, a_nsloop, NSEBase.LoopGalerkin()))
+        t_gemm,   alloc_gemm   = benchmark_kernel(() -> NSEBase.expand!(u_gemm,   a_gemm,   NSEBase.GemmGalerkin()))
 
         record!(results; scale, dims, op="expand", Nm, alg="LOOP",   time_s=t_loop,   alloc_bytes=alloc_loop)
         record!(results; scale, dims, op="expand", Nm, alg="NSLOOP", time_s=t_nsloop, alloc_bytes=alloc_nsloop)
@@ -346,7 +345,7 @@ function plot_metric!(ax, results, op, metric)
     color_values = length(Nm_vals) == 1 ? (0.72,) : range(0.45, 0.9, length=length(Nm_vals))
     color_maps = Dict("LOOP"   => PyPlot.cm.Greens,
                       "NSLOOP" => PyPlot.cm.Oranges,
-                      "GEMM"   => PyPlot.cm.Reds)
+                      "GEMM"   => PyPlot.cm.Blues)
 
     for (i, Nm) in enumerate(Nm_vals)
         for alg in ("LOOP", "NSLOOP", "GEMM")
@@ -378,7 +377,7 @@ function plot_speedup!(ax, results, op)
     styles  = Dict("NSLOOP" => ":", "GEMM" => "-")
     color_values = length(Nm_vals) == 1 ? (0.72,) : range(0.45, 0.9, length=length(Nm_vals))
     color_maps = Dict("NSLOOP" => PyPlot.cm.Oranges,
-                      "GEMM"   => PyPlot.cm.Reds)
+                      "GEMM"   => PyPlot.cm.Blues)
 
     for (i, Nm) in enumerate(Nm_vals)
         loop_rows = Dict(row.scale => row for row in results
@@ -447,33 +446,41 @@ end
 # ─────────────────────────────────────────────────────────────── #
 # Run                                                             #
 # ─────────────────────────────────────────────────────────────── #
-results = NamedTuple[]
+# Wrapped in `main()` so the inner benchmark calls run in a typed
+# function context — top-level loops trip Julia 1.12's inference of
+# heavily-parametric @generated kernels and emit a noisy (harmless)
+# internal-error trace.
+function main()
+    results = NamedTuple[]
 
-println("reference size: Ny=$(REFERENCE_SIZE[1])  Nx=$(REFERENCE_SIZE[2])  Nz=$(REFERENCE_SIZE[3])  Nt=$(REFERENCE_SIZE[4])")
-println("scale factors: $(join((string(scale) * "x" for scale in SCALE_FACTORS), ", "))")
-println("Nm values: $(join(Nm_vals, ", "))")
-println("mode tensor budget: $(MAX_MODE_MIB) MiB")
-println("BenchmarkTools budget: samples=$(BENCHMARK_SAMPLES), seconds=$(BENCHMARK_SECONDS)")
+    println("reference size: Ny=$(REFERENCE_SIZE[1])  Nx=$(REFERENCE_SIZE[2])  Nz=$(REFERENCE_SIZE[3])  Nt=$(REFERENCE_SIZE[4])")
+    println("scale factors: $(join((string(scale) * "x" for scale in SCALE_FACTORS), ", "))")
+    println("Nm values: $(join(Nm_vals, ", "))")
+    println("mode tensor budget: $(MAX_MODE_MIB) MiB")
+    println("BenchmarkTools budget: samples=$(BENCHMARK_SAMPLES), seconds=$(BENCHMARK_SECONDS)")
 
-for scale in SCALE_FACTORS
-    dims = scaled_size(scale)
-    NkH = homogeneous_size(dims)
-    max_Nm = maximum(Nm_vals)
+    for scale in SCALE_FACTORS
+        dims   = scaled_size(scale)
+        NkH    = homogeneous_size(dims)
+        max_Nm = maximum(Nm_vals)
+
+        println()
+        println("size $(scale)x: Ny=$(dims[1])  Nx=$(dims[2])  Nz=$(dims[3])  Nt=$(dims[4])  NkH=$NkH")
+        println("largest mode tensor: $(round(mode_storage_mib(dims, max_Nm), digits=1)) MiB")
+
+        print_project_header()
+        benchmark_project!(results, scale, dims)
+
+        print_expand_header()
+        benchmark_expand!(results, scale, dims)
+    end
+
+    write_results(RESULTS_PATH, results)
+    make_figure(FIGURE_PATH, results)
 
     println()
-    println("size $(scale)x: Ny=$(dims[1])  Nx=$(dims[2])  Nz=$(dims[3])  Nt=$(dims[4])  NkH=$NkH")
-    println("largest mode tensor: $(round(mode_storage_mib(dims, max_Nm), digits=1)) MiB")
-
-    print_project_header()
-    benchmark_project!(results, scale, dims)
-
-    print_expand_header()
-    benchmark_expand!(results, scale, dims)
+    println("wrote results: $RESULTS_PATH")
+    println("wrote figure:  $FIGURE_PATH")
 end
 
-write_results(RESULTS_PATH, results)
-make_figure(FIGURE_PATH, results)
-
-println()
-println("wrote results: $RESULTS_PATH")
-println("wrote figure:  $FIGURE_PATH")
+main()

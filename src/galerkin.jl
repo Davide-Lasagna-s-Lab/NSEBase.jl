@@ -117,10 +117,10 @@ struct GemmGalerkin end
 
 @generated function _loop_project!(pa,
                                    u::VectorField{N},
-                                   a::ProjectedField{G},
+                                   a::ProjectedField,
                                    w,
-                                   g::G) where {N, T, D, AXES, ORDER,
-                                                G<:AbstractGrid{T, D, AXES, ORDER}}
+                                   g::AbstractGrid{T, D, AXES, ORDER}
+                                   ) where {N, T, D, AXES, ORDER}
     Nhom     = length(ORDER)
     inh_dims = [d for d in 1:D if d ∉ ORDER]
 
@@ -173,9 +173,9 @@ end
 
 @generated function _loop_expand!(u::VectorField{N},
                                   pa,
-                                  a::ProjectedField{G},
-                                  g::G) where {N, T, D, AXES, ORDER,
-                                               G<:AbstractGrid{T, D, AXES, ORDER}}
+                                  a::ProjectedField,
+                                  g::AbstractGrid{T, D, AXES, ORDER}
+                                  ) where {N, T, D, AXES, ORDER}
     Nhom     = length(ORDER)
     inh_dims = [d for d in 1:D if d ∉ ORDER]
 
@@ -245,7 +245,8 @@ implementation.  See also [`project`](@ref) for the allocating form.
 """
 function project!(a::ProjectedField{G},
                   u::VectorField{N, <:FTField{G}},
-                  ::LoopGalerkin=LoopGalerkin()) where {N, G<:AbstractGrid{T}} where {T}
+                  ::LoopGalerkin=LoopGalerkin()
+                  ) where {N, T, D, AXES, ORDER, G<:AbstractGrid{T, D, AXES, ORDER}}
     a .= zero(Complex{T})
     _loop_project!(parent(a), u, a, weights(grid(u)), grid(u))
     return a
@@ -281,7 +282,8 @@ implementation.  See also [`expand`](@ref) for the allocating form.
 """
 function expand!(u::VectorField{N, <:FTField{G}},
                  a::ProjectedField{G},
-                 ::LoopGalerkin=LoopGalerkin()) where {N, G<:AbstractGrid{T}} where {T}
+                 ::LoopGalerkin=LoopGalerkin()
+                 ) where {N, T, D, AXES, ORDER, G<:AbstractGrid{T, D, AXES, ORDER}}
     # No pre-zeroing: the inner kernel writes every (j, k) of `parent(u[n])`
     # exactly once with `=` (not `+=`), so the previous contents are
     # unconditionally overwritten.
