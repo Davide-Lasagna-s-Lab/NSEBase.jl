@@ -44,15 +44,24 @@ ProjectedField(grid::AbstractGrid{T}, data::AbstractArray, modes) where {T} =
                    Complex{T}.(data), 
                    modes)
 
-ProjectedField(grid::AbstractGrid{T, D, H}, modes) where {T, D, H} =
-    ProjectedField(grid, 
-                   zeros(Complex{T}, no_of_modes(modes), 
-                   transform_size(grid)[collect(fft_dims(grid))]...), 
-                   modes)
+"""
+    ProjectedField(grid, modes) -> ProjectedField
+
+Allocate a zero-initialised `ProjectedField` over `grid` with basis `modes`.
+
+The number of modes `Nm` is taken from `modes[1]`: each `modes[n]` has shape
+`(inh_size..., Nm, kH...)`, so `Nm` lives at array dimension `Ninh + 1`.
+"""
+function ProjectedField(grid::AbstractGrid{T, D}, modes) where {T, D}
+    Ninh = D - length(fft_dims(grid))
+    Nm   = size(modes[1], Ninh + 1)
+    return ProjectedField(grid,
+                          zeros(Complex{T}, Nm,
+                                transform_size(grid)[collect(fft_dims(grid))]...),
+                          modes)
+end
 
 ProjectedField(u::Union{FTField, Field, VectorField}, modes) = ProjectedField(grid(u), modes)
-
-no_of_modes(modes) = throw(NotImplementedError(modes))
 
 # ----------------- #
 # interface methods #

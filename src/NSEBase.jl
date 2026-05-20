@@ -11,7 +11,8 @@ export WaveNumberVector, to_indices, to_wavenumber_vector
 export FTField, Field, VectorField, grid
 export add_base_flow!
 export FFTPlans, FFT, IFFT
-export ProjectedField, modes, project!, project, expand!, expand, get_mode_coefficient
+export ProjectedField, modes, project!, project, expand!, expand
+export LoopGalerkin, GemmGalerkin
 export shift!, shift, normdiff, minnormdiff
 export save_grid, load_grid, save_field, load_field
 export FarazmandWeight

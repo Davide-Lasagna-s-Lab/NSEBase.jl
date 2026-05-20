@@ -18,7 +18,7 @@ _grid_points(g)           = (reshape(g.x, :, 1), reshape(collect(range(0, g.L*(1
 _grid_dealiased_points(g) = (reshape(g.x, :, 1), reshape(collect(range(0, g.L*(1 - 1/(ceil(Int, 1.5*g.N))), length=ceil(Int, 1.5*g.N))), 1, :))
 
 
-NSEBase.add_base!(u::VectorField{N, <:FTField{FakeGrid}}, base) where {N} = u
+NSEBase.add_base_flow!(u::VectorField{N, <:FTField{FakeGrid}}, base) where {N} = u
 
 
 # ----------------- #
@@ -42,12 +42,3 @@ end
 # ------------------ #
 NSEBase.ddx!(out::FTField{FakeGrid}, u::FTField{FakeGrid}, ::Val{1}; adjoint=false) = (out .= u; return out)
 NSEBase.inhomogeneous_laplacian!(out::FTField{FakeGrid}, u::FTField{FakeGrid}; adjoint=false) = (out .= u; return out)
-
-
-# ----------------------- #
-# projected field methods #
-# ----------------------- #
-NSEBase.no_of_modes(modes::Vector{Array{Complex{T}, 3}}) where {T} = size(modes[1], 2)
-
-NSEBase.get_mode_coefficient(modes::Vector{Array{Complex{T}, 3}}, ::FakeGrid, n::Int, m::Int, inh::NTuple{1}, spectral...) where {T} =
-    modes[n][inh[1], m, spectral...]
