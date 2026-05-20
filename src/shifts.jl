@@ -21,7 +21,7 @@ function shift!(u::FTField{G}, shifts) where {G<:AbstractGrid{T, D, AXES, ORDER}
     inh_dims  = inhomogeneous_dims(g)
     inh_sizes = map(d -> size(g, d), inh_dims)
 
-    for_each_wavenumber(g) do _, homogeneous_indices...
+    for_each_homogeneous_index(g) do _, homogeneous_indices...
         # Convert storage indices to signed wavenumbers, then accumulate the
         # total phase as a product over all homogeneous directions.
         k     = to_wavenumber_vector(g, homogeneous_indices)
@@ -34,9 +34,11 @@ function shift!(u::FTField{G}, shifts) where {G<:AbstractGrid{T, D, AXES, ORDER}
         # Apply phase to every inhomogeneous index combination for this wavenumber.
         # CartesianIndices loop is the innermost, matching the column-major
         # layout of dim 1 in the parent array.
+        # Merge the current inhomogeneous CartesianIndex with the homogeneous
+        # storage indices to get the full D-dimensional parent-array index.
         for I in CartesianIndices(inh_sizes)
-            idx = _combine_indices(g, Tuple(I), homogeneous_indices)
-            @inbounds pu[idx...] *= phase
+            indices = _combine_indices(g, Tuple(I), homogeneous_indices)
+            @inbounds pu[indices...] *= phase
         end
     end
     return u
@@ -62,10 +64,9 @@ Returns `a` unchanged when all shifts are zero.
 """
 function shift!(a::ProjectedField{G}, shifts) where {G<:AbstractGrid{T, D, AXES, ORDER}} where {T, D, AXES, ORDER}
     any(!iszero, shifts) || return a
-    g  = grid(a)
-    pa = parent(a)
-    N  = length(ORDER)
-    for_each_wavenumber(g) do _, homogeneous_indices...
+    g = grid(a)
+    N = length(ORDER)
+    for_each_homogeneous_index(g) do _, homogeneous_indices...
         # Same phase computation as FTField shift; applied uniformly across
         # all mode indices m at this spectral location.
         k     = to_wavenumber_vector(g, homogeneous_indices)
@@ -75,7 +76,7 @@ function shift!(a::ProjectedField{G}, shifts) where {G<:AbstractGrid{T, D, AXES,
                         cis(n * shifts[i] * wavenumber_scale(g, ORDER[i]))
         end
         for m in axes(a, 1)
-            @inbounds pa[m, homogeneous_indices...] *= phase
+            @inbounds a[m, homogeneous_indices...] *= phase
         end
     end
     return a

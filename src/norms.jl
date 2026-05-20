@@ -25,8 +25,11 @@ function LinearAlgebra.dot(u::FTField{G}, v::FTField{G}) where {G<:AbstractGrid}
     pu = parent(u)
     pv = parent(v)
     ws = weights(g)
-    for_each_point(g) do one_or_two, inhomogeneous_indices, idx
-        @inbounds s += one_or_two * ws[inhomogeneous_indices...] * real(conj(pu[idx...]) * pv[idx...])
+    # one_or_two: rfft Hermitian weight (each +k mode represents ±k).
+    # ws[inhomogeneous_indices...]: quadrature weight for the wall-normal location.
+    # indices: full D-dimensional array index for direct access to the parent array.
+    for_each_index(g) do one_or_two, inhomogeneous_indices, indices
+        @inbounds s += one_or_two * ws[inhomogeneous_indices...] * real(conj(pu[indices...]) * pv[indices...])
     end
     return s / 2
 end
@@ -64,12 +67,14 @@ function normdiff(u::FTField{G}, v::FTField{G},
         shift!(tmp, shifts)
         v = tmp
     end
+    g  = grid(u)
     s  = zero(real(eltype(u)))
     pu = parent(u)
     pv = parent(v)
-    ws = weights(grid(u))
-    for_each_point(grid(u)) do one_or_two, inhomogeneous_indices, idx
-        @inbounds s += one_or_two * ws[inhomogeneous_indices...] * abs2(pu[idx...] - pv[idx...])
+    ws = weights(g)
+    # Same weighting as dot: rfft Hermitian factor and quadrature weight.
+    for_each_index(g) do one_or_two, inhomogeneous_indices, indices
+        @inbounds s += one_or_two * ws[inhomogeneous_indices...] * abs2(pu[indices...] - pv[indices...])
     end
     return sqrt(s / 2)
 end
@@ -166,13 +171,14 @@ signed-FFT pairs `(nz, nt)` and `(-nz, -nt)` that both appear in storage.
 
 The loop uses axis 1 as the mode index `m` (see Storage layout in
 [`ProjectedField`](@ref)) and the spectral indices `args...` from
-`for_each_wavenumber`, which correspond to axes 2 onward in ORDER order.
+`for_each_homogeneous_index`, which correspond to axes 2 onward in ORDER order.
 """
 function LinearAlgebra.dot(a::ProjectedField{G}, b::ProjectedField{G}) where {G<:AbstractGrid}
     s = zero(real(eltype(a)))
-    for_each_wavenumber(grid(a)) do one_or_two, homogeneous_indices...
+    for_each_homogeneous_index(grid(a)) do one_or_two, homogeneous_indices...
         for m in axes(a, 1)
-            @inbounds s += one_or_two * real(LinearAlgebra.dot(parent(a)[m, homogeneous_indices...], parent(b)[m, homogeneous_indices...]))
+            @inbounds s += one_or_two * real(LinearAlgebra.dot(a[m, homogeneous_indices...], 
+                                                               b[m, homogeneous_indices...]))
         end
     end
     return s / 2
@@ -213,9 +219,9 @@ function normdiff(a::ProjectedField{G}, b::ProjectedField{G},
         b = tmp
     end
     s = zero(real(eltype(a)))
-    for_each_wavenumber(grid(a)) do one_or_two, homogeneous_indices...
+    for_each_homogeneous_index(grid(a)) do one_or_two, homogeneous_indices...
         for m in axes(a, 1)
-            @inbounds s += one_or_two * abs2(parent(a)[m, homogeneous_indices...] - parent(b)[m, homogeneous_indices...])
+            @inbounds s += one_or_two * abs2(a[m, homogeneous_indices...] - b[m, homogeneous_indices...])
         end
     end
     return sqrt(s / 2)

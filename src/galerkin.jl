@@ -34,17 +34,20 @@ function project!(a::ProjectedField{G},
     g        = grid(u)
     w        = weights(g)
     inh_size = map(d -> size(g, d), inhomogeneous_dims(g))
-    for_each_wavenumber(g) do _, homogeneous_indices...
+    # For each stored wavenumber, accumulate the weighted inner product of u
+    # against each basis mode φ over all inhomogeneous (wall-normal) locations.
+    for_each_homogeneous_index(g) do _, homogeneous_indices...
         for m in axes(a, 1)
             acc = zero(Complex{T})
             for I in CartesianIndices(inh_size)
                 inhomogeneous_indices = Tuple(I)
-                idx = _combine_indices(g, inhomogeneous_indices, homogeneous_indices)
+                # Full D-dimensional index into the FTField parent array.
+                indices = _combine_indices(g, inhomogeneous_indices, homogeneous_indices)
                 for n in 1:N
-                    @inbounds acc += w[I] * conj(get_mode_coefficient(modes(a), g, n, m, inhomogeneous_indices, homogeneous_indices...)) * parent(u[n])[idx...]
+                    @inbounds acc += w[I] * conj(get_mode_coefficient(modes(a), g, n, m, inhomogeneous_indices, homogeneous_indices...)) * parent(u[n])[indices...]
                 end
             end
-            @inbounds parent(a)[m, homogeneous_indices...] = acc
+            @inbounds a[m, homogeneous_indices...] = acc
         end
     end
     return a
@@ -74,14 +77,18 @@ function expand!(u::VectorField{N, <:FTField{G}},
     u .= zero(Complex{T})
     g        = grid(u)
     inh_size = map(d -> size(g, d), inhomogeneous_dims(g))
-    for_each_wavenumber(g) do _, homogeneous_indices...
+    # For each stored wavenumber, scatter the projected coefficient back into
+    # the FTField by adding the contribution of each basis mode at every
+    # inhomogeneous (wall-normal) location.
+    for_each_homogeneous_index(g) do _, homogeneous_indices...
         for m in axes(a, 1)
-            coeff = @inbounds parent(a)[m, homogeneous_indices...]
+            coeff = @inbounds a[m, homogeneous_indices...]
             for I in CartesianIndices(inh_size)
                 inhomogeneous_indices = Tuple(I)
-                idx = _combine_indices(g, inhomogeneous_indices, homogeneous_indices)
+                # Full D-dimensional index into the FTField parent array.
+                indices = _combine_indices(g, inhomogeneous_indices, homogeneous_indices)
                 for n in 1:N
-                    @inbounds parent(u[n])[idx...] += coeff * get_mode_coefficient(modes(a), g, n, m, inhomogeneous_indices, homogeneous_indices...)
+                    @inbounds parent(u[n])[indices...] += coeff * get_mode_coefficient(modes(a), g, n, m, inhomogeneous_indices, homogeneous_indices...)
                 end
             end
         end

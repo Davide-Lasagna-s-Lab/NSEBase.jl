@@ -74,7 +74,24 @@ grid(a::ProjectedField)  = a.grid
 # ---------------- #
 # indexing methods #
 # ---------------- #
-# Linear indexing — delegates straight to the underlying data array.
+#
+# Three indexing APIs, listed from lowest to highest level:
+#
+#   1. a[i::Int]                      — linear (required by IndexLinear)
+#   2. a[m::Int, indices::Int...]     — storage-index (for internal loops)
+#   3. a[m::Int, k::WaveNumberVector] — wavenumber (public API, enforces symmetry)
+#
+# Only the WaveNumberVector API maintains Hermitian-symmetry invariants.
+# Use the storage-index API inside for_each_homogeneous_index loops where the
+# caller already holds FFTW 1-based storage indices and must not double-write.
+
+"""
+    a[i::Int]
+    a[i::Int] = val
+
+Linear indexing into the underlying data array. Required by `IndexLinear`;
+used by broadcasting and `copyto!`. No symmetry logic applied.
+"""
 Base.@propagate_inbounds function Base.getindex(u::ProjectedField, i::Int)
     @boundscheck checkbounds(parent(u), i)
     @inbounds val = parent(u)[i]
@@ -87,14 +104,45 @@ Base.@propagate_inbounds function Base.setindex!(u::ProjectedField, val, i::Int)
 end
 
 """
-    a[m, k::WaveNumberVector]
+    a[m::Int, indices::Int...]
+    a[m::Int, indices::Int...] = val
 
-Return the complex modal coefficient for mode `m` at wavenumber vector `k`.
+Read or write the coefficient for mode `m` at FFTW 1-based storage indices
+`indices` (one per homogeneous dimension in `ORDER` order).
 
-The wavenumbers in `k` follow the order of `fft_dims(grid(a)) = ORDER`.
-If the first (rfft) wavenumber `k[1]` is negative the coefficient is
-obtained by conjugate symmetry: the entry stored at `(-k[1], -k[2:N]…)`
-is read and conjugated.
+No symmetry invariants are checked or maintained — use this form only inside
+[`for_each_homogeneous_index`](@ref) loops where storage indices are already
+known and the caller controls every storage location explicitly.
+"""
+Base.@propagate_inbounds function Base.getindex(a::ProjectedField, m::Int, indices::Int...)
+    @boundscheck checkbounds(parent(a), m, indices...)
+    @inbounds parent(a)[m, indices...]
+end
+Base.@propagate_inbounds function Base.setindex!(a::ProjectedField, val, m::Int, indices::Int...)
+    @boundscheck checkbounds(parent(a), m, indices...)
+    @inbounds parent(a)[m, indices...] = val
+end
+
+"""
+    a[m::Int, k::WaveNumberVector]
+    a[m::Int, k::WaveNumberVector] = val
+
+Read or write the complex modal coefficient for mode `m` at wavenumber vector
+`k`, where `k` follows the order of `fft_dims(grid(a)) = ORDER`.
+
+**Reading** — if the rfft wavenumber `k[1]` is negative, the value is obtained
+by conjugate symmetry: the entry stored at `(-k[1], -k[2:N]…)` is returned
+conjugated.
+
+**Writing** — two symmetry invariants are maintained automatically:
+
+- *Hermitian symmetry*: when `k[1] == 0`, the mirror entry at `(0, -k[2:N]…)`
+  is also updated so the physical field remains real-valued.
+- *Zero-wavenumber reality*: the fully-zero wavenumber `k = (0, 0, …)` is
+  forced real (imaginary part discarded).
+
+If `k[1] < 0` the write targets the conjugate-symmetric storage location and
+`conj(val)` is stored, keeping the representation consistent with reads.
 """
 Base.@propagate_inbounds function Base.getindex(a::ProjectedField,
                                                 m::Int,
@@ -106,23 +154,6 @@ Base.@propagate_inbounds function Base.getindex(a::ProjectedField,
     @inbounds val = parent(a)[m, indices...]
     return do_conj ? conj(val) : val
 end
-
-"""
-    a[m, k::WaveNumberVector] = val
-
-Write the complex modal coefficient `val` for mode `m` at wavenumber vector `k`.
-
-Two symmetry invariants are maintained automatically:
-
-- **Hermitian symmetry** — when the rfft wavenumber `k[1] == 0`, the
-  conjugate-symmetric entry at `(0, -k[2:N]…)` is also updated so that
-  the physical field remains real-valued.
-- **Zero-wavenumber reality** — the fully-zero wavenumber `WaveNumberVector(0, 0, …)` is
-  forced to be real (imaginary part discarded).
-
-If `k[1] < 0` the write targets the conjugate-symmetric storage location
-and `conj(val)` is stored, keeping the representation consistent with reads.
-"""
 Base.@propagate_inbounds function Base.setindex!(a::ProjectedField{G},
                                                val,
                                                  m::Int,
