@@ -58,8 +58,9 @@ Return the array dimensions that are NOT transformed by FFTs, i.e. the
 complement of `fft_dims(grid)` within `1:D`.  These are the directions over
 which quadrature weights are needed for inner products.
 """
-inhomogeneous_dims(::AbstractGrid{<:Any, D, <:Any, ORDER}) where {D, ORDER} =
-    Tuple(d for d in 1:D if d ∉ ORDER)
+@generated function inhomogeneous_dims(::AbstractGrid{<:Any, D, <:Any, ORDER}) where {D, ORDER}
+    :($(Tuple(d for d in 1:D if d ∉ ORDER)))
+end
 
 """
     to_storage_order(values, grid) -> Tuple
