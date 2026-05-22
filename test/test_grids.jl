@@ -113,14 +113,14 @@ function NSEBase.ddx!(out::FTField{PolynomialGrid},
                       u::FTField{PolynomialGrid},
                       ::Val{1};
                       adjoint::Bool=false)
-    parent(out) .= (adjoint ? grid(u).D1' : grid(u).D1) * parent(u)
+    LinearAlgebra.mul!(parent(out), adjoint ? grid(u).D1' : grid(u).D1, parent(u))
     return out
 end
 
 function NSEBase.inhomogeneous_laplacian!(out::FTField{PolynomialGrid},
                                           u::FTField{PolynomialGrid};
                                           adjoint::Bool=false)
-    parent(out) .= (adjoint ? grid(u).D2' : grid(u).D2) * parent(u)
+    LinearAlgebra.mul!(parent(out), adjoint ? grid(u).D2' : grid(u).D2, parent(u))
     return out
 end
 
