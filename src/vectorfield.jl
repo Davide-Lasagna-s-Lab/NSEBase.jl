@@ -1,14 +1,13 @@
-# This file contains the concrete implementation of the vector fields based
-# based on the abstract scalar field defined elsewhere.
+# Concrete vector fields built from the scalar `Field` and `FTField` wrappers.
 
 """
     VectorField{N, S} where {S<:Union{FTField, Field}}
 
-A vectorfield made up of an ordered list of scalar fields either
+A vector field made up of an ordered list of scalar fields either
 represented using `FTField` or `Field`.
 
 # Fields
-- `elements`: scalar field components of the vectorfield
+- `elements`: scalar field components of the vector field
 """
 struct VectorField{N, S} <: AbstractVector{S}
     elements::NTuple{N, S}
@@ -52,7 +51,8 @@ add_base_flow!(u, (U, nothing, nothing))
 #   u[1][:, 1, 1, 1] .+= U
 ```
 """
-function add_base_flow!(u::VectorField{N, <:FTField{<:AbstractGrid}}, base::NTuple{N}) where {N}
+function add_base_flow!(u::VectorField{N, <:FTField{<:AbstractGrid}},
+                        base::Tuple{Vararg{Any, N}}) where {N}
     g   = grid(u)
     # For each array dimension d: FFT dims use index 1 (DC bin), inhomogeneous
     # dims use Colon() to span all grid points.
@@ -96,4 +96,3 @@ Base.eltype(::VectorField{N, F}) where {N, F}                        = F
 Base.similar(q::VectorField{N}, ::Type{T}=eltype(q[1])) where {N, T} = VectorField([Base.similar(q.elements[n], T) for n in 1:N]...)
 Base.copy(q::VectorField{N}) where {N}                               = VectorField([copy(q.elements[n]) for n in 1:N]...)
 Base.zero(q::VectorField{N}) where {N}                               = VectorField([zero(q.elements[n]) for n in 1:N]...)
-
