@@ -116,44 +116,69 @@ function normdiff(u::VectorField{N, <:FTField{G}}, v::VectorField{N, <:FTField{G
 end
 
 """
-    minnormdiff(u, v, N=(32,32,32), tmp1=zero(v), tmp2=zero(v)) -> (Real, NTuple)
+    minnormdiff(u, v, N, tmp1=zero(v), tmp2=zero(v)) -> (Real, NTuple)
+    minnormdiff(u, v, tmp1=zero(v), tmp2=zero(v)) -> (Real, NTuple)
 
-Return `(min_diff, (s1, s2, s3))`: the minimum of `‖u − shift(v, shifts)‖` over
-a `N[1]×N[2]×N[3]` grid of shifts covering one full period in each of the three
-homogeneous directions (in `fft_dims` order), and the shift at which the minimum
-is attained.
+Return `(min_diff, shifts)`: the minimum of `‖u − shift(v, shifts)‖` over a
+regular grid of candidate shifts covering one full period in each transform
+dimension.  `N` has one entry per transform dimension in `fft_dims(grid(u))`
+order; when omitted, each transform dimension uses 32 samples.
+
+If `fft_dims(grid(u)) == (2, 3)`, for example, then `N = (Nx, Nz)` samples the
+first transform dimension with `Nx` shifts and the second transform dimension
+with `Nz` shifts.  The returned `shifts` tuple has the same order and length as
+`N`.
 
 `tmp1` and `tmp2` are optional pre-allocated workspaces of the same type as `v`.
+`tmp1` is used to hold the shifted copy of `v` for each candidate shift;
+`tmp2` is forwarded to [`normdiff`](@ref) as scratch space for any additional
+temporary work.
 """
 function minnormdiff(u::Union{FTField{G}, VectorField{<:Any, <:FTField{G}}},
                      v::Union{FTField{G}, VectorField{<:Any, <:FTField{G}}},
-                     N::NTuple{3, Int}=(32, 32, 32),
+                     N::NTuple{M, Int},
                      tmp1=zero(v),
-                     tmp2=zero(v)) where {G<:AbstractGrid{T, D, AXES, FFT_DIMS_ORDER}} where {T, D, AXES, FFT_DIMS_ORDER}
+                     tmp2=zero(v)) where {M, G<:AbstractGrid{T, D, AXES, FFT_DIMS_ORDER}} where {T, D, AXES, FFT_DIMS_ORDER}
+    M == length(FFT_DIMS_ORDER) ||
+        throw(DimensionMismatch("N must have one entry per transform dimension; got $(M), expected $(length(FFT_DIMS_ORDER))"))
+
     g        = grid(u)
     min_diff = typemax(real(eltype(u isa VectorField ? u[1] : u)))
-    s_min    = ntuple(k -> zero(T), 3)
+    s_min    = ntuple(k -> zero(T), Val(M))
 
-    steps = ntuple(k -> 2π / (wavenumber_scale(g, FFT_DIMS_ORDER[k]) * N[k]), 3)
-    zero_step = ntuple(k -> zero(steps[1]), 3)
+    # The shift increment in each transform dimension is one physical period
+    # divided by the number of samples requested in that dimension.
+    steps      = ntuple(k -> 2π / (wavenumber_scale(g, FFT_DIMS_ORDER[k]) * N[k]), Val(M))
+    zero_shift = ntuple(k -> zero(steps[k]), Val(M))
 
-    tmp1 .= v
-    for i3 in 0:N[3]-1
-        for i2 in 0:N[2]-1
-            for i1 in 0:N[1]-1
-                diff = normdiff(u, tmp1, ntuple(Returns(zero(T)), 3), tmp2)
-                if diff < min_diff
-                    min_diff = diff
-                    s_min = (steps[1]*i1, steps[2]*i2, steps[3]*i3)
-                end
-                shift!(tmp1, Base.setindex(zero_step, steps[1], 1))
-            end
-            shift!(tmp1, Base.setindex(zero_step, steps[2], 2))
+    # `CartesianIndices(N)` enumerates the whole candidate grid, independently
+    # of how many transform dimensions the grid has.  Its entries are 1-based,
+    # so subtract one to get the shift count in each direction.
+    for I in CartesianIndices(N)
+        shift_counts = ntuple(k -> Tuple(I)[k] - 1, Val(M))
+        shifts       = ntuple(k -> steps[k] * shift_counts[k], Val(M))
+
+        tmp1 .= v
+        shift!(tmp1, shifts)
+        diff = normdiff(u, tmp1, zero_shift, tmp2)
+
+        if diff < min_diff
+            min_diff = diff
+            s_min    = shifts
         end
-        shift!(tmp1, Base.setindex(zero_step, steps[3], 3))
     end
 
     return min_diff, s_min
+end
+
+function minnormdiff(u::Union{FTField{G}, VectorField{<:Any, <:FTField{G}}},
+                     v::Union{FTField{G}, VectorField{<:Any, <:FTField{G}}},
+                     tmp1=zero(v),
+                     tmp2=zero(v)) where {G<:AbstractGrid{T, D, AXES, FFT_DIMS_ORDER}} where {T, D, AXES, FFT_DIMS_ORDER}
+    # Use the historical default resolution, but now size the tuple from the
+    # grid's number of transform dimensions instead of assuming a fixed value.
+    M = length(FFT_DIMS_ORDER)
+    return minnormdiff(u, v, ntuple(Returns(32), Val(M)), tmp1, tmp2)
 end
 
 

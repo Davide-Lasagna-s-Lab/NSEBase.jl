@@ -98,10 +98,27 @@
         @test lhs ≈ rhs atol=1e-13
     end
 
-    # minnormdiff is currently hardcoded for grids with exactly three FFT
-    # dimensions (it uses `NTuple{3, Int}` for the candidate-grid sizes), so
-    # we cannot test it generically here.  The 3-FFT-dim integration test
-    # lives in `ReSolverChannelFlow.jl/test/test_norms.jl`.
+    @testset "minnormdiff follows the number of transform dimensions" begin
+        # FakeGrid has one transform dimension, so N and the returned shift
+        # tuple both have length 1.
+        Nx, Ny = 5, 8
+        g1 = FakeGrid(rand(Float64, Nx), Ny, 2π)
+        u1 = FTField(g1, randn(ComplexF64, Nx, (Ny>>1)+1))
+        diff1, shifts1 = minnormdiff(u1, u1, (4,))
+        @test diff1 ≈ 0 atol=1e-14
+        @test shifts1 == (0.0,)
+
+        # TripleGrid has two transform dimensions, so the candidate grid and
+        # returned shift tuple both have length 2.
+        Ny2, Nx2, Nz2 = 3, 9, 5
+        g2 = TripleGrid(Ny2, Nx2, Nz2)
+        u2 = FTField(g2, randn(ComplexF64, Ny2, (Nx2>>1)+1, Nz2))
+        diff2, shifts2 = minnormdiff(u2, u2, (4, 5))
+        @test diff2 ≈ 0 atol=1e-14
+        @test shifts2 == (0.0, 0.0)
+
+        @test_throws DimensionMismatch minnormdiff(u2, u2, (4,))
+    end
 
     @testset "ProjectedField: dot is real and matches the explicit formula" begin
         # ProjectedField.dot is the spectral inner-product weighted by
