@@ -5,7 +5,7 @@
 #
 # Grid layout matches ChannelFlow:
 #   AXES  = (2, 1, 3, 4)  ->  y->dim1, x->dim2, z->dim3, t->dim4
-#   ORDER = (2, 3, 4)     ->  rfft on x (dim2), signed FFT on z and t
+#   FFT_DIMS_ORDER = (2, 3, 4)     ->  rfft on x (dim2), signed FFT on z and t
 #   size  = (Ny, Nx, Nz, Nt) in array-dimension order
 #   FTField storage = (Ny, Nx_half, Nz, Nt)
 #

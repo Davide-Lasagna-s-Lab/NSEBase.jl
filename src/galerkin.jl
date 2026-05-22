@@ -4,8 +4,8 @@
 # Required mode-array layout                                         #
 # ------------------------------------------------------------------ #
 #
-# For a grid with `D` dimensions, `length(ORDER)` homogeneous (FFT) dimensions
-# and `Ninh = D - length(ORDER)` inhomogeneous dimensions, the mode tuple
+# For a grid with `D` dimensions, `length(FFT_DIMS_ORDER)` homogeneous (FFT) dimensions
+# and `Ninh = D - length(FFT_DIMS_ORDER)` inhomogeneous dimensions, the mode tuple
 # `modes(a)` must be an `NTuple{N, AbstractArray}` (one array per velocity
 # component) where each `modes(a)[n]` has **exactly** the shape
 #
@@ -19,14 +19,14 @@
 #                                  `inhomogeneous_dims(grid)`)
 #   axis  Ninh + 1                : mode index, 1:Nm
 #   axes Ninh + 2 … Ninh + 1 + Nhom : homogeneous-dimension sizes, listed
-#                                  in `ORDER` order — i.e. the **rfft**
-#                                  axis `ORDER[1]` is first and runs over
+#                                  in `FFT_DIMS_ORDER` order — i.e. the **rfft**
+#                                  axis `FFT_DIMS_ORDER[1]` is first and runs over
 #                                  the half-spectrum `1 : (size÷2) + 1`,
 #                                  followed by the signed-FFT axes
-#                                  `ORDER[2:end]` in full storage order.
+#                                  `FFT_DIMS_ORDER[2:end]` in full storage order.
 #
 # Example — ChannelFlow-style grid with `D = 4`, `AXES = (2,1,3,4)`,
-# `ORDER = (2,3,4)` (so `inh_dims = (1,)` is the wall-normal direction,
+# `FFT_DIMS_ORDER = (2,3,4)` (so `inh_dims = (1,)` is the wall-normal direction,
 # rfft on x, signed FFTs on z and t):
 #
 #   `modes(a)[n] :: Array{ComplexF64, 5}`,
@@ -93,7 +93,7 @@ struct GemmGalerkin end
 # Generated inner-loop kernels (LoopGalerkin)                         #
 # ------------------------------------------------------------------ #
 # Each `@generated` function emits a fully unrolled loop nest at compile
-# time, specialised to the grid type parameters `D`, `AXES`, `ORDER`.  At
+# time, specialised to the grid type parameters `D`, `AXES`, `FFT_DIMS_ORDER`.  At
 # runtime there are no closures, no `CartesianIndices`, no `view`s, and no
 # index-tuple construction — every array access is a direct N-D indexing
 # expression using local loop variables.
@@ -101,8 +101,8 @@ struct GemmGalerkin end
 # Loop order (outermost → innermost):
 #
 #   n (velocity component)
-#       └─ ORDER[end] (signed-FFT, outermost homogeneous)
-#               └─ … → ORDER[1] (rfft, innermost homogeneous)
+#       └─ FFT_DIMS_ORDER[end] (signed-FFT, outermost homogeneous)
+#               └─ … → FFT_DIMS_ORDER[1] (rfft, innermost homogeneous)
 #                       └─ inh_dims[end] → … → inh_dims[1] (innermost inh)
 #                               └─ m (mode index, innermost)
 #
@@ -119,21 +119,21 @@ struct GemmGalerkin end
                                    u::VectorField{N},
                                    a::ProjectedField,
                                    w,
-                                   g::AbstractGrid{T, D, AXES, ORDER}
-                                   ) where {N, T, D, AXES, ORDER}
-    Nhom     = length(ORDER)
-    inh_dims = [d for d in 1:D if d ∉ ORDER]
+                                   g::AbstractGrid{T, D, AXES, FFT_DIMS_ORDER}
+                                   ) where {N, T, D, AXES, FFT_DIMS_ORDER}
+    Nhom     = length(FFT_DIMS_ORDER)
+    inh_dims = [d for d in 1:D if d ∉ FFT_DIMS_ORDER]
 
     syms = [Symbol("_i", d) for d in 1:D]
 
     # Direct N-D index expressions — no tuple splatting, no views.
-    pa_ref = Expr(:ref, :pa,      :m, (syms[d] for d in ORDER)...)
+    pa_ref = Expr(:ref, :pa,      :m, (syms[d] for d in FFT_DIMS_ORDER)...)
     pu_ref = Expr(:ref, :pu,      (syms[d] for d in 1:D)...)
     w_ref  = Expr(:ref, :w,       (syms[d] for d in inh_dims)...)
     mn_ref = Expr(:ref, :modes_n,
                   (syms[d] for d in inh_dims)...,
                   :m,
-                  (syms[d] for d in ORDER)...)
+                  (syms[d] for d in FFT_DIMS_ORDER)...)
 
     # Innermost loop: accumulate one (m, k) coefficient of pa.
     body = Expr(:for, Expr(:(=), :m, :(1:Nm)),
@@ -147,11 +147,11 @@ struct GemmGalerkin end
         body = Expr(:for, Expr(:(=), syms[d], :(1:Base.size(g, $d))), body)
     end
 
-    # Homogeneous-dimension loops, ORDER forward.  ORDER[1] is the rfft
+    # Homogeneous-dimension loops, FFT_DIMS_ORDER forward.  FFT_DIMS_ORDER[1] is the rfft
     # dimension and runs over its half-spectrum; the rest run over the
     # full storage range.
     for k in 1:Nhom
-        d   = ORDER[k]
+        d   = FFT_DIMS_ORDER[k]
         rng = k == 1 ? :(1:(Base.size(g, $d) >> 1) + 1) : :(1:Base.size(g, $d))
         body = Expr(:for, Expr(:(=), syms[d], rng), body)
     end
@@ -174,19 +174,19 @@ end
 @generated function _loop_expand!(u::VectorField{N},
                                   pa,
                                   a::ProjectedField,
-                                  g::AbstractGrid{T, D, AXES, ORDER}
-                                  ) where {N, T, D, AXES, ORDER}
-    Nhom     = length(ORDER)
-    inh_dims = [d for d in 1:D if d ∉ ORDER]
+                                  g::AbstractGrid{T, D, AXES, FFT_DIMS_ORDER}
+                                  ) where {N, T, D, AXES, FFT_DIMS_ORDER}
+    Nhom     = length(FFT_DIMS_ORDER)
+    inh_dims = [d for d in 1:D if d ∉ FFT_DIMS_ORDER]
 
     syms = [Symbol("_i", d) for d in 1:D]
 
-    pa_ref = Expr(:ref, :pa,      :m, (syms[d] for d in ORDER)...)
+    pa_ref = Expr(:ref, :pa,      :m, (syms[d] for d in FFT_DIMS_ORDER)...)
     pu_ref = Expr(:ref, :pu,      (syms[d] for d in 1:D)...)
     mn_ref = Expr(:ref, :modes_n,
                   (syms[d] for d in inh_dims)...,
                   :m,
-                  (syms[d] for d in ORDER)...)
+                  (syms[d] for d in FFT_DIMS_ORDER)...)
 
     # Innermost loop: accumulate the mode sum into a scalar.
     body = Expr(:for, Expr(:(=), :m, :(1:Nm)),
@@ -203,7 +203,7 @@ end
     end
 
     for k in 1:Nhom
-        d   = ORDER[k]
+        d   = FFT_DIMS_ORDER[k]
         rng = k == 1 ? :(1:(Base.size(g, $d) >> 1) + 1) : :(1:Base.size(g, $d))
         body = Expr(:for, Expr(:(=), syms[d], rng), body)
     end
@@ -246,7 +246,7 @@ implementation.  See also [`project`](@ref) for the allocating form.
 function project!(a::ProjectedField{G},
                   u::VectorField{N, <:FTField{G}},
                   ::LoopGalerkin=LoopGalerkin()
-                  ) where {N, T, D, AXES, ORDER, G<:AbstractGrid{T, D, AXES, ORDER}}
+                  ) where {N, T, D, AXES, FFT_DIMS_ORDER, G<:AbstractGrid{T, D, AXES, FFT_DIMS_ORDER}}
     a .= zero(Complex{T})
     _loop_project!(parent(a), u, a, weights(grid(u)), grid(u))
     return a
@@ -283,7 +283,7 @@ implementation.  See also [`expand`](@ref) for the allocating form.
 function expand!(u::VectorField{N, <:FTField{G}},
                  a::ProjectedField{G},
                  ::LoopGalerkin=LoopGalerkin()
-                 ) where {N, T, D, AXES, ORDER, G<:AbstractGrid{T, D, AXES, ORDER}}
+                 ) where {N, T, D, AXES, FFT_DIMS_ORDER, G<:AbstractGrid{T, D, AXES, FFT_DIMS_ORDER}}
     # No pre-zeroing: the inner kernel writes every (j, k) of `parent(u[n])`
     # exactly once with `=` (not `+=`), so the previous contents are
     # unconditionally overwritten.

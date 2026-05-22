@@ -6,7 +6,7 @@
 #   axis 3 = Nz   — spanwise,    signed FFT
 #   axis 4 = Ny   — wall-normal, inhomogeneous (quadrature weights ws[j])
 #
-# ORDER = (2, 3, 1): rfft dim first, then nz, then nt.
+# FFT_DIMS_ORDER = (2, 3, 1): rfft dim first, then nz, then nt.
 #
 # The two approaches generate different loop orders:
 #
@@ -17,7 +17,7 @@
 #      iterations.
 #
 #   B  for_each_homogeneous_index style:
-#      Loops in ORDER order (rfft = Nx_half innermost among homogeneous dims).
+#      Loops in FFT_DIMS_ORDER order (rfft = Nx_half innermost among homogeneous dims).
 #      Inhomogeneous loop (Ny) added manually inside.  Two-block split on Nz and
 #      Nt eliminates sign-branch in wavenumber conversion; rfft weight still needs
 #      a branch on _i1.  Inner-most memory access stride = Nt (not 1) → less
@@ -60,15 +60,15 @@ end
 
 # ──────────────────────────────────────────────────────────────────────────────
 # B: for_each_homogeneous_index style
-#    Loops follow ORDER = (2, 3, 1): Nx_half (rfft) innermost among homogeneous
+#    Loops follow FFT_DIMS_ORDER = (2, 3, 1): Nx_half (rfft) innermost among homogeneous
 #    dims, then Nz (two-block), then Nt (two-block).  Manual Ny loop added inside.
 #    Access u[_i_nt, _i_nx, _i_nz, j]: innermost _i_nx → stride Nt (not 1).
 # ──────────────────────────────────────────────────────────────────────────────
 function dot_foreach_homogeneous_index(u, v, ws)
     s = 0.0
-    for _i_nt in 1:(Nt >> 1) + 1        # nt positive block (ORDER[3])
-        for _i_nz in 1:(Nz >> 1) + 1    # nz positive block (ORDER[2])
-            for _i_nx in 1:Nx_half       # rfft, innermost homogeneous (ORDER[1])
+    for _i_nt in 1:(Nt >> 1) + 1        # nt positive block (FFT_DIMS_ORDER[3])
+        for _i_nz in 1:(Nz >> 1) + 1    # nz positive block (FFT_DIMS_ORDER[2])
+            for _i_nx in 1:Nx_half       # rfft, innermost homogeneous (FFT_DIMS_ORDER[1])
                 w = _i_nx == 1 ? 1 : 2
                 for j in 1:Ny            # inhomogeneous, added manually
                     @inbounds s += w * ws[j] * real(conj(u[_i_nt,_i_nx,_i_nz,j]) * v[_i_nt,_i_nx,_i_nz,j])

@@ -19,10 +19,10 @@ of an `FTField` onto a set of basis `modes`.
 # Storage layout
 
 The parent array has axis 1 reserved for the mode index and the spectral
-dimensions (from `fft_dims(grid) = ORDER`) occupying the subsequent axes in
-ORDER order.  Concretely, `parent(a)[m, i_H1, i_H2, …]` gives the coefficient
+dimensions (from `fft_dims(grid) = FFT_DIMS_ORDER`) occupying the subsequent axes in
+FFT_DIMS_ORDER order.  Concretely, `parent(a)[m, i_H1, i_H2, …]` gives the coefficient
 of mode `m` at the spectral storage index `(i_H1, i_H2, …)`, where `i_H1`
-indexes the rfft dimension (`ORDER[1]`) and each subsequent index steps over a
+indexes the rfft dimension (`FFT_DIMS_ORDER[1]`) and each subsequent index steps over a
 full signed-FFT dimension.  This layout differs from the physical grid layout:
 non-FFT (inhomogeneous) dimensions are not present.
 """
@@ -125,7 +125,7 @@ end
     a[m::Int, indices::Int...] = val
 
 Read or write the coefficient for mode `m` at FFTW 1-based storage indices
-`indices` (one per homogeneous dimension in `ORDER` order).
+`indices` (one per homogeneous dimension in `FFT_DIMS_ORDER` order).
 
 No symmetry invariants are checked or maintained — use this form only inside
 [`for_each_homogeneous_index`](@ref) loops where storage indices are already
@@ -145,7 +145,7 @@ end
     a[m::Int, k::WaveNumberVector] = val
 
 Read or write the complex modal coefficient for mode `m` at wavenumber vector
-`k`, where `k` follows the order of `fft_dims(grid(a)) = ORDER`.
+`k`, where `k` follows the order of `fft_dims(grid(a)) = FFT_DIMS_ORDER`.
 
 **Reading** — if the rfft wavenumber `k[1]` is negative, the value is obtained
 by conjugate symmetry: the entry stored at `(-k[1], -k[2:N]…)` is returned

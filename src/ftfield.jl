@@ -57,8 +57,8 @@ grid(u::FTField) = u.grid
 Return an equivalent spectral field with a new homogeneous resolution.
 
 `target_size` contains one physical-space grid size for each homogeneous
-direction in `fft_dims(grid(u)) = ORDER`, in `ORDER` order. It must therefore
-have length `length(ORDER)`, not the full dimension `D` of `grid(u)`.
+direction in `fft_dims(grid(u)) = FFT_DIMS_ORDER`, in `FFT_DIMS_ORDER` order. It must therefore
+have length `length(FFT_DIMS_ORDER)`, not the full dimension `D` of `grid(u)`.
 Inhomogeneous directions are preserved by the grid-specific
 `growto(grid(u), target_size)` method.
 
@@ -72,9 +72,9 @@ This is optional.  Packages should only implement it if they support
 resolution-changing transforms such as `FFT(u, target_size)` and
 `IFFT(û, target_size)`.
 """
-function growto(u::FTField{G}, target_size::NTuple{N, Int}) where {T, D, AXES, ORDER, N, G<:AbstractGrid{T, D, AXES, ORDER}}
-    N == length(ORDER) ||
-        throw(ArgumentError("target_size has incompatible size: expected a tuple of length $(length(ORDER)), got length $N"))
+function growto(u::FTField{G}, target_size::NTuple{N, Int}) where {T, D, AXES, FFT_DIMS_ORDER, N, G<:AbstractGrid{T, D, AXES, FFT_DIMS_ORDER}}
+    N == length(FFT_DIMS_ORDER) ||
+        throw(ArgumentError("target_size has incompatible size: expected a tuple of length $(length(FFT_DIMS_ORDER)), got length $N"))
 
     out = FTField(growto(grid(u), target_size))
     # Iterate source storage indices, convert them to signed wavenumbers,
@@ -98,20 +98,20 @@ end
 
 Return a view of the underlying array over all non-transform dimensions for
 the wavenumber vector `k`. The wavenumbers in `k` follow the order
-of `fft_dims(grid(u)) = ORDER`.
+of `fft_dims(grid(u)) = FFT_DIMS_ORDER`.
 
 If the first (rfft) wavenumber `k[1]` is negative the view is into the
 conjugate-symmetric storage location `(-k[1], -k[2:N]…)`; the caller
 is responsible for applying conjugation if needed.
 
-The returned view has one dimension for each axis of `u` not in `ORDER`,
+The returned view has one dimension for each axis of `u` not in `FFT_DIMS_ORDER`,
 in their original order.
 """
 Base.@propagate_inbounds function Base.getindex(u::FTField{G},
-                                                k::WaveNumberVector) where {T, D, AXES, ORDER, G<:AbstractGrid{T, D, AXES, ORDER}}
+                                                k::WaveNumberVector) where {T, D, AXES, FFT_DIMS_ORDER, G<:AbstractGrid{T, D, AXES, FFT_DIMS_ORDER}}
     tpl     = to_indices(grid(u), k)
     indices = Base.front(tpl)
-    colons  = ntuple(_ -> Colon(), ndims(u) - length(ORDER))
+    colons  = ntuple(_ -> Colon(), ndims(u) - length(FFT_DIMS_ORDER))
     @boundscheck checkbounds(u, _combine_indices(grid(u), colons, indices)...)
     @inbounds return view(parent(u), _combine_indices(grid(u), colons, indices)...)
 end
@@ -121,7 +121,7 @@ end
 
 Return the complex modal coefficient for index `I` at wavenumber vector `k`.
 
-The wavenumbers in `k` follow the order of `fft_dims(grid(a)) = ORDER`.
+The wavenumbers in `k` follow the order of `fft_dims(grid(a)) = FFT_DIMS_ORDER`.
 If the first (rfft) wavenumber `k[1]` is negative the coefficient is
 obtained by conjugate symmetry: the entry stored at `(-k[1], -k[2:N]…)`
 is read and conjugated.
@@ -183,15 +183,15 @@ end
     _combine_indices(grid, I, K) -> Tuple
 
 Combine free indices `I` and constrained indices `K` into a single index tuple
-of length `D`, interleaving them according to the constrained dimensions `ORDER`
-defined by `grid`. Dimensions in `ORDER` draw from `K`; all others draw from `I`.
+of length `D`, interleaving them according to the constrained dimensions `FFT_DIMS_ORDER`
+defined by `grid`. Dimensions in `FFT_DIMS_ORDER` draw from `K`; all others draw from `I`.
 
 The index layout is fully resolved at compile time via a generated function.
 """
-@generated function _combine_indices(::AbstractGrid{T, D, AXES, ORDER}, I, K) where {T, D, AXES, ORDER}
+@generated function _combine_indices(::AbstractGrid{T, D, AXES, FFT_DIMS_ORDER}, I, K) where {T, D, AXES, FFT_DIMS_ORDER}
     inds = []; k = 1; i = 1
     for d in 1:D
-        if d ∈ ORDER
+        if d ∈ FFT_DIMS_ORDER
             push!(inds, :(K[$k])); k += 1
         else
             push!(inds, :(I[$i])); i += 1

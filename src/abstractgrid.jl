@@ -2,7 +2,7 @@
 # FTField and Field use for their construction.
 
 """
-    AbstractGrid{T, D, AXES, ORDER} where {T<:Real}
+    AbstractGrid{T, D, AXES, FFT_DIMS_ORDER} where {T<:Real}
 
 Abstract type that represents a generic computational grid of a
 `D`-dimensional domain.
@@ -13,8 +13,8 @@ Type parameters:
 - `AXES`: tuple whose meaning is defined by the concrete grid subtype.
   For Cartesian grid subtypes `AXES = (x_dim, y_dim, z_dim, t_dim)`;
   other coordinate systems may use a different convention.
-- `ORDER`: tuple of statistically homogeneous array dimensions. These are
-  transformed by FFTs; `ORDER[1]` is the rfft dimension.
+- `FFT_DIMS_ORDER`: tuple of statistically homogeneous array dimensions. These are
+  transformed by FFTs; `FFT_DIMS_ORDER[1]` is the rfft dimension.
 
 # Required downstream methods
 
@@ -41,7 +41,7 @@ homogeneous resolution.  Implementing grid growth is also required for
   counts used to normalise forward transforms.
 - `transform_size(grid)`: returns the size of the corresponding `FTField`.
 """
-abstract type AbstractGrid{T<:Real, D, AXES, ORDER} end
+abstract type AbstractGrid{T<:Real, D, AXES, FFT_DIMS_ORDER} end
 
 """
     fft_dims(grid::AbstractGrid) -> Tuple
@@ -49,7 +49,7 @@ abstract type AbstractGrid{T<:Real, D, AXES, ORDER} end
 Return all transformed dimensions in FFT order, i.e. `(spatial_hom_dims(grid)...,
 t_dim(grid))`.
 """
-fft_dims(::AbstractGrid{<:Any, <:Any, <:Any, ORDER}) where {ORDER} = ORDER
+fft_dims(::AbstractGrid{<:Any, <:Any, <:Any, FFT_DIMS_ORDER}) where {FFT_DIMS_ORDER} = FFT_DIMS_ORDER
 
 """
     inhomogeneous_dims(grid::AbstractGrid) -> Tuple
@@ -58,8 +58,8 @@ Return the array dimensions that are NOT transformed by FFTs, i.e. the
 complement of `fft_dims(grid)` within `1:D`.  These are the directions over
 which quadrature weights are needed for inner products.
 """
-@generated function inhomogeneous_dims(::AbstractGrid{<:Any, D, <:Any, ORDER}) where {D, ORDER}
-    :($(Tuple(d for d in 1:D if d ∉ ORDER)))
+@generated function inhomogeneous_dims(::AbstractGrid{<:Any, D, <:Any, FFT_DIMS_ORDER}) where {D, FFT_DIMS_ORDER}
+    :($(Tuple(d for d in 1:D if d ∉ FFT_DIMS_ORDER)))
 end
 
 """
@@ -159,16 +159,16 @@ growto(grid::AbstractGrid, target_size) = throw(NotImplementedError(grid, target
 """
     transform_size(g::AbstractGrid)
 
-Size of the spectral (FTField) array: `ORDER[1]` (rfft) becomes `(N÷2)+1`,
+Size of the spectral (FTField) array: `FFT_DIMS_ORDER[1]` (rfft) becomes `(N÷2)+1`,
 all other dimensions are unchanged.
 """
-transform_size(g::AbstractGrid{<:Any, D, <:Any, ORDER}) where {D, ORDER} =
-    ntuple(d -> d == ORDER[1] ? (size(g, d) >> 1) + 1 : size(g, d), D)
+transform_size(g::AbstractGrid{<:Any, D, <:Any, FFT_DIMS_ORDER}) where {D, FFT_DIMS_ORDER} =
+    ntuple(d -> d == FFT_DIMS_ORDER[1] ? (size(g, d) >> 1) + 1 : size(g, d), D)
 
 """
     fft_norm(g::AbstractGrid)
 
-Number of grid points in each FFT dimension `ORDER`. Used to normalise
+Number of grid points in each FFT dimension `FFT_DIMS_ORDER`. Used to normalise
 forward transforms. Default: reads from `size(g)`.
 """
 fft_norm(g::AbstractGrid) = map(d -> size(g, d), fft_dims(g))

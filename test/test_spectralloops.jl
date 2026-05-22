@@ -17,17 +17,17 @@ function collect_wavenumber_vectors(g)
 end
 
 @testset verbose=true "Spectral looping                    " begin
-    struct TestGrid{S, D, AXES, ORDER} <: AbstractGrid{Float64, D, AXES, ORDER} end
+    struct TestGrid{S, D, AXES, FFT_DIMS_ORDER} <: AbstractGrid{Float64, D, AXES, FFT_DIMS_ORDER} end
     Base.size(::TestGrid{S}) where {S} = S
 
     @testset "for_each_homogeneous_index" begin
-        # Grid with one rfft dimension of size 7, ORDER = (1,)
+        # Grid with one rfft dimension of size 7, FFT_DIMS_ORDER = (1,)
         g = TestGrid{(7,), 1, nothing, (1,)}()
         modes = collect_wavenumbers(g)
         @test modes == [(1,), (2,), (3,), (4,)]   # 1:(7>>1)+1 = 1:4
         @test length(modes) == (7 >> 1) + 1
 
-        # Grid with rfft along dim 1 (size 7) and signed fft along dim 2 (size 5), ORDER = (1, 2)
+        # Grid with rfft along dim 1 (size 7) and signed fft along dim 2 (size 5), FFT_DIMS_ORDER = (1, 2)
         g = TestGrid{(7, 5), 2, nothing, (1, 2)}()
         modes = collect_wavenumbers(g)
 
@@ -63,13 +63,13 @@ end
     end
 
     @testset "to_wavenumber_vector order" begin
-        # Grid with one rfft dimension of size 7, ORDER = (1,)
+        # Grid with one rfft dimension of size 7, FFT_DIMS_ORDER = (1,)
         g = TestGrid{(7,), 1, nothing, (1,)}()
         ks = collect_wavenumber_vectors(g)
         @test ks == [(0,), (1,), (2,), (3,)]   # 0:(7>>1) = 0:3
         @test all(k -> k[1] >= 0, ks)
 
-        # Grid with rfft along dim 1 (size 7) and signed fft along dim 2 (size 5), ORDER = (1, 2)
+        # Grid with rfft along dim 1 (size 7) and signed fft along dim 2 (size 5), FFT_DIMS_ORDER = (1, 2)
         g = TestGrid{(7, 5), 2, nothing, (1, 2)}()
         ks = collect_wavenumber_vectors(g)
 

@@ -17,7 +17,7 @@ const NO_TIMELIMIT = FFTW.NO_TIMELIMIT
 # transform object #
 # ---------------- #
 """
-    FFTPlans{DEALIAS, D, T, ORDER, PLAN, IPLAN}
+    FFTPlans{DEALIAS, D, T, FFT_DIMS_ORDER, PLAN, IPLAN}
 
 Paired FFTW real-to-complex (rfft) and complex-to-real (brfft) plans for
 in-place transformations between physical and spectral representations of a
@@ -29,8 +29,8 @@ scalar field on a `D`-dimensional grid.
   and the forward/backward transforms pad/truncate accordingly
 - `D`: number of spatial dimensions
 - `T`: real element type (e.g. `Float64`)
-- `ORDER`: tuple of transformed dimension indices; `ORDER[1]` is the rfft
-  dimension (non-negative frequencies only), `ORDER[2:end]` are full-spectrum
+- `FFT_DIMS_ORDER`: tuple of transformed dimension indices; `FFT_DIMS_ORDER[1]` is the rfft
+  dimension (non-negative frequencies only), `FFT_DIMS_ORDER[2:end]` are full-spectrum
   complex FFT dimensions applied in sequence
 
 # Fields
@@ -39,7 +39,7 @@ scalar field on a `D`-dimensional grid.
 - `cache`: scratch array in spectral space, sized for the padded physical grid
   when `DEALIAS == true` and for the standard spectral grid otherwise; used as
   a staging buffer during forward/backward transforms
-- `norm`: normalisation factor `1 / prod(shape[ORDER])` applied after each
+- `norm`: normalisation factor `1 / prod(shape[FFT_DIMS_ORDER])` applied after each
   forward transform so that coefficients represent the true Fourier amplitudes
 
 # Constructor
@@ -59,7 +59,7 @@ scalar field on a `D`-dimensional grid.
 - `timelimit::Real`: maximum planner wall-time in seconds (`NO_TIMELIMIT` to
   disable)
 """
-struct FFTPlans{DEALIAS, D, T, ORDER, PLAN, IPLAN}
+struct FFTPlans{DEALIAS, D, T, FFT_DIMS_ORDER, PLAN, IPLAN}
      plan::PLAN
     iplan::IPLAN
     cache::Array{Complex{T}, D}
@@ -101,7 +101,7 @@ struct FFTPlans{DEALIAS, D, T, ORDER, PLAN, IPLAN}
     end
 end
 
-FFTPlans(g::AbstractGrid{T, <:Any, <:Any, ORDER}; kwargs...) where {T, ORDER} = FFTPlans(size(g), ORDER, T; kwargs...)
+FFTPlans(g::AbstractGrid{T, <:Any, <:Any, FFT_DIMS_ORDER}; kwargs...) where {T, FFT_DIMS_ORDER} = FFTPlans(size(g), FFT_DIMS_ORDER, T; kwargs...)
 FFTPlans(u::FTField;                              kwargs...)                  = FFTPlans(grid(u); kwargs...)
 FFTPlans(u::Field;                                kwargs...)                  = FFTPlans(grid(u); kwargs...)
 
@@ -163,7 +163,7 @@ flags rather than silently inheriting a behaviour.
                        use_cache::Bool) where {T} = _forward_transform!(û, u, f, add, use_cache)
 
 """
-    _forward_transform!(û, u, f::FFTPlans{DEALIAS, D, T, ORDER}, add::Bool, use_cache::Bool)
+    _forward_transform!(û, u, f::FFTPlans{DEALIAS, D, T, FFT_DIMS_ORDER}, add::Bool, use_cache::Bool)
 
 Forward transform of `u` into `û`, optionally accumulating into `û`.
 
@@ -182,13 +182,13 @@ when `û` has the same memory layout as the array used during planning.
 (truncation from a padded cache) and the non-dealiased case (full copy, since
 same-size arrays make the truncation a no-op that covers all elements).
 """
-function _forward_transform!(û, u, f::FFTPlans{DEALIAS, D, <:Any, ORDER}, add::Bool, use_cache::Bool) where {DEALIAS, D, ORDER}
+function _forward_transform!(û, u, f::FFTPlans{DEALIAS, D, <:Any, FFT_DIMS_ORDER}, add::Bool, use_cache::Bool) where {DEALIAS, D, FFT_DIMS_ORDER}
     through_cache = DEALIAS | use_cache | add
     buf = through_cache ? f.cache : û
     FFTW.unsafe_execute!(f.plan, u, buf)
     buf .*= f.norm
     if through_cache
-        add ? _add_from_padded!(û, f.cache, ORDER) : _copy_from_padded!(û, f.cache, ORDER)
+        add ? _add_from_padded!(û, f.cache, FFT_DIMS_ORDER) : _copy_from_padded!(û, f.cache, FFT_DIMS_ORDER)
     end
     return û
 end
@@ -251,7 +251,7 @@ about both flags.
     _backward_transform!(u, û, f, preserve_input, use_cache)
 
 """
-    _backward_transform!(u, û, f::FFTPlans{DEALIAS, D, T, ORDER}, preserve_input::Bool, use_cache::Bool)
+    _backward_transform!(u, û, f::FFTPlans{DEALIAS, D, T, FFT_DIMS_ORDER}, preserve_input::Bool, use_cache::Bool)
 
 Backward transform of `û` into `u`.
 
@@ -269,11 +269,11 @@ silently destroy — the caller accepts this side effect.
 into a zero-padded cache after `_apply_mask!`) and the non-dealiased case (full
 copy, since same-size embedding covers all elements and no prior zeroing is needed).
 """
-function _backward_transform!(u, û, f::FFTPlans{DEALIAS, D, <:Any, ORDER}, preserve_input::Bool, use_cache::Bool) where {DEALIAS, D, ORDER}
+function _backward_transform!(u, û, f::FFTPlans{DEALIAS, D, <:Any, FFT_DIMS_ORDER}, preserve_input::Bool, use_cache::Bool) where {DEALIAS, D, FFT_DIMS_ORDER}
     through_cache = DEALIAS | preserve_input | use_cache
     if through_cache
         DEALIAS && _apply_mask!(f.cache)
-        _copy_to_padded!(f.cache, û, ORDER)
+        _copy_to_padded!(f.cache, û, FFT_DIMS_ORDER)
         FFTW.unsafe_execute!(f.iplan, f.cache, u)
     else
         # brfft destroys its input; caller accepts this when preserve_input=false, use_cache=false
@@ -294,7 +294,7 @@ normalised by the grid's `fft_norm`. Equivalent to planning and executing a fres
 `rfft` on `parent(u)`.
 
 Optionally provide `target_size` to change the resulting size of the data in the
-transformed directions (`fft_dims(grid(u))=ORDER`). Requires [`growto(grid(u))`](@ref)
+transformed directions (`fft_dims(grid(u))=FFT_DIMS_ORDER`). Requires [`growto(grid(u))`](@ref)
 to be implemented.
 """
 function FFT(u::Field)
@@ -316,7 +316,7 @@ corresponding to the Fourier coefficients `û`. No normalisation is applied
 transform). Equivalent to planning and executing a fresh `brfft` on `parent(û)`.
 
 Optionally provide `target_size` to change the resulting size of the data in the
-transformed directions (`fft_dims(grid(u))=ORDER`). Requires [`growto(grid(u))`](@ref)
+transformed directions (`fft_dims(grid(u))=FFT_DIMS_ORDER`). Requires [`growto(grid(u))`](@ref)
 to be implemented.
 """
 function IFFT(û::FTField)

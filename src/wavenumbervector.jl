@@ -1,8 +1,8 @@
 # WaveNumberVector: integer wavenumber index for spectral fields.
 
 # A WaveNumberVector{N} holds N integer wavenumbers ordered to match
-# fft_dims(g) = ORDER.  The first wavenumber (k[1]) is for the rfft
-# dimension ORDER[1]; negative values trigger conjugate-symmetry lookup. All
+# fft_dims(g) = FFT_DIMS_ORDER.  The first wavenumber (k[1]) is for the rfft
+# dimension FFT_DIMS_ORDER[1]; negative values trigger conjugate-symmetry lookup. All
 # others are signed FFT wavenumbers in FFTW order: 0, 1, ..., N/2, -(N/2-1), ..., -1.
 
 # ProjectedField[m, WaveNumberVector] indexing lives in projectedfield.jl.
@@ -13,7 +13,7 @@
     WaveNumberVector{N}(ns::NTuple{N, Int})
 
 Integer wavenumber index for spectral fields.  Holds `N` wavenumbers ordered
-to match `fft_dims(g) = ORDER`:
+to match `fft_dims(g) = FFT_DIMS_ORDER`:
 
 - `k[1]` — wavenumber for the rfft dimension `H[1]` (may be negative; see below).
 - `k[2:N]` — signed wavenumbers for the remaining FFT dimensions, in FFTW
@@ -50,7 +50,7 @@ _fftw_sym_index(i::Int, N::Int) = i == 1 ? 1 : N - i + 2
 Convert a `WaveNumberVector` to 1-based `ProjectedField` axis indices plus a
 conjugate flag.  Returns the `(N+1)`-tuple `(i_H1, i_H2, …, i_HN, do_conj)`
 where each `i_Hk` is the 1-based index along axis `k+1` of the
-`ProjectedField` array (axes follow the order of `fft_dims(g) = ORDER`).
+`ProjectedField` array (axes follow the order of `fft_dims(g) = FFT_DIMS_ORDER`).
 
 `do_conj = true` means the stored entry is the complex conjugate of the
 requested wavenumber (the rfft axis stores only `n ≥ 0`, so negative wavenumbers
@@ -77,15 +77,15 @@ Convert the `N`-tuple of 1-based FFTW storage indices `homogeneous_indices`
 - Full-FFT dimensions (k≥2): positive block `i ≤ N÷2+1` → `i - 1`;
   negative block `i > N÷2+1` → `i - 1 - N`.
 """
-function to_wavenumber_vector(g::AbstractGrid{T, D, AXES, ORDER}, homogeneous_indices) where {T, D, AXES, ORDER}
-    N = length(ORDER)
+function to_wavenumber_vector(g::AbstractGrid{T, D, AXES, FFT_DIMS_ORDER}, homogeneous_indices) where {T, D, AXES, FFT_DIMS_ORDER}
+    N = length(FFT_DIMS_ORDER)
     ns = ntuple(N) do k
         i = homogeneous_indices[k]
         # rfft dim: only non-negative wavenumbers stored, so i=1 → k=0, i=2 → k=1, …
         # Full-FFT dims: FFTW packs positive wavenumbers first (i ≤ N/2+1 → k=i-1),
         # then negative (i > N/2+1 → k=i-1-N), matching the two-block loop in for_each_homogeneous_index.
         k == 1 ? i - 1 :
-                 (i <= (size(g, ORDER[k]) >> 1) + 1 ? i - 1 : i - 1 - size(g, ORDER[k]))
+                 (i <= (size(g, FFT_DIMS_ORDER[k]) >> 1) + 1 ? i - 1 : i - 1 - size(g, FFT_DIMS_ORDER[k]))
     end
     return WaveNumberVector(ns)
 end

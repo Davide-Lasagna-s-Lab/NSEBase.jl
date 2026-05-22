@@ -51,7 +51,7 @@ Return `‖u − shift(v, shifts)‖`, the norm of the difference after optional
 shifting `v` along the homogeneous directions.
 
 `shifts` is a tuple with one entry per homogeneous dimension in
-`fft_dims(grid(u)) = ORDER` order, defaulting to all zeros (no shift).
+`fft_dims(grid(u)) = FFT_DIMS_ORDER` order, defaulting to all zeros (no shift).
 
 `tmp` is an optional pre-allocated `FTField` workspace.  When `shifts` is
 non-zero `tmp` is used to hold the shifted copy of `v`; if `tmp` is `nothing`
@@ -59,8 +59,8 @@ a temporary is allocated internally.  When all shifts are zero `tmp` is never
 used.
 """
 function normdiff(u::FTField{G}, v::FTField{G},
-                  shifts=ntuple(Returns(0), length(ORDER)),
-                  tmp=nothing) where {G<:AbstractGrid{T, D, AXES, ORDER}} where {T, D, AXES, ORDER}
+                  shifts=ntuple(Returns(0), length(FFT_DIMS_ORDER)),
+                  tmp=nothing) where {G<:AbstractGrid{T, D, AXES, FFT_DIMS_ORDER}} where {T, D, AXES, FFT_DIMS_ORDER}
     if any(!iszero, shifts)
         tmp = tmp === nothing ? zero(v) : tmp
         tmp .= v
@@ -106,8 +106,8 @@ of per-component [`normdiff`](@ref) values.  See the `FTField` method for the
 meaning of `shifts` and `tmp`.
 """
 function normdiff(u::VectorField{N, <:FTField{G}}, v::VectorField{N, <:FTField{G}},
-                  shifts=ntuple(Returns(0), length(ORDER)),
-                  tmp=nothing) where {N, G<:AbstractGrid{T, D, AXES, ORDER}} where {T, D, AXES, ORDER}
+                  shifts=ntuple(Returns(0), length(FFT_DIMS_ORDER)),
+                  tmp=nothing) where {N, G<:AbstractGrid{T, D, AXES, FFT_DIMS_ORDER}} where {T, D, AXES, FFT_DIMS_ORDER}
     s = zero(real(eltype(u[1])))
     for n in 1:N
         s += normdiff(u[n], v[n], shifts, tmp)^2
@@ -129,12 +129,12 @@ function minnormdiff(u::Union{FTField{G}, VectorField{<:Any, <:FTField{G}}},
                      v::Union{FTField{G}, VectorField{<:Any, <:FTField{G}}},
                      N::NTuple{3, Int}=(32, 32, 32),
                      tmp1=zero(v),
-                     tmp2=zero(v)) where {G<:AbstractGrid{T, D, AXES, ORDER}} where {T, D, AXES, ORDER}
+                     tmp2=zero(v)) where {G<:AbstractGrid{T, D, AXES, FFT_DIMS_ORDER}} where {T, D, AXES, FFT_DIMS_ORDER}
     g        = grid(u)
     min_diff = typemax(real(eltype(u isa VectorField ? u[1] : u)))
     s_min    = ntuple(k -> zero(T), 3)
 
-    steps = ntuple(k -> 2π / (wavenumber_scale(g, ORDER[k]) * N[k]), 3)
+    steps = ntuple(k -> 2π / (wavenumber_scale(g, FFT_DIMS_ORDER[k]) * N[k]), 3)
     zero_step = ntuple(k -> zero(steps[1]), 3)
 
     tmp1 .= v
@@ -171,7 +171,7 @@ signed-FFT pairs `(nz, nt)` and `(-nz, -nt)` that both appear in storage.
 
 The loop uses axis 1 as the mode index `m` (see Storage layout in
 [`ProjectedField`](@ref)) and the spectral indices `args...` from
-`for_each_homogeneous_index`, which correspond to axes 2 onward in ORDER order.
+`for_each_homogeneous_index`, which correspond to axes 2 onward in FFT_DIMS_ORDER order.
 """
 function LinearAlgebra.dot(a::ProjectedField{G}, b::ProjectedField{G}) where {G<:AbstractGrid}
     s = zero(real(eltype(a)))
@@ -199,7 +199,7 @@ Return `‖a − shift(b, shifts)‖`, the norm of the difference after optional
 shifting `b` along the homogeneous directions.
 
 `shifts` is a tuple with one entry per homogeneous dimension in
-`fft_dims(grid(a)) = ORDER` order, defaulting to all zeros (no shift).
+`fft_dims(grid(a)) = FFT_DIMS_ORDER` order, defaulting to all zeros (no shift).
 
 `tmp` is an optional pre-allocated `ProjectedField` workspace used to hold the
 shifted copy of `b` when shifts are non-zero; if `nothing` a temporary is
@@ -210,8 +210,8 @@ Follows the same rfft/signed-FFT weighting as [`dot`](@ref): rfft wavenumbers wi
 is divided by 2 to remove signed-FFT double-counting.
 """
 function normdiff(a::ProjectedField{G}, b::ProjectedField{G},
-                  shifts=ntuple(Returns(0), length(ORDER)),
-                  tmp=nothing) where {G<:AbstractGrid{T, D, AXES, ORDER}} where {T, D, AXES, ORDER}
+                  shifts=ntuple(Returns(0), length(FFT_DIMS_ORDER)),
+                  tmp=nothing) where {G<:AbstractGrid{T, D, AXES, FFT_DIMS_ORDER}} where {T, D, AXES, FFT_DIMS_ORDER}
     if any(!iszero, shifts)
         tmp = tmp === nothing ? zero(b) : tmp
         tmp .= b

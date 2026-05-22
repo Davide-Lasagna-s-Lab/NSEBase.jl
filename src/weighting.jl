@@ -12,22 +12,22 @@ w(k) = \\frac{1}{1 + \\sum_{j=1}^{N} (\\sigma_j \\, k_j)^2}.
 
 # Scale ordering — important
 
-Both `scales` and `k` are indexed in **`fft_dims(g) = ORDER` order**, not in
-physical-coordinate order.  For a grid whose `ORDER = (2, 3, 4)` corresponds
+Both `scales` and `k` are indexed in **`fft_dims(g) = FFT_DIMS_ORDER` order**, not in
+physical-coordinate order.  For a grid whose `FFT_DIMS_ORDER = (2, 3, 4)` corresponds
 to coordinates `(x, z, t)`, `scales[1]` is the streamwise scale, `scales[2]`
 the spanwise scale, and `scales[3]` the temporal scale.
 
-When `ORDER` does not start at array dimension 1 (e.g. for a channel grid
+When `FFT_DIMS_ORDER` does not start at array dimension 1 (e.g. for a channel grid
 where the wall-normal direction lives at array dimension 1) the inhomogeneous
 direction is *absent* from `scales` and `k` entirely: those tuples enumerate
-only the homogeneous (FFT) dimensions in `ORDER` order.
+only the homogeneous (FFT) dimensions in `FFT_DIMS_ORDER` order.
 
 # Constructors
 
     FarazmandWeight(g::AbstractGrid)
     FarazmandWeight(σ::Real, σs::Real...)
 
-The grid form builds the weight from `wavenumber_scale(g, ORDER[k])` for each
+The grid form builds the weight from `wavenumber_scale(g, FFT_DIMS_ORDER[k])` for each
 homogeneous dimension `k`.  The varargs form takes the scales explicitly,
 promoting them to a common `Real` type — useful when the desired scales
 differ from those returned by the grid (e.g. when working on a non-physical
@@ -38,8 +38,8 @@ struct FarazmandWeight{N, T<:Real}
     scales::NTuple{N, T}
 end
 
-function FarazmandWeight(g::AbstractGrid{T, D, AXES, ORDER}) where {T, D, AXES, ORDER}
-    FarazmandWeight(ntuple(k -> T(wavenumber_scale(g, ORDER[k])), length(ORDER)))
+function FarazmandWeight(g::AbstractGrid{T, D, AXES, FFT_DIMS_ORDER}) where {T, D, AXES, FFT_DIMS_ORDER}
+    FarazmandWeight(ntuple(k -> T(wavenumber_scale(g, FFT_DIMS_ORDER[k])), length(FFT_DIMS_ORDER)))
 end
 
 FarazmandWeight(σ::Real, σs::Real...) = FarazmandWeight(promote(σ, σs...))
@@ -53,7 +53,7 @@ Evaluate the Farazmand weight at signed wavenumber `k`:
 w(k) = \\frac{1}{1 + \\sum_{j=1}^{N} (\\sigma_j \\, k_j)^2}
 ```
 
-Both `A.scales` and `k` are interpreted in the grid's `fft_dims = ORDER` order
+Both `A.scales` and `k` are interpreted in the grid's `fft_dims = FFT_DIMS_ORDER` order
 (see the [`FarazmandWeight`](@ref) docstring), so `k[j]` is the signed integer
 wavenumber along the `j`-th homogeneous dimension.
 """

@@ -7,8 +7,8 @@
 
 Call `f(one_or_two, i_H1, i_H2, …, i_HN)` for every stored FFTW index
 combination across the `N = length(fft_dims(g))` homogeneous (FFT) dimensions
-of `g`, where `ORDER = fft_dims(g)` and each `i_Hk` is a 1-based storage
-index for `ORDER[k]`.
+of `g`, where `FFT_DIMS_ORDER = fft_dims(g)` and each `i_Hk` is a 1-based storage
+index for `FFT_DIMS_ORDER[k]`.
 
 ## Arguments passed to `f`
 
@@ -17,29 +17,29 @@ index for `ORDER[k]`.
     rfft and must be counted once.
   - `2` for all other `i_H1`: the stored coefficient represents both `+k₁`
     and its implicit conjugate `−k₁`.
-  - **Nyquist caveat**: when `size(g, ORDER[1])` is even, the last rfft index
-    `i_H1 = (size(g, ORDER[1]) >> 1) + 1` is the Nyquist frequency, which is
+  - **Nyquist caveat**: when `size(g, FFT_DIMS_ORDER[1])` is even, the last rfft index
+    `i_H1 = (size(g, FFT_DIMS_ORDER[1]) >> 1) + 1` is the Nyquist frequency, which is
     also self-conjugate (weight 1), but this function assigns it `2`.  Callers
     that need exact quadrature on non-dealiased even-resolution grids must
     handle this index explicitly.
 - `i_H1, …, i_HN`: 1-based FFTW storage indices, one per homogeneous
-  dimension in `ORDER` order.
-  - `i_H1` ranges over `1:(size(g, ORDER[1]) >> 1) + 1` — the rfft half-
+  dimension in `FFT_DIMS_ORDER` order.
+  - `i_H1` ranges over `1:(size(g, FFT_DIMS_ORDER[1]) >> 1) + 1` — the rfft half-
     spectrum stores only non-negative wavenumbers.
-  - Each `i_Hk` for `k ≥ 2` ranges over `1:size(g, ORDER[k])`, visited as two
+  - Each `i_Hk` for `k ≥ 2` ranges over `1:size(g, FFT_DIMS_ORDER[k])`, visited as two
     contiguous blocks: positive wavenumbers `1:(N >> 1) + 1` first, then
     negative `(N >> 1) + 2:N`.  The split avoids a per-call sign branch inside
     `f` and keeps memory accesses contiguous.
 
-The innermost loop is always `ORDER[1]` (rfft dimension), the outermost
-`ORDER[N]`, so the call order matches `ProjectedField` storage layout
-`(mode, ORDER[1], …, ORDER[N])` for cache efficiency.
+The innermost loop is always `FFT_DIMS_ORDER[1]` (rfft dimension), the outermost
+`FFT_DIMS_ORDER[N]`, so the call order matches `ProjectedField` storage layout
+`(mode, FFT_DIMS_ORDER[1], …, FFT_DIMS_ORDER[N])` for cache efficiency.
 
 Non-homogeneous dimensions are not iterated; loop over them inside `f`.
 
 ## Example
 
-`ORDER = (1, 2)`, `size(g, 1) = 4` (rfft → 3 stored indices: wavenumbers
+`FFT_DIMS_ORDER = (1, 2)`, `size(g, 1) = 4` (rfft → 3 stored indices: wavenumbers
 0, +1, +2), `size(g, 2) = 6` (signed FFT → positive block 1:4, wavenumbers
 0,+1,+2,+3; negative block 5:6, wavenumbers −2,−1).
 
@@ -57,21 +57,21 @@ i_H2=6 (k₂=−1):  f(1, 1, 6)   f(2, 2, 6)   f(2, 3, 6)
 
 `i_H1` is the inner (fastest-changing) index; `i_H2` is outer.
 """
-@generated function for_each_homogeneous_index(f, g::AbstractGrid{T, D, AXES, ORDER}) where {T, D, AXES, ORDER}
-    N          = length(ORDER)
+@generated function for_each_homogeneous_index(f, g::AbstractGrid{T, D, AXES, FFT_DIMS_ORDER}) where {T, D, AXES, FFT_DIMS_ORDER}
+    N          = length(FFT_DIMS_ORDER)
     syms       = [Symbol("_i", k) for k in 1:N]
     one_or_two = :($(syms[1]) == 1 ? 1 : 2)
 
     # Innermost: rfft dimension — non-negative wavenumbers only, single block.
     # one_or_two is passed as the first argument so callers need no branch.
-    body = :(for $(syms[1]) in 1:(Base.size(g, $(ORDER[1])) >> 1) + 1
+    body = :(for $(syms[1]) in 1:(Base.size(g, $(FFT_DIMS_ORDER[1])) >> 1) + 1
                  f($one_or_two, $(syms...))
              end)
 
-    # Wrap in signed-FFT loops ORDER[2:end] from innermost to outermost.
+    # Wrap in signed-FFT loops FFT_DIMS_ORDER[2:end] from innermost to outermost.
     # Split each into positive and negative blocks.
     for k in 2:N
-        dim  = ORDER[k]
+        dim  = FFT_DIMS_ORDER[k]
         sym  = syms[k]
         pos  = :(for $sym in 1:(Base.size(g, $dim) >> 1) + 1; $body; end)
         neg  = :(for $sym in (Base.size(g, $dim) >> 1) + 2:Base.size(g, $dim); $body; end)
@@ -98,8 +98,8 @@ of an `FTField` on `g`:
 Loops are ordered with array **dimension 1 innermost** (column-major),
 regardless of whether any particular dimension is homogeneous or
 inhomogeneous — keeping accesses to the `FTField` parent array cache-
-friendly.  The rfft dimension (`ORDER[1]`) is limited to
-`1:(size(g, ORDER[1]) >> 1) + 1`; all other dimensions are visited over their
+friendly.  The rfft dimension (`FFT_DIMS_ORDER[1]`) is limited to
+`1:(size(g, FFT_DIMS_ORDER[1]) >> 1) + 1`; all other dimensions are visited over their
 full storage range `1:size(g, d)` in a single contiguous block.
 
 Prefer `for_each_index` over composing `for_each_homogeneous_index` with a
@@ -108,7 +108,7 @@ example, inner products on `FTField`.
 
 ## Generated code examples
 
-**`D = 2`, `ORDER = (1, 2)`** — both dimensions homogeneous, no inhomogeneous
+**`D = 2`, `FFT_DIMS_ORDER = (1, 2)`** — both dimensions homogeneous, no inhomogeneous
 dimension:
 
 ```julia
@@ -121,7 +121,7 @@ end
 
 `inhomogeneous_indices = ()` (empty), `indices = (_i1, _i2)`.
 
-**`D = 3`, `ORDER = (1, 3)`** — dims 1 and 3 homogeneous (dim 1 rfft), dim 2
+**`D = 3`, `FFT_DIMS_ORDER = (1, 3)`** — dims 1 and 3 homogeneous (dim 1 rfft), dim 2
 inhomogeneous:
 
 ```julia
@@ -136,7 +136,7 @@ end
 
 `inhomogeneous_indices = (_i2,)`, `indices = (_i1, _i2, _i3)`.
 
-**`D = 3`, `ORDER = (2, 3)`** — dims 2 and 3 homogeneous (dim 2 rfft), dim 1
+**`D = 3`, `FFT_DIMS_ORDER = (2, 3)`** — dims 2 and 3 homogeneous (dim 2 rfft), dim 1
 inhomogeneous.  Note that dim 1 remains innermost (column-major), even though
 it is inhomogeneous, and `one_or_two` is now driven by `_i2`:
 
@@ -152,18 +152,18 @@ end
 
 `inhomogeneous_indices = (_i1,)`, `indices = (_i1, _i2, _i3)`.
 """
-@generated function for_each_index(f, g::AbstractGrid{T, D, AXES, ORDER}) where {T, D, AXES, ORDER}
+@generated function for_each_index(f, g::AbstractGrid{T, D, AXES, FFT_DIMS_ORDER}) where {T, D, AXES, FFT_DIMS_ORDER}
     # One loop variable per array dimension, named _i1 … _iD.
     syms = [Symbol("_i", d) for d in 1:D]
 
     # Inhomogeneous dims are those not transformed by FFTs.
-    inh      = Tuple(d for d in 1:D if d ∉ ORDER)
+    inh      = Tuple(d for d in 1:D if d ∉ FFT_DIMS_ORDER)
     inh_syms = [syms[d] for d in inh]
 
-    # ORDER[1] is the rfft dimension: only non-negative wavenumbers are stored,
+    # FFT_DIMS_ORDER[1] is the rfft dimension: only non-negative wavenumbers are stored,
     # so its index runs 1:(N÷2)+1.  When the index equals 1 (zero wavenumber)
     # the mode has no conjugate partner → weight 1; all others → weight 2.
-    rfft_dim   = ORDER[1]
+    rfft_dim   = FFT_DIMS_ORDER[1]
     one_or_two = :($(syms[rfft_dim]) == 1 ? 1 : 2)
 
     # Innermost call: pass the rfft weight, the inhomogeneous index tuple, and
@@ -178,7 +178,7 @@ end
         if d == rfft_dim
             # rfft dim: storage indices 1:(N÷2)+1 cover non-negative wavenumbers only.
             body = :(for $sym in 1:(Base.size(g, $d) >> 1) + 1; $body; end)
-        elseif d ∈ ORDER
+        elseif d ∈ FFT_DIMS_ORDER
             # Other homogeneous dims: visit every storage index in one contiguous
             # block.  Unlike for_each_homogeneous_index, we do not split positive
             # and negative wavenumbers here because every element is visited

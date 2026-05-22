@@ -6,12 +6,12 @@
 
 In-place spectral derivative of `u` along array dimension `DIM`, writing into `out`.
 
-For `DIM in ORDER` the derivative is multiplication by
+For `DIM in FFT_DIMS_ORDER` the derivative is multiplication by
 `±im * n * wavenumber_scale(grid, DIM)` where `n` is the signed wavenumber.
 `adjoint=false` (default) gives `+im·n·scale·u`; `adjoint=true` gives `-im·n·scale·u`
 (the L2 adjoint of the spectral derivative for homogeneous directions).
 
-For `DIM not in ORDER` the method throws `NotImplementedError`. Downstream packages
+For `DIM not in FFT_DIMS_ORDER` the method throws `NotImplementedError`. Downstream packages
 should extend this for each non-homogeneous direction (e.g. matrix multiply
 with a differentiation matrix) and handle the `adjoint` keyword there too.
 
@@ -20,7 +20,7 @@ For `AXES[DIM] === nothing` the function reduces to identity.
 # Generated loop shape
 
 The generated code is arranged for memory order, not physical-coordinate order.
-For a 4D spectral array `(a, b, c, d)` with `ORDER = (2, 3, 4)`,
+For a 4D spectral array `(a, b, c, d)` with `FFT_DIMS_ORDER = (2, 3, 4)`,
 differentiating in the rfft dimension `b` generates the
 equivalent of:
 
@@ -59,10 +59,10 @@ end
 @generated function ddx!(out::F,
                            u::F,
                             ::Val{DIM};
-                     adjoint::Bool=false) where {T, D, AXES, ORDER, G<:AbstractGrid{T, D, AXES, ORDER}, F<:Union{FTField{G}, ProjectedField{G}}, DIM}
+                     adjoint::Bool=false) where {T, D, AXES, FFT_DIMS_ORDER, G<:AbstractGrid{T, D, AXES, FFT_DIMS_ORDER}, F<:Union{FTField{G}, ProjectedField{G}}, DIM}
     # TODO: this needs to be made much more clear..
     (isnothing(DIM) || isnothing(AXES[DIM])) && return :(return out)
-    DIM ∉ ORDER && return :(throw(NotImplementedError(grid(u), Val($DIM))))
+    DIM ∉ FFT_DIMS_ORDER && return :(throw(NotImplementedError(grid(u), Val($DIM))))
 
     syms  = [Symbol("_i", d) for d in 1:D]
     n_sym = Symbol("_n", DIM)
@@ -97,7 +97,7 @@ end
     ranges = [:(1:Base.size(u, $d)) for d in 1:D]
     wnums  = Any[:nothing for _ in 1:D]
 
-    if DIM == ORDER[1]
+    if DIM == FFT_DIMS_ORDER[1]
         # rfft dimension: only non-negative wavenumbers are stored.
         wnums[DIM] = :($(syms[DIM]) - 1)
         body = cache_ordered_loop(assign, ranges, wnums)
@@ -200,13 +200,13 @@ ddx_4!(out::VectorField{N}, u::VectorField{N}; kwargs...) where {N} =
 
 Add the homogeneous Laplacian contribution of `u` to `out`:
 
-    out[mode] -= (∑_{d∈ORDER} (wavenumber_scale(g, d) · n_d)²) · u[mode]
+    out[mode] -= (∑_{d∈FFT_DIMS_ORDER} (wavenumber_scale(g, d) · n_d)²) · u[mode]
 
 Call after computing the non-homogeneous (e.g. wall-normal) second derivative.
 
 # Generated loop shape
 
-For a 4D spectral array `(a, b, c, d)` with `ORDER = (2, 3, 4)`,
+For a 4D spectral array `(a, b, c, d)` with `FFT_DIMS_ORDER = (2, 3, 4)`,
 the generated code computes:
 
 ```julia
@@ -228,13 +228,13 @@ nz <  0, nt <  0
 Inside every block, dimension 1 remains the innermost loop and the signed
 wavenumbers are plain loop-local integers.
 """
-@generated function add_homogeneous_laplacian!(out::FTField{G}, u::FTField{G}) where {T, D, AXES, ORDER, G<:AbstractGrid{T, D, AXES, ORDER}}
+@generated function add_homogeneous_laplacian!(out::FTField{G}, u::FTField{G}) where {T, D, AXES, FFT_DIMS_ORDER, G<:AbstractGrid{T, D, AXES, FFT_DIMS_ORDER}}
     # TODO: this needs to be made much more clear
-    H = filter(d->d!=AXES[4], ORDER) # exclude time from derivative contributions
+    H = filter(d->d!=AXES[4], FFT_DIMS_ORDER) # exclude time from derivative contributions
     syms = [Symbol("_i", d) for d in 1:D]
 
     # Build the symbolic k² expression from per-dimension scale and wavenumber
-    # variables.  The loops below define `_n<dim>` for each dimension in ORDER.
+    # variables.  The loops below define `_n<dim>` for each dimension in FFT_DIMS_ORDER.
     k2_terms = Expr[]
     for d in H
         n_expr = Symbol("_n", d)
@@ -252,8 +252,8 @@ wavenumbers are plain loop-local integers.
     signed_dims = H[2:end]
     blocks = Expr[]
     for mask in 0:(1 << length(signed_dims)) - 1
-        # One generated block for each sign combination of ORDER[2:end].
-        # The rfft dimension ORDER[1] is not split because it stores only n >= 0.
+        # One generated block for each sign combination of FFT_DIMS_ORDER[2:end].
+        # The rfft dimension FFT_DIMS_ORDER[1] is not split because it stores only n >= 0.
         ranges = [:(1:Base.size(u, $d)) for d in 1:D]
         wnums  = Any[:nothing for _ in 1:D]
         wnums[H[1]] = :($(syms[H[1]]) - 1)
@@ -309,7 +309,7 @@ inhomogeneous_laplacian!(out::FTField, u::FTField) = throw(NotImplementedError(o
 
 Compute the full Laplacian of `u` in-place, storing the result in `out`:
 
-    out[mode] = (∂²/∂y² + ∑_{d∈ORDER} (wavenumber_scale(g, d) · n_d)²) · u[mode]
+    out[mode] = (∂²/∂y² + ∑_{d∈FFT_DIMS_ORDER} (wavenumber_scale(g, d) · n_d)²) · u[mode]
 
 Combines the inhomogeneous (e.g. wall-normal) second derivative with the
 homogeneous (spectral) Laplacian by calling, in order:
@@ -323,7 +323,7 @@ independently to each component `n ∈ 1:N`.
 
 # Example
 
-For a 4D spectral array `(t, x, z, y)` with `ORDER = (1, 2, 3)` the
+For a 4D spectral array `(t, x, z, y)` with `FFT_DIMS_ORDER = (1, 2, 3)` the
 combined operation is equivalent to:
 
 ```julia
