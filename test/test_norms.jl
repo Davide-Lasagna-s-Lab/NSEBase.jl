@@ -1,0 +1,131 @@
+# Tests for `dot`, `norm`, `normdiff` and `minnormdiff` on FTField,
+# VectorField and ProjectedField.
+#
+# Contract (from src/norms.jl):
+#
+#   dot(u, v) = (1/2) Σₖ c_{k₁} · Σⱼ ws[j] · Re(conj(u_kj) · v_kj)
+#
+#   where c_{k₁} accounts for rfft Hermitian symmetry (1 for k₁ = 0, 2 else).
+#
+#   - dot is real and symmetric in (u, v).
+#   - norm(u) = √dot(u, u) and is non-negative.
+#   - normdiff(u, v, shifts) = norm(u - shift(v, shifts)) — pure norm of the
+#     difference when shifts is zero, otherwise the shifted-difference norm.
+#   - minnormdiff scans a small box of candidate shifts and returns the
+#     pair (min_diff, best_shifts) that minimises normdiff.
+
+@testset verbose=true "Norms                               " begin
+
+    @testset "FTField: dot symmetry, positivity, linearity" begin
+        # On FakeGrid the parent array is (Nx, (Ny>>1)+1) and weights are
+        # ones(Nx), so dot reduces to the simple Hermitian-weighted sum.
+        Nx, Ny = 8, 12
+        g = FakeGrid(rand(Float64, Nx), Ny, 2π)
+        u = FTField(g, randn(ComplexF64, Nx, (Ny>>1)+1))
+        v = FTField(g, randn(ComplexF64, Nx, (Ny>>1)+1))
+
+        # Symmetry: dot is real, so dot(u,v) == dot(v,u).
+        @test dot(u, v) ≈ dot(v, u)
+
+        # Positivity: dot(u, u) ≥ 0, and = 0 iff u is zero.
+        @test dot(u, u) ≥ 0
+        @test dot(zero(u), zero(u)) == 0
+
+        # Linearity in the second argument: dot(u, αv + βw) = α dot(u,v) + β dot(u,w)
+        # for real α, β.
+        w = FTField(g, randn(ComplexF64, Nx, (Ny>>1)+1))
+        α, β = 0.3, -1.7
+        αv = FTField(g, α .* parent(v))
+        βw = FTField(g, β .* parent(w))
+        αvβw = FTField(g, α .* parent(v) .+ β .* parent(w))
+        @test dot(u, αvβw) ≈ α*dot(u, v) + β*dot(u, w) atol=1e-14
+    end
+
+    @testset "FTField: norm and norm-difference identities" begin
+        # ‖u‖² == dot(u, u);  ‖u - v‖² == ‖u‖² + ‖v‖² − 2·dot(u, v) (real dot).
+        Nx, Ny = 8, 12
+        g = FakeGrid(rand(Float64, Nx), Ny, 2π)
+        u = FTField(g, randn(ComplexF64, Nx, (Ny>>1)+1))
+        v = FTField(g, randn(ComplexF64, Nx, (Ny>>1)+1))
+
+        @test norm(u)^2 ≈ dot(u, u)
+
+        # u - v as an FTField (broadcasting).
+        d = FTField(g, parent(u) .- parent(v))
+        @test norm(d)^2 ≈ dot(u, u) + dot(v, v) - 2*dot(u, v) atol=1e-12
+
+        # normdiff(u, v) with no shifts == ‖u - v‖.
+        @test normdiff(u, v) ≈ norm(d) atol=1e-12
+
+        # normdiff(u, u) == 0.
+        @test normdiff(u, u) == 0
+    end
+
+    @testset "VectorField: dot decomposes component-wise" begin
+        # dot(u, v) = Σₙ dot(u[n], v[n]) — the public docstring contract.
+        Nx, Ny = 8, 12
+        g = FakeGrid(rand(Float64, Nx), Ny, 2π)
+        Nc = 3
+        u = VectorField([FTField(g, randn(ComplexF64, Nx, (Ny>>1)+1)) for _ in 1:Nc]...)
+        v = VectorField([FTField(g, randn(ComplexF64, Nx, (Ny>>1)+1)) for _ in 1:Nc]...)
+
+        @test dot(u, v) ≈ sum(dot(u[n], v[n]) for n in 1:Nc) atol=1e-14
+        @test norm(u)^2 ≈ dot(u, u)
+        @test normdiff(u, u) == 0
+    end
+
+    @testset "normdiff with shifts == norm of explicitly shifted diff" begin
+        # `normdiff(u, v, shifts)` is documented as `norm(u - shift(v, shifts))`.
+        # Verify by computing both sides on a TripleGrid (multi-dim shifts).
+        # Use *odd* signed-FFT sizes so there is no Nyquist mode — a shift
+        # breaks the Nyquist-mode self-conjugacy, which `FTField`'s
+        # constructor silently re-imposes via `apply_symmetry!`.  Without the
+        # Nyquist the two sides agree exactly.
+        Ny, Nx, Nz = 3, 9, 5
+        g = TripleGrid(Ny, Nx, Nz)
+        u = FTField(g, randn(ComplexF64, Ny, (Nx>>1)+1, Nz))
+        v = FTField(g, randn(ComplexF64, Ny, (Nx>>1)+1, Nz))
+
+        s = (0.27, -0.41)
+        # LHS: built-in normdiff with shifts.
+        lhs = normdiff(u, v, s)
+
+        # RHS: explicit shift-then-diff-then-norm.
+        v_shifted = shift!(copy(v), s)
+        diff = FTField(g, parent(u) .- parent(v_shifted))
+        rhs = norm(diff)
+
+        @test lhs ≈ rhs atol=1e-13
+    end
+
+    # minnormdiff is currently hardcoded for grids with exactly three FFT
+    # dimensions (it uses `NTuple{3, Int}` for the candidate-grid sizes), so
+    # we cannot test it generically here.  The 3-FFT-dim integration test
+    # lives in `ReSolverChannelFlow.jl/test/test_norms.jl`.
+
+    @testset "ProjectedField: dot is real and matches the explicit formula" begin
+        # ProjectedField.dot is the spectral inner-product weighted by
+        # Hermitian multiplicity c_{k₁} on the rfft axis, summed over (m, k).
+        Nx, Ny = 8, 12
+        g = FakeGrid(rand(Float64, Nx), Ny, 2π)
+        Nm = 4
+        Ψ = ntuple(_ -> randn(ComplexF64, Nx, Nm, (Ny>>1)+1), 3)
+        a = ProjectedField(g, randn(ComplexF64, Nm, (Ny>>1)+1), Ψ)
+        b = ProjectedField(g, randn(ComplexF64, Nm, (Ny>>1)+1), Ψ)
+
+        # Explicit reference: sum over (m, k1) with the rfft Hermitian factor.
+        pa, pb = parent(a), parent(b)
+        ref = 0.0
+        for k1 in 1:(Ny>>1)+1
+            c = (k1 == 1) ? 1 : 2
+            for m in 1:Nm
+                ref += c * real(conj(pa[m, k1]) * pb[m, k1])
+            end
+        end
+        ref /= 2
+
+        @test dot(a, b) ≈ ref atol=1e-13
+        @test norm(a)^2 ≈ dot(a, a)
+        @test normdiff(a, a) == 0
+    end
+end
