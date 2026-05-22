@@ -10,8 +10,8 @@
 #     other axes unchanged.
 #   - `fft_norm(grid)` is the product of the FFT-dim sizes, used to normalise
 #     forward transforms.
-#   - `to_storage_order(values, grid)` permutes a logical-coordinate tuple
-#     into storage order using `invperm(AXES)`.
+#   - `to_storage_order(values, grid)` permutes the four logical-coordinate
+#     slots `(X,Y,Z,T)` into storage order using `AXES`.
 #   - Required-interface fall-throughs (`points`, `weights`,
 #     `wavenumber_scale`, `growto`, `convert`) throw `NotImplementedError`.
 
@@ -19,7 +19,7 @@
 
     # A minimal struct with no concrete implementations.  Used to verify the
     # fall-through methods throw `NotImplementedError`.
-    struct BareGrid <: AbstractGrid{Float64, 3, (2, 1, 3), (2, 3)} end
+    struct BareGrid <: AbstractGrid{Float64, 3, (2, 1, 3, nothing), (2, 3)} end
     Base.size(::BareGrid) = (4, 8, 6)
 
 
@@ -57,7 +57,7 @@
         @test NSEBase.fft_norm(g) === (8, 6)
     end
 
-    @testset "to_storage_order: invperm(AXES)" begin
+    @testset "to_storage_order: AXES storage order" begin
         # Build a grid whose AXES = (2, 1, 3, 4) — i.e. coordinate 1 lives at
         # array dim 2, coordinate 2 at array dim 1, coordinate 3 at array dim 3,
         # coordinate 4 at array dim 4.  Then `to_storage_order((A,B,C,D), g)`
@@ -68,9 +68,19 @@
         @test NSEBase.to_storage_order((:A, :B, :C, :D), PermGrid()) ===
               (:B, :A, :C, :D)
 
-        # Argument count must match D — the method signature constrains the
-        # tuple length to D via `Tuple{Vararg{Any, D}}`, so calling with the
-        # wrong arity dispatches to no method.
+        # A grid without time drops the fourth logical coordinate while keeping
+        # the stored dimensions in array order.
+        @test NSEBase.to_storage_order((:X, :Y, :Z, :T), BareGrid()) ===
+              (:Y, :X, :Z)
+
+        # Missing coordinates may appear before the end of AXES.  This grid has
+        # no z coordinate, but does have time stored in array dim 3, so the
+        # storage-order tuple is (y, x, t).
+        struct SpaceTimeGrid <: AbstractGrid{Float64, 3, (2, 1, nothing, 3), (2, 3)} end
+        @test NSEBase.to_storage_order((:X, :Y, :Z, :T), SpaceTimeGrid()) ===
+              (:Y, :X, :T)
+
+        # Argument count must match the four Cartesian coordinate slots.
         @test_throws MethodError NSEBase.to_storage_order((:A, :B), PermGrid())
     end
 

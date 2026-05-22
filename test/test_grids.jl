@@ -13,11 +13,15 @@
 #   array dim 2: rfft           (x), length Nx, period 2π/α  (FFT_DIMS_ORDER[1]).
 #   array dim 3: signed FFT     (z), length Nz, period 2π/β  (FFT_DIMS_ORDER[2]).
 #
-# `AXES = (2, 1, 3)` means coordinate 1 (x) → array dim 2, coordinate 2 (y) →
-# array dim 1, coordinate 3 (z) → array dim 3.  Therefore `points(g)` returns
-# `(y, x, z)` — the storage-order traversal of the coordinate triple.
-# TODO: AXES should be a tuple of 4 elements
-struct TripleGrid <: AbstractGrid{Float64, 3, (2, 1, 3), (2, 3)}
+# `AXES = (2, 1, 3, nothing)` means coordinate 1 (x) → array dim 2,
+# coordinate 2 (y) → array dim 1, coordinate 3 (z) → array dim 3, and
+# coordinate 4 (t) is absent.  Cartesian grid test helpers keep all four
+# coordinate slots so wrappers such as `ddx_4!` can dispatch to a no-op for
+# grids with no time direction.
+#
+# `points(g)` still returns only `D == 3` arrays, in storage order:
+# `(y, x, z)`.
+struct TripleGrid <: AbstractGrid{Float64, 3, (2, 1, 3, nothing), (2, 3)}
     Ny :: Int
     Nx :: Int
     Nz :: Int

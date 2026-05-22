@@ -1,4 +1,4 @@
-struct GalerkinGrid{S} <: AbstractGrid{Float64, 2, (1, 2), (2,)}
+struct GalerkinGrid{S} <: AbstractGrid{Float64, 2, (1, 2, nothing, nothing), (2,)}
     ws::Vector{Float64}
 end
 

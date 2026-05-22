@@ -22,13 +22,13 @@ end
 
     @testset "for_each_homogeneous_index" begin
         # Grid with one rfft dimension of size 7, FFT_DIMS_ORDER = (1,)
-        g = TestGrid{(7,), 1, nothing, (1,)}()
+        g = TestGrid{(7,), 1, (1, nothing, nothing, nothing), (1,)}()
         modes = collect_wavenumbers(g)
         @test modes == [(1,), (2,), (3,), (4,)]   # 1:(7>>1)+1 = 1:4
         @test length(modes) == (7 >> 1) + 1
 
         # Grid with rfft along dim 1 (size 7) and signed fft along dim 2 (size 5), FFT_DIMS_ORDER = (1, 2)
-        g = TestGrid{(7, 5), 2, nothing, (1, 2)}()
+        g = TestGrid{(7, 5), 2, (1, 2, nothing, nothing), (1, 2)}()
         modes = collect_wavenumbers(g)
 
         # rfft indices: 1:4, signed-fft indices: 1:3 (pos) then 4:5 (neg)
@@ -41,12 +41,12 @@ end
         @test length(modes) == ((7 >> 1) + 1) * 5
 
         # no duplicate indices
-        g = TestGrid{(7, 5), 2, nothing, (1, 2)}()
+        g = TestGrid{(7, 5), 2, (1, 2, nothing, nothing), (1, 2)}()
         modes = collect_wavenumbers(g)
         @test length(modes) == length(unique(modes))
 
         # all storage indices covered
-        g = TestGrid{(7, 5), 2, nothing, (1, 2)}()
+        g = TestGrid{(7, 5), 2, (1, 2, nothing, nothing), (1, 2)}()
         modes = collect_wavenumbers(g)
         all_i1 = sort(unique(first.(modes)))
         all_i2 = sort(unique(last.(modes)))
@@ -54,7 +54,7 @@ end
         @test all_i2 == collect(1:5)
 
         # zero allocations
-        g = TestGrid{(7, 5), 2, nothing, (1, 2)}()
+        g = TestGrid{(7, 5), 2, (1, 2, nothing, nothing), (1, 2)}()
         f(grid) = @allocated NSEBase.for_each_homogeneous_index((args...)->nothing, grid)
         # Warm up
         f(g)
@@ -64,13 +64,13 @@ end
 
     @testset "to_wavenumber_vector order" begin
         # Grid with one rfft dimension of size 7, FFT_DIMS_ORDER = (1,)
-        g = TestGrid{(7,), 1, nothing, (1,)}()
+        g = TestGrid{(7,), 1, (1, nothing, nothing, nothing), (1,)}()
         ks = collect_wavenumber_vectors(g)
         @test ks == [(0,), (1,), (2,), (3,)]   # 0:(7>>1) = 0:3
         @test all(k -> k[1] >= 0, ks)
 
         # Grid with rfft along dim 1 (size 7) and signed fft along dim 2 (size 5), FFT_DIMS_ORDER = (1, 2)
-        g = TestGrid{(7, 5), 2, nothing, (1, 2)}()
+        g = TestGrid{(7, 5), 2, (1, 2, nothing, nothing), (1, 2)}()
         ks = collect_wavenumber_vectors(g)
 
         # rfft wavenumbers: 0:3, signed-FFT wavenumbers: 0:2 (positive block)
@@ -80,18 +80,18 @@ end
         @test ks == expected
 
         # wavenumbers are symmetric
-        g = TestGrid{(7, 5), 2, nothing, (1, 2)}()
+        g = TestGrid{(7, 5), 2, (1, 2, nothing, nothing), (1, 2)}()
         ks = collect_wavenumber_vectors(g)
         k2_vals = sort(unique(last.(ks)))
         @test k2_vals == collect(-(5 >> 1):(5 >> 1))
 
         # no duplicate wavenumbers
-        g = TestGrid{(7, 5), 2, nothing, (1, 2)}()
+        g = TestGrid{(7, 5), 2, (1, 2, nothing, nothing), (1, 2)}()
         ks = collect_wavenumber_vectors(g)
         @test length(ks) == length(unique(ks))
 
         # mode count matches storage size
-        g = TestGrid{(7, 5), 2, nothing, (1, 2)}()
+        g = TestGrid{(7, 5), 2, (1, 2, nothing, nothing), (1, 2)}()
         ks = collect_wavenumber_vectors(g)
         @test length(ks) == ((7 >> 1) + 1) * 5
     end

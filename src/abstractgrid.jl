@@ -10,9 +10,12 @@ Abstract type that represents a generic computational grid of a
 Type parameters:
 - `T`: scalar real type used by physical-space fields on this grid.
 - `D`: number of array dimensions.
-- `AXES`: tuple whose meaning is defined by the concrete grid subtype.
-  For Cartesian grid subtypes `AXES = (x_dim, y_dim, z_dim, t_dim)`;
-  other coordinate systems may use a different convention.
+- `AXES`: four-entry Cartesian axis layout `(x_dim, y_dim, z_dim, t_dim)`.
+  NSEBase assumes this tuple always has four entries, one for each logical
+  Cartesian coordinate.  Each entry is the array dimension occupied by that
+  coordinate, or `nothing` when the coordinate is absent.  The non-`nothing`
+  entries should be a permutation of `1:D`.  For example, a three-dimensional
+  grid stored as `(y, x, z)` should use `AXES = (2, 1, 3, nothing)`.
 - `FFT_DIMS_ORDER`: tuple of statistically homogeneous array dimensions. These are
   transformed by FFTs; `FFT_DIMS_ORDER[1]` is the rfft dimension.
 
@@ -69,15 +72,17 @@ Permute a tuple from logical coordinate order into storage/array-dimension
 order.
 
 The axis layout is read from the grid type parameter `AXES`, where `AXES[i]`
-is the array dimension occupied by logical coordinate `i`. For example, if
+is the array dimension occupied by logical coordinate `i`.  `values` must have
+the four Cartesian coordinate slots `(X, Y, Z, T)`.  Coordinates whose `AXES`
+entry is `nothing` are omitted from the result.  For example, if
 `values = (X, Y, Z, T)` and `AXES = (2, 1, 3, 4)`, then
 `to_storage_order(values, grid)` returns `(Y, X, Z, T)`.
 """
-@generated function to_storage_order(values::Tuple{Vararg{Any, D}},
-                                        ::AbstractGrid{<:Any, D, AXES}) where {D, AXES}
-    length(AXES) == D || throw(ArgumentError("values and axes have incompatible sizes"))
-    order = invperm(AXES)
-    return Expr(:tuple, (:(values[$(order[i])]) for i in 1:D)...)
+@generated function to_storage_order(values::Tuple{Vararg{Any, 4}},
+                                     ::AbstractGrid{<:Any, D, AXES}) where {D, AXES}
+    present = [(coordinate, axis) for (coordinate, axis) in pairs(AXES) if !isnothing(axis)]
+    order = first.(sort(present; by=last))
+    return Expr(:tuple, (:(values[$coordinate]) for coordinate in order)...)
 end
 
 # ------------------ #
