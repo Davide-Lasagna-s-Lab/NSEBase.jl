@@ -1,11 +1,3 @@
-struct GalerkinGrid{S} <: AbstractGrid{Float64, 2, (1, 2, nothing, nothing), (2,)}
-    ws::Vector{Float64}
-end
-
-Base.size(::GalerkinGrid{S}) where {S} = S
-NSEBase.weights(g::GalerkinGrid) = g.ws
-NSEBase.wavenumber_scale(::GalerkinGrid, ::Int) = 1.0
-
 function _fill_vector_field!(u::VectorField)
     for n in eachindex(u)
         data = parent(u[n])

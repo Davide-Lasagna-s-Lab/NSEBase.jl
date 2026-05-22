@@ -53,3 +53,88 @@ NSEBase.points(g::TripleGrid; dealias=false) = begin
     z = reshape((0:Nz-1) * (2π/g.β/Nz),             1,  1, Nz)
     return (y, x, z)
 end
+
+
+# 2-D analytic fixture:
+#
+#   array dim 1: inhomogeneous y, represented by arbitrary collocation points.
+#   array dim 2: rfft x, periodic with length Lx.
+#
+# The derivative matrices are Lagrange-collocation differentiation matrices.
+# They differentiate polynomials of degree < Ny exactly at the grid points,
+# which lets tests compare `ddx_2!` and `laplacian!` against analytic
+# derivatives without depending on ChannelFlow's Chebyshev grid.
+struct PolynomialGrid <: AbstractGrid{Float64, 2, (2, 1, nothing, nothing), (2,)}
+    y  :: Vector{Float64}
+    Nx :: Int
+    Lx :: Float64
+    D1 :: Matrix{Float64}
+    D2 :: Matrix{Float64}
+    ws :: Vector{Float64}
+end
+
+function PolynomialGrid(y::AbstractVector{<:Real}, Nx::Integer, Lx::Real=2π)
+    yv = Float64.(collect(y))
+    D1 = _lagrange_derivative_matrix(yv)
+    D2 = D1 * D1
+    return PolynomialGrid(yv, Int(Nx), Float64(Lx), D1, D2, ones(length(yv)))
+end
+
+function _lagrange_derivative_matrix(x::AbstractVector{<:Real})
+    N = length(x)
+    λ = ones(Float64, N)
+    for j in 1:N, m in 1:N
+        j != m && (λ[j] /= x[j] - x[m])
+    end
+
+    D = zeros(Float64, N, N)
+    for i in 1:N, j in 1:N
+        i != j && (D[i, j] = λ[j] / (λ[i] * (x[i] - x[j])))
+    end
+    for i in 1:N
+        D[i, i] = -sum(D[i, j] for j in 1:N if j != i)
+    end
+    return D
+end
+
+Base.size(g::PolynomialGrid)                         = (length(g.y), g.Nx)
+NSEBase.weights(g::PolynomialGrid)                   = g.ws
+NSEBase.wavenumber_scale(g::PolynomialGrid, dim::Int) = dim == 2 ? 2π / g.Lx : one(g.Lx)
+Base.convert(::Type{Float64}, g::PolynomialGrid)     = g
+
+NSEBase.points(g::PolynomialGrid; dealias=false) = begin
+    Nx = dealias ? NSEBase.get_padded_size(size(g), NSEBase.fft_dims(g))[2] : g.Nx
+    y = reshape(g.y, :, 1)
+    x = reshape((0:Nx-1) * (g.Lx / Nx), 1, :)
+    return (y, x)
+end
+
+function NSEBase.ddx!(out::FTField{PolynomialGrid},
+                      u::FTField{PolynomialGrid},
+                      ::Val{1};
+                      adjoint::Bool=false)
+    parent(out) .= (adjoint ? grid(u).D1' : grid(u).D1) * parent(u)
+    return out
+end
+
+function NSEBase.inhomogeneous_laplacian!(out::FTField{PolynomialGrid},
+                                          u::FTField{PolynomialGrid};
+                                          adjoint::Bool=false)
+    parent(out) .= (adjoint ? grid(u).D2' : grid(u).D2) * parent(u)
+    return out
+end
+
+
+# Minimal grids used by several generic tests.  They intentionally implement
+# only `size`; tests that use them exercise code paths that need no concrete
+# coordinate arrays, weights, or derivative extensions.
+struct SpectralTestGrid{S, D, AXES, FFT_DIMS_ORDER} <: AbstractGrid{Float64, D, AXES, FFT_DIMS_ORDER} end
+Base.size(::SpectralTestGrid{S}) where {S} = S
+
+struct GalerkinGrid{S} <: AbstractGrid{Float64, 2, (1, 2, nothing, nothing), (2,)}
+    ws::Vector{Float64}
+end
+
+Base.size(::GalerkinGrid{S}) where {S} = S
+NSEBase.weights(g::GalerkinGrid) = g.ws
+NSEBase.wavenumber_scale(::GalerkinGrid, ::Int) = 1.0

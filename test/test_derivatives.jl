@@ -21,7 +21,42 @@
 
 @testset verbose=true "Derivatives                         " begin
 
-    # TODO: add a test with the velocity field being analytycailly known, like for channelflow to all the tests below
+    @testset "analytic field derivatives on a mixed inhomogeneous/FFT grid" begin
+        # This is the NSEBase version of the analytic derivative tests that
+        # used to live naturally in ChannelFlow.  The grid has one polynomial
+        # collocation direction y and one periodic rfft direction x.  The
+        # y-derivative is supplied by the test grid extension, while x is the
+        # generic NSEBase spectral derivative.  The field is a low-degree
+        # polynomial in y times resolved Fourier modes in x, so both reference
+        # derivatives are known analytically at the collocation points.
+        Ny, Nx = 7, 16
+        g = PolynomialGrid(range(-1, 1, length=Ny), Nx, 2π)
+
+        u_fun(y, x)      = (1 + y + y^2 - 0.5y^3) * cos(2x) +
+                           (0.25 - y^2) * sin(3x)
+        dudx_fun(y, x)   = -2 * (1 + y + y^2 - 0.5y^3) * sin(2x) +
+                            3 * (0.25 - y^2) * cos(3x)
+        dudy_fun(y, x)   = (1 + 2y - 1.5y^2) * cos(2x) -
+                            2y * sin(3x)
+        lapl_fun(y, x)   = ((2 - 3y) - 4 * (1 + y + y^2 - 0.5y^3)) * cos(2x) +
+                           (-2 - 9 * (0.25 - y^2)) * sin(3x)
+
+        u = FFT(Field(g, u_fun))
+
+        # Physical x is logical coordinate 1, so `ddx_1!` should be the
+        # spectral derivative.  Physical y is logical coordinate 2, so
+        # `ddx_2!` should dispatch to PolynomialGrid's inhomogeneous extension.
+        @test parent(NSEBase.ddx_1!(FTField(g), u)) ≈
+              parent(FFT(Field(g, dudx_fun))) atol=1e-12
+        @test parent(NSEBase.ddx_2!(FTField(g), u)) ≈
+              parent(FFT(Field(g, dudy_fun))) atol=1e-12
+
+        # The Laplacian contract is the sum of the inhomogeneous second
+        # derivative and the homogeneous spectral contribution.
+        @test parent(NSEBase.laplacian!(FTField(g), u)) ≈
+              parent(FFT(Field(g, lapl_fun))) atol=1e-11
+    end
+
     @testset "ddx_n! is multiplication by i·k·σ on the homogeneous axis" begin
         # FakeGrid is 2-D: AXES = (1, 2, nothing, nothing), ORDER = (2,).
         # Therefore:

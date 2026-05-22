@@ -1,8 +1,4 @@
 @testset verbose=true "WaveNumberVector conversion               " begin
-    # utility grid for testing
-    struct TempGrid{S, H} <: AbstractGrid{Float64, 4, (1, 2, 3, 4), H} end
-    Base.size(::TempGrid{S}) where {S} = S
-
     @testset "indexing                      " begin
         k = WaveNumberVector(2, -1, 0)
         @test k[1] == 2
@@ -13,7 +9,7 @@
 
     @testset "1D                            " begin
         N1 = 23 # N1 can be even or odd
-        g = TempGrid{(16, N1, 16, 16), (2,)}()
+        g = SpectralTestGrid{(16, N1, 16, 16), 4, (1, 2, 3, 4), (2,)}()
 
         n1s = collect(0:(N1 >> 1) + 1)
 
@@ -36,7 +32,7 @@
     @testset "2D                            " begin
         N1 = 23 # N1 can be even or odd
         N2 = 23 # N2 has to be odd
-        g = TempGrid{(16, N1, N2, 16), (2, 3)}()
+        g = SpectralTestGrid{(16, N1, N2, 16), 4, (1, 2, 3, 4), (2, 3)}()
 
         n1s = collect(0:(N1 >> 1) + 1)
         n2s = [collect(0:(N2 >> 1)); collect(-(N2 >> 1):-1)]
@@ -62,7 +58,7 @@
         N1 = 23 # N1 can be even or odd
         N2 = 23 # Nz has to be odd
         N3 = 23 # N3 has to be odd
-        g = TempGrid{(16, N1, N2, N3), (2, 3, 4)}()
+        g = SpectralTestGrid{(16, N1, N2, N3), 4, (1, 2, 3, 4), (2, 3, 4)}()
 
         n1s = collect(0:(N1 >> 1) + 1)
         n2s = [collect(0:(N2 >> 1)); collect(-(N3 >> 1):-1)]
