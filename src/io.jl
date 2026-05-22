@@ -44,5 +44,5 @@ function load_field(g::AbstractGrid, modes, path)
     data = jldopen(path, "r") do f
         f["data"]
     end
-    return ProjectedField(typeof(FTField(g)), data, modes)
+    return ProjectedField(g, data, modes)
 end
