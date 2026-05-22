@@ -1,5 +1,7 @@
 module NSEBase
 
+# TODO: add benchmark scripts, profile the cartesian primitive NSE and LNSE implementations
+
 using LinearAlgebra, FFTW, JLD2
 
 export FFTW
