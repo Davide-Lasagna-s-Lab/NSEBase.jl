@@ -4,26 +4,35 @@
     FarazmandWeight{N, T}
 
 A spectral norm weight for the Farazmand et al. weighted inner product on
-projected fields. The weight at wavenumber `k::WaveNumberVector{N}` is
+projected fields.  The weight at signed wavenumber `k::WaveNumberVector{N}` is
 
 ```math
-w(k) = \\frac{1}{1 + \\sum_{j=1}^{N} (\\sigma_j \\, k_j)^2}
+w(k) = \\frac{1}{1 + \\sum_{j=1}^{N} (\\sigma_j \\, k_j)^2}.
 ```
 
-where `σ_j = wavenumber_scale(g, ORDER[j])` are the physical wavenumber scales
-of the grid in `fft_dims` order, and `k_j = k[j]` are the signed integer
-wavenumbers stored in `k`.
+# Scale ordering — important
+
+Both `scales` and `k` are indexed in **`fft_dims(g) = ORDER` order**, not in
+physical-coordinate order.  For a grid whose `ORDER = (2, 3, 4)` corresponds
+to coordinates `(x, z, t)`, `scales[1]` is the streamwise scale, `scales[2]`
+the spanwise scale, and `scales[3]` the temporal scale.
+
+When `ORDER` does not start at array dimension 1 (e.g. for a channel grid
+where the wall-normal direction lives at array dimension 1) the inhomogeneous
+direction is *absent* from `scales` and `k` entirely: those tuples enumerate
+only the homogeneous (FFT) dimensions in `ORDER` order.
 
 # Constructors
 
     FarazmandWeight(g::AbstractGrid)
-    FarazmandWeight(scales::Real...)
+    FarazmandWeight(σ::Real, σs::Real...)
 
-The first form builds the weight from the grid's wavenumber scales (one per
-homogeneous FFT dimension, in `fft_dims(g) = ORDER` order).  The second form
-takes the scales as explicit positional arguments and promotes them to a
-common `Real` type — useful when the desired scales differ from
-`wavenumber_scale(g, ORDER[k])`.
+The grid form builds the weight from `wavenumber_scale(g, ORDER[k])` for each
+homogeneous dimension `k`.  The varargs form takes the scales explicitly,
+promoting them to a common `Real` type — useful when the desired scales
+differ from those returned by the grid (e.g. when working on a non-physical
+re-scaling of the grid).  Order of the positional arguments must match
+`fft_dims(g)`.
 """
 struct FarazmandWeight{N, T<:Real}
     scales::NTuple{N, T}
@@ -35,19 +44,28 @@ end
 
 FarazmandWeight(σ::Real, σs::Real...) = FarazmandWeight(promote(σ, σs...))
 
-# TODO: document this 
+"""
+    A[k::WaveNumberVector] -> Real
+
+Evaluate the Farazmand weight at signed wavenumber `k`:
+
+```math
+w(k) = \\frac{1}{1 + \\sum_{j=1}^{N} (\\sigma_j \\, k_j)^2}
+```
+
+Both `A.scales` and `k` are interpreted in the grid's `fft_dims = ORDER` order
+(see the [`FarazmandWeight`](@ref) docstring), so `k[j]` is the signed integer
+wavenumber along the `j`-th homogeneous dimension.
+"""
 Base.getindex(A::FarazmandWeight{N}, k::WaveNumberVector{N}) where {N} =
     1 / (1 + sum(j -> (A.scales[j] * k[j])^2, 1:N))
 
 
 """
     lmul!(A::FarazmandWeight, a::ProjectedField) -> a
-    mul!(a::ProjectedField,   A::FarazmandWeight) -> a
 
-Apply the spectral weight `A` in-place to every coefficient of `a` and return
-`a`.  The two forms are equivalent; the `mul!`-with-flipped-arguments form is
-provided so callers can write the natural `mul!(a, A)` without remembering
-the LinearAlgebra `lmul!` argument order.
+Apply the spectral weight `A` in-place to every coefficient of `a`, multiplying
+each `a[m, k]` by `A[k]`, and return `a`.
 """
 function LinearAlgebra.lmul!(A::FarazmandWeight{N},
                              a::ProjectedField{G}) where {N, G<:AbstractGrid}
@@ -62,9 +80,6 @@ function LinearAlgebra.lmul!(A::FarazmandWeight{N},
     end
     return a
 end
-
-# TODO: get rid of this and use th other method everywhere
-LinearAlgebra.mul!(a::ProjectedField, A::FarazmandWeight) = LinearAlgebra.lmul!(A, a)
 
 """
     dot(a::ProjectedField, A::FarazmandWeight, b::ProjectedField) -> Real
