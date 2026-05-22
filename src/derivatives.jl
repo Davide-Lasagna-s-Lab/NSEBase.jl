@@ -60,7 +60,8 @@ end
                            u::F,
                             ::Val{DIM};
                      adjoint::Bool=false) where {T, D, AXES, FFT_DIMS_ORDER, G<:AbstractGrid{T, D, AXES, FFT_DIMS_ORDER}, F<:Union{FTField{G}, ProjectedField{G}}, DIM}
-    # TODO: this needs to be made much more clear..
+    # A missing logical coordinate, e.g. AXES[4] === nothing on a steady grid,
+    # is represented by Val(nothing) and should be a no-op.
     (isnothing(DIM) || isnothing(AXES[DIM])) && return :(return out)
     DIM ∉ FFT_DIMS_ORDER && return :(throw(NotImplementedError(grid(u), Val($DIM))))
 
@@ -229,8 +230,9 @@ Inside every block, dimension 1 remains the innermost loop and the signed
 wavenumbers are plain loop-local integers.
 """
 @generated function add_homogeneous_laplacian!(out::FTField{G}, u::FTField{G}) where {T, D, AXES, FFT_DIMS_ORDER, G<:AbstractGrid{T, D, AXES, FFT_DIMS_ORDER}}
-    # TODO: this needs to be made much more clear
-    H = filter(d->d!=AXES[4], FFT_DIMS_ORDER) # exclude time from derivative contributions
+    # The Laplacian includes spatial homogeneous directions only.  If the
+    # fourth logical coordinate is time, AXES[4] is filtered out here.
+    H = filter(d->d!=AXES[4], FFT_DIMS_ORDER)
     syms = [Symbol("_i", d) for d in 1:D]
 
     # Build the symbolic k² expression from per-dimension scale and wavenumber
@@ -301,18 +303,17 @@ add_homogeneous_laplacian!(out::VectorField{N}, u::VectorField{N}) where {N} =
 # part is not knowable generically); add_homogeneous_laplacian! handles the rest.
 inhomogeneous_laplacian!(out::FTField, u::FTField) = throw(NotImplementedError(out, u))
 
-# TODO: the docstring is hardcoding that y is the inhomogeneous direction... fix the docstring 
-# everywhere to avoid this hardcoding, and make it more general
 """
     laplacian!(out::FTField{G}, u::FTField{G}; kwargs...)
     laplacian!(out::VectorField{N}, u::VectorField{N}; kwargs...)
 
 Compute the full Laplacian of `u` in-place, storing the result in `out`:
 
-    out[mode] = (∂²/∂y² + ∑_{d∈FFT_DIMS_ORDER} (wavenumber_scale(g, d) · n_d)²) · u[mode]
+    out[mode] = (inhomogeneous second derivatives
+                 - ∑_{d∈FFT_DIMS_ORDER} (wavenumber_scale(g, d) · n_d)²) · u[mode]
 
-Combines the inhomogeneous (e.g. wall-normal) second derivative with the
-homogeneous (spectral) Laplacian by calling, in order:
+Combines the grid-specific non-FFT contribution with the homogeneous
+(spectral) Laplacian by calling, in order:
 
     inhomogeneous_laplacian!(out, u; kwargs...)
     add_homogeneous_laplacian!(out, u)
@@ -323,11 +324,12 @@ independently to each component `n ∈ 1:N`.
 
 # Example
 
-For a 4D spectral array `(t, x, z, y)` with `FFT_DIMS_ORDER = (1, 2, 3)` the
-combined operation is equivalent to:
+For a 4D spectral array stored as `(y, x, z, t)` with
+`FFT_DIMS_ORDER = (2, 3, 4)` and one inhomogeneous dimension `y`, the combined
+operation is equivalent to:
 
 ```julia
-# inhomogeneous_laplacian! fills out with the wall-normal contribution:
+# inhomogeneous_laplacian! fills out with the grid-specific contribution:
 out[:, nx_index, nz_index, nt_index] = D2 * u[:, nx_index, nz_index, nt_index]
 
 # add_homogeneous_laplacian! then accumulates the spectral part:
@@ -336,7 +338,7 @@ out[:, nx_index, nz_index, nt_index] -= k2 * u[:, nx_index, nz_index, nt_index]
 ```
 
 See [`inhomogeneous_laplacian!`](@ref) and [`add_homogeneous_laplacian!`](@ref)
-for the loop s
+for the two pieces of the operation.
 """
 function laplacian!(out::FTField{G}, u::FTField{G}; kwargs...) where {G}
     inhomogeneous_laplacian!(out, u; kwargs...)

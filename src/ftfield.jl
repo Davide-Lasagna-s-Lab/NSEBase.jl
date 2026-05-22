@@ -92,7 +92,6 @@ function growto(u::FTField{G}, target_size::NTuple{N, Int}) where {T, D, AXES, F
     return out
 end
 
-# TODO: an equivalent setindex! method?
 """
     u[k::WaveNumberVector]
 

@@ -1,4 +1,4 @@
-# Field of modal coefficinets for a vectorfield projected onto a set of modes.
+# Modal coefficients for a vector field projected onto a set of modes.
 
 """
     ProjectedField{G<:AbstractGrid, M}

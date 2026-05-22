@@ -15,7 +15,8 @@ find_field(::Any, rest)               = find_field(rest)
 find_field(x)                         = x
 find_field(::Tuple{})                 = nothing
 
-# vector field broadcasting into underlying field
+# Vector field broadcasting applies the broadcast expression component-wise
+# into the underlying scalar fields.
 function Base.copy(bc::Broadcast.Broadcasted{Broadcast.ArrayStyle{V}}) where {N, V<:VectorField{N}}
     dest = similar(bc, eltype(find_field(bc)[1]))
     for n in 1:N
@@ -31,7 +32,7 @@ function Base.copyto!(dest::VectorField{N}, bc::Broadcast.Broadcasted{Broadcast.
     return dest
 end
 
-# ! special case to handle assigment of scalar values to vectorfield
+# Special case: scalar assignment fills every component of the vector field.
 function Base.copyto!(dest::VectorField{N}, bc::Broadcast.Broadcasted{<:Broadcast.AbstractArrayStyle{0}}) where {N}
     for n in 1:N
         fill!(dest[n], bc.args[1][])
