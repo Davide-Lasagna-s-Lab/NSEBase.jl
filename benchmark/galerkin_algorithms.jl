@@ -27,7 +27,7 @@
 #
 #   GALERKIN_SCALE_FACTORS=1,2,4,8
 #   GALERKIN_NM_VALS=2,4,8,16,32
-#   GALERKIN_MAX_MODE_MIB=16384
+#   GALERKIN_MAX_MODE_MIB=8192
 #   GALERKIN_BENCHMARK_SAMPLES=3
 #   GALERKIN_BENCHMARK_SECONDS=0.2
 
@@ -70,7 +70,7 @@ end
 # mode tensors are skipped when they exceed MAX_MODE_MIB.
 const SCALE_FACTORS = parse_int_tuple(get(ENV, "GALERKIN_SCALE_FACTORS", "1,2,4"))
 const Nm_vals = collect(parse_int_tuple(get(ENV, "GALERKIN_NM_VALS", "2,4,8,16,32")))
-const MAX_MODE_MIB = parse(Float64, get(ENV, "GALERKIN_MAX_MODE_MIB", "16384"))
+const MAX_MODE_MIB = parse(Float64, get(ENV, "GALERKIN_MAX_MODE_MIB", "8192"))
 const BENCHMARK_SAMPLES = parse(Int, get(ENV, "GALERKIN_BENCHMARK_SAMPLES", "3"))
 const BENCHMARK_SECONDS = parse(Float64, get(ENV, "GALERKIN_BENCHMARK_SECONDS", "0.2"))
 const OUTPUT_DIR = joinpath(@__DIR__, "output")

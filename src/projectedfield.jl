@@ -49,8 +49,13 @@ ProjectedField(grid::AbstractGrid{T}, data::AbstractArray, modes) where {T} =
 
 Allocate a zero-initialised `ProjectedField` over `grid` with basis `modes`.
 
-The number of modes `Nm` is taken from `modes[1]`: each `modes[n]` has shape
-`(inh_size..., Nm, kH...)`, so `Nm` lives at array dimension `Ninh + 1`.
+`modes` must be an indexable collection (tuple or `Vector`) of arrays, one per
+velocity component, where each `modes[n]` has shape `(inh_size..., Nm, kH...)`.
+The number of modes `Nm` is taken from `modes[1]` at array dimension
+`Ninh + 1`.
+
+As a convenience for single-component projections, a bare `AbstractArray` whose
+element type is a `Number` is automatically wrapped in a one-element tuple.
 """
 function ProjectedField(grid::AbstractGrid{T, D}, modes) where {T, D}
     Ninh = D - length(fft_dims(grid))
@@ -60,6 +65,9 @@ function ProjectedField(grid::AbstractGrid{T, D}, modes) where {T, D}
                                 transform_size(grid)[collect(fft_dims(grid))]...),
                           modes)
 end
+
+ProjectedField(grid::AbstractGrid, modes::AbstractArray{<:Number}) =
+    ProjectedField(grid, (modes,))
 
 ProjectedField(u::Union{FTField, Field, VectorField}, modes) = ProjectedField(grid(u), modes)
 

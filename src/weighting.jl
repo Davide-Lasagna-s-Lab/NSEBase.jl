@@ -14,11 +14,16 @@ where `σ_j = wavenumber_scale(g, ORDER[j])` are the physical wavenumber scales
 of the grid in `fft_dims` order, and `k_j = k[j]` are the signed integer
 wavenumbers stored in `k`.
 
-# Constructor
+# Constructors
 
     FarazmandWeight(g::AbstractGrid)
+    FarazmandWeight(scales::Real...)
 
-Build the weight from the grid's wavenumber scales.
+The first form builds the weight from the grid's wavenumber scales (one per
+homogeneous FFT dimension, in `fft_dims(g) = ORDER` order).  The second form
+takes the scales as explicit positional arguments and promotes them to a
+common `Real` type — useful when the desired scales differ from
+`wavenumber_scale(g, ORDER[k])`.
 """
 struct FarazmandWeight{N, T<:Real}
     scales::NTuple{N, T}
@@ -28,14 +33,21 @@ function FarazmandWeight(g::AbstractGrid{T, D, AXES, ORDER}) where {T, D, AXES, 
     FarazmandWeight(ntuple(k -> T(wavenumber_scale(g, ORDER[k])), length(ORDER)))
 end
 
+FarazmandWeight(σ::Real, σs::Real...) = FarazmandWeight(promote(σ, σs...))
+
+# TODO: document this 
 Base.getindex(A::FarazmandWeight{N}, k::WaveNumberVector{N}) where {N} =
     1 / (1 + sum(j -> (A.scales[j] * k[j])^2, 1:N))
 
 
 """
     lmul!(A::FarazmandWeight, a::ProjectedField) -> a
+    mul!(a::ProjectedField,   A::FarazmandWeight) -> a
 
-Apply the spectral weight `A` in-place to every coefficient of `a`.
+Apply the spectral weight `A` in-place to every coefficient of `a` and return
+`a`.  The two forms are equivalent; the `mul!`-with-flipped-arguments form is
+provided so callers can write the natural `mul!(a, A)` without remembering
+the LinearAlgebra `lmul!` argument order.
 """
 function LinearAlgebra.lmul!(A::FarazmandWeight{N},
                              a::ProjectedField{G}) where {N, G<:AbstractGrid}
@@ -50,6 +62,9 @@ function LinearAlgebra.lmul!(A::FarazmandWeight{N},
     end
     return a
 end
+
+# TODO: get rid of this and use th other method everywhere
+LinearAlgebra.mul!(a::ProjectedField, A::FarazmandWeight) = LinearAlgebra.lmul!(A, a)
 
 """
     dot(a::ProjectedField, A::FarazmandWeight, b::ProjectedField) -> Real
