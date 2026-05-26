@@ -15,41 +15,33 @@ Returns `u` unchanged when all shifts are zero.
 """
 function shift!(u::FTField{G}, shifts) where {G<:AbstractGrid{T, D, AXES, FFT_DIMS_ORDER}} where {T, D, AXES, FFT_DIMS_ORDER}
     any(!iszero, shifts) || return u
-    _shift_ftfield!(u, shifts)
+    g         = grid(u)
+    pu        = parent(u)
+    N         = length(FFT_DIMS_ORDER)
+    inh_dims  = inhomogeneous_dims(g)
+    inh_sizes = map(d -> size(g, d), inh_dims)
+
+    for_each_homogeneous_index(g) do _, homogeneous_indices...
+        # Convert storage indices to signed wavenumbers, then accumulate the
+        # total phase as a product over all homogeneous directions.
+        k     = to_wavenumber_vector(g, homogeneous_indices)
+        phase = prod(1:N) do i
+            n = k[i]
+            iszero(n) ? one(Complex{T}) :
+                        cis(n * shifts[i] * wavenumber_scale(g, FFT_DIMS_ORDER[i]))
+        end
+
+        # Apply phase to every inhomogeneous index combination for this wavenumber.
+        # CartesianIndices loop is the innermost, matching the column-major
+        # layout of dim 1 in the parent array.
+        # Merge the current inhomogeneous CartesianIndex with the homogeneous
+        # storage indices to get the full D-dimensional parent-array index.
+        for I in CartesianIndices(inh_sizes)
+            indices = _combine_indices(g, Tuple(I), homogeneous_indices)
+            @inbounds pu[indices...] *= phase
+        end
+    end
     return u
-end
-
-@generated function _shift_ftfield!(u::FTField{G}, shifts) where {T, D, AXES, FFT_DIMS_ORDER, G<:AbstractGrid{T, D, AXES, FFT_DIMS_ORDER}}
-    syms = [Symbol("_i", d) for d in 1:D]
-
-    phase_terms = Expr[]
-    for (j, d) in enumerate(FFT_DIMS_ORDER)
-        n = d == FFT_DIMS_ORDER[1] ? :($(syms[d]) - 1) :
-                                     :($(syms[d]) <= (Base.size(u, $d) >> 1) + 1 ?
-                                       $(syms[d]) - 1 :
-                                       $(syms[d]) - 1 - Base.size(u, $d))
-        push!(phase_terms, quote
-            _n = $n
-            iszero(_n) || (_phase *= cis(_n * shifts[$j] * wavenumber_scale(grid(u), $d)))
-        end)
-    end
-
-    body = quote
-        _phase = one(Complex{$T})
-        $(phase_terms...)
-        @inbounds parent(u)[$(syms...)] *= _phase
-    end
-
-    for d in 1:D
-        body = :(for $(syms[d]) in 1:Base.size(u, $d)
-                     $body
-                 end)
-    end
-
-    return quote
-        $body
-        return u
-    end
 end
 
 """
@@ -72,44 +64,22 @@ Returns `a` unchanged when all shifts are zero.
 """
 function shift!(a::ProjectedField{G}, shifts) where {G<:AbstractGrid{T, D, AXES, FFT_DIMS_ORDER}} where {T, D, AXES, FFT_DIMS_ORDER}
     any(!iszero, shifts) || return a
-    _shift_projectedfield!(a, shifts)
-    return a
-end
-
-@generated function _shift_projectedfield!(a::ProjectedField{G}, shifts) where {T, D, AXES, FFT_DIMS_ORDER, G<:AbstractGrid{T, D, AXES, FFT_DIMS_ORDER}}
+    g = grid(a)
     N = length(FFT_DIMS_ORDER)
-    syms = [Symbol("_i", j) for j in 1:N]
-
-    phase_terms = Expr[]
-    for (j, d) in enumerate(FFT_DIMS_ORDER)
-        n = j == 1 ? :($(syms[j]) - 1) :
-                     :($(syms[j]) <= (Base.size(grid(a), $d) >> 1) + 1 ?
-                       $(syms[j]) - 1 :
-                       $(syms[j]) - 1 - Base.size(grid(a), $d))
-        push!(phase_terms, quote
-            _n = $n
-            iszero(_n) || (_phase *= cis(_n * shifts[$j] * wavenumber_scale(grid(a), $d)))
-        end)
-    end
-
-    body = quote
-        _phase = one(Complex{$T})
-        $(phase_terms...)
+    for_each_homogeneous_index(g) do _, homogeneous_indices...
+        # Same phase computation as FTField shift; applied uniformly across
+        # all mode indices m at this spectral location.
+        k     = to_wavenumber_vector(g, homogeneous_indices)
+        phase = prod(1:N) do i
+            n = k[i]
+            iszero(n) ? one(Complex{T}) :
+                        cis(n * shifts[i] * wavenumber_scale(g, FFT_DIMS_ORDER[i]))
+        end
         for m in axes(a, 1)
-            @inbounds parent(a)[m, $(syms...)] *= _phase
+            @inbounds a[m, homogeneous_indices...] *= phase
         end
     end
-
-    for j in 1:N
-        body = :(for $(syms[j]) in axes(a, $(j + 1))
-                     $body
-                 end)
-    end
-
-    return quote
-        $body
-        return a
-    end
+    return a
 end
 
 """
