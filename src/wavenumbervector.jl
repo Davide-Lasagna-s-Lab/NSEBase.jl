@@ -77,9 +77,9 @@ Convert the `N`-tuple of 1-based FFTW storage indices `homogeneous_indices`
 - Full-FFT dimensions (k≥2): positive block `i ≤ N÷2+1` → `i - 1`;
   negative block `i > N÷2+1` → `i - 1 - N`.
 """
-function to_wavenumber_vector(g::AbstractGrid{T, D, AXES, FFT_DIMS_ORDER}, homogeneous_indices) where {T, D, AXES, FFT_DIMS_ORDER}
-    N = length(FFT_DIMS_ORDER)
-    ns = ntuple(N) do k
+function to_wavenumber_vector(g::AbstractGrid{T, D, AXES, FFT_DIMS_ORDER}, homogeneous_indices::NTuple{N, Int}) where {T, D, AXES, FFT_DIMS_ORDER, N}
+    N == length(FFT_DIMS_ORDER) || throw(ArgumentError("Mismatch between homogeneous_indices length and FFT_DIMS_ORDER"))
+    ns = ntuple(Val(N)) do k
         i = homogeneous_indices[k]
         # rfft dim: only non-negative wavenumbers stored, so i=1 → k=0, i=2 → k=1, …
         # Full-FFT dims: FFTW packs positive wavenumbers first (i ≤ N/2+1 → k=i-1),
