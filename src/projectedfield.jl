@@ -121,21 +121,25 @@ Base.@propagate_inbounds function Base.setindex!(u::ProjectedField, val, i::Int)
 end
 
 """
-    a[m::Int, indices::Int...]
-    a[m::Int, indices::Int...] = val
+    a[m::Int, i1::Int, i2::Int, …]
+    a[m::Int, i1::Int, i2::Int, …] = val
 
 Read or write the coefficient for mode `m` at FFTW 1-based storage indices
-`indices` (one per homogeneous dimension in `FFT_DIMS_ORDER` order).
+`i1, i2, …` (one per homogeneous dimension in `FFT_DIMS_ORDER` order).
+
+The `Vararg{Int, N}` signature forces specialisation on the number of
+homogeneous dimensions `N` at compile time, so the body can index
+`parent(a)` directly without runtime overhead.
 
 No symmetry invariants are checked or maintained — use this form only inside
 [`for_each_homogeneous_index`](@ref) loops where storage indices are already
 known and the caller controls every storage location explicitly.
 """
-Base.@propagate_inbounds function Base.getindex(a::ProjectedField, m::Int, indices::Int...)
+Base.@propagate_inbounds function Base.getindex(a::ProjectedField, m::Int, indices::Vararg{Int, N}) where {N}
     @boundscheck checkbounds(parent(a), m, indices...)
     @inbounds parent(a)[m, indices...]
 end
-Base.@propagate_inbounds function Base.setindex!(a::ProjectedField, val, m::Int, indices::Int...)
+Base.@propagate_inbounds function Base.setindex!(a::ProjectedField, val, m::Int, indices::Vararg{Int, N}) where {N}
     @boundscheck checkbounds(parent(a), m, indices...)
     @inbounds parent(a)[m, indices...] = val
 end

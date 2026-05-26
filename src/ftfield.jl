@@ -79,7 +79,7 @@ function growto(u::FTField{G}, target_size::NTuple{N, Int}) where {T, D, AXES, F
     out = FTField(growto(grid(u), target_size))
     # Iterate source storage indices, convert them to signed wavenumbers,
     # and copy the matching wavenumber slice in the target grid.
-    for_each_homogeneous_index(grid(u)) do _, homogeneous_indices...
+    for_each_homogeneous_index(grid(u)) do _, homogeneous_indices
         k = to_wavenumber_vector(grid(u), homogeneous_indices)
 
         # Bind the views explicitly.  `out[k] .= u[k]` can route through

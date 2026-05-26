@@ -71,7 +71,7 @@ function LinearAlgebra.lmul!(A::FarazmandWeight{N},
                              a::ProjectedField{G}) where {N, G<:AbstractGrid}
     g = grid(a)
     # Scale every Galerkin coefficient at this wavenumber by the Farazmand weight.
-    for_each_homogeneous_index(g) do _, homogeneous_indices...
+    for_each_homogeneous_index(g) do _, homogeneous_indices
         k = to_wavenumber_vector(g, homogeneous_indices)
         w = A[k]
         for m in axes(a, 1)
@@ -98,16 +98,18 @@ function LinearAlgebra.dot(a::ProjectedField{G},
                            A::FarazmandWeight{N},
                            b::ProjectedField{G}) where {N, G<:AbstractGrid}
     T = real(eltype(a))
-    s = zero(T)
+    # Ref accumulator: a plain scalar mutated inside a closure is heap-boxed on
+    # every iteration by Julia's escape analysis.  A Ref is allocated once.
+    s = Ref(zero(T))
     g = grid(a)
     # Accumulate the weighted inner product over all wavenumbers and Galerkin modes.
     # one_or_two accounts for rfft Hermitian symmetry (+k stored, −k implicit).
-    for_each_homogeneous_index(g) do one_or_two, homogeneous_indices...
+    for_each_homogeneous_index(g) do one_or_two, homogeneous_indices
         k = to_wavenumber_vector(g, homogeneous_indices)
         w = A[k]
         for m in axes(a, 1)
-            @inbounds s += one_or_two * w * real(LinearAlgebra.dot(a[m, homogeneous_indices...], b[m, homogeneous_indices...]))
+            @inbounds s[] += one_or_two * w * real(LinearAlgebra.dot(a[m, homogeneous_indices...], b[m, homogeneous_indices...]))
         end
     end
-    return s / 2
+    return s[] / 2
 end

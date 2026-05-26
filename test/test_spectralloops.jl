@@ -1,16 +1,16 @@
 # Helper: collect all index tuples visited by for_each_homogeneous_index.
 function collect_wavenumbers(g)
     result = NTuple{length(NSEBase.fft_dims(g)), Int}[]
-    NSEBase.for_each_homogeneous_index(g) do _, args...
-        push!(result, args)
+    NSEBase.for_each_homogeneous_index(g) do _, idx
+        push!(result, idx)
     end
     return result
 end
 
 function collect_wavenumber_vectors(g)
     result = NTuple{length(NSEBase.fft_dims(g)), Int}[]
-    NSEBase.for_each_homogeneous_index(g) do _, args...
-        k = NSEBase.to_wavenumber_vector(g, args)
+    NSEBase.for_each_homogeneous_index(g) do _, idx
+        k = NSEBase.to_wavenumber_vector(g, idx)
         push!(result, ntuple(i -> k[i], length(k)))
     end
     return result
@@ -52,7 +52,7 @@ end
 
         # zero allocations
         g = SpectralTestGrid{(7, 5), 2, (1, 2, nothing, nothing), (1, 2)}()
-        f(grid) = @allocated NSEBase.for_each_homogeneous_index((args...)->nothing, grid)
+        f(grid) = @allocated NSEBase.for_each_homogeneous_index((_, idx)->nothing, grid)
         # Warm up
         f(g)
         allocs = f(g)

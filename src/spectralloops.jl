@@ -5,31 +5,32 @@
 """
     for_each_homogeneous_index(f, g::AbstractGrid)
 
-Call `f(one_or_two, i_H1, i_H2, …, i_HN)` for every stored FFTW index
-combination across the `N = length(fft_dims(g))` homogeneous (FFT) dimensions
-of `g`, where `FFT_DIMS_ORDER = fft_dims(g)` and each `i_Hk` is a 1-based storage
-index for `FFT_DIMS_ORDER[k]`.
+Call `f(one_or_two, idx)` for every stored FFTW index combination across the
+`N = length(fft_dims(g))` homogeneous (FFT) dimensions of `g`, where
+`FFT_DIMS_ORDER = fft_dims(g)`.
 
 ## Arguments passed to `f`
 
 - `one_or_two`: Hermitian multiplicity.
-  - `1` when `i_H1 == 1`: the zero wavenumber has no conjugate partner in the
-    rfft and must be counted once.
-  - `2` for all other `i_H1`: the stored coefficient represents both `+k₁`
+  - `1` when `idx[1] == 1`: the zero wavenumber has no conjugate partner in
+    the rfft and must be counted once.
+  - `2` for all other `idx[1]`: the stored coefficient represents both `+k₁`
     and its implicit conjugate `−k₁`.
   - **Nyquist caveat**: when `size(g, FFT_DIMS_ORDER[1])` is even, the last rfft index
-    `i_H1 = (size(g, FFT_DIMS_ORDER[1]) >> 1) + 1` is the Nyquist frequency, which is
+    `idx[1] = (size(g, FFT_DIMS_ORDER[1]) >> 1) + 1` is the Nyquist frequency, which is
     also self-conjugate (weight 1), but this function assigns it `2`.  Callers
     that need exact quadrature on non-dealiased even-resolution grids must
     handle this index explicitly.
-- `i_H1, …, i_HN`: 1-based FFTW storage indices, one per homogeneous
-  dimension in `FFT_DIMS_ORDER` order.
-  - `i_H1` ranges over `1:(size(g, FFT_DIMS_ORDER[1]) >> 1) + 1` — the rfft half-
-    spectrum stores only non-negative wavenumbers.
-  - Each `i_Hk` for `k ≥ 2` ranges over `1:size(g, FFT_DIMS_ORDER[k])`, visited as two
-    contiguous blocks: positive wavenumbers `1:(N >> 1) + 1` first, then
-    negative `(N >> 1) + 2:N`.  The split avoids a per-call sign branch inside
-    `f` and keeps memory accesses contiguous.
+- `idx`: `NTuple{N, Int}` of 1-based FFTW storage indices, one per homogeneous
+  dimension in `FFT_DIMS_ORDER` order.  The element type is concretely inferred
+  as `Tuple{Int, …, Int}` (N elements) so callers can splat `idx...` into
+  array indexing without boxing or runtime dispatch.
+  - `idx[1]` ranges over `1:(size(g, FFT_DIMS_ORDER[1]) >> 1) + 1` — the rfft
+    half-spectrum stores only non-negative wavenumbers.
+  - Each `idx[k]` for `k ≥ 2` ranges over `1:size(g, FFT_DIMS_ORDER[k])`,
+    visited as two contiguous blocks: positive wavenumbers `1:(N >> 1) + 1`
+    first, then negative `(N >> 1) + 2:N`.  The split avoids a per-call sign
+    branch inside `f` and keeps memory accesses contiguous.
 
 The innermost loop is always `FFT_DIMS_ORDER[1]` (rfft dimension), the outermost
 `FFT_DIMS_ORDER[N]`, so the call order matches `ProjectedField` storage layout
@@ -44,18 +45,18 @@ Non-homogeneous dimensions are not iterated; loop over them inside `f`.
 0,+1,+2,+3; negative block 5:6, wavenumbers −2,−1).
 
 ```
-i_H1: 1  2  3      one_or_two: 1  2  2
-        (Nyquist ↑, assigned weight 2 — see caveat above)
+idx[1]: 1      2      3        one_or_two: 1  2  2
+          (Nyquist ↑, assigned weight 2 — see caveat above)
 
-i_H2=1 (k₂= 0):  f(1, 1, 1)   f(2, 2, 1)   f(2, 3, 1)
-i_H2=2 (k₂=+1):  f(1, 1, 2)   f(2, 2, 2)   f(2, 3, 2)
-i_H2=3 (k₂=+2):  f(1, 1, 3)   f(2, 2, 3)   f(2, 3, 3)
-i_H2=4 (k₂=+3):  f(1, 1, 4)   f(2, 2, 4)   f(2, 3, 4)
-i_H2=5 (k₂=−2):  f(1, 1, 5)   f(2, 2, 5)   f(2, 3, 5)
-i_H2=6 (k₂=−1):  f(1, 1, 6)   f(2, 2, 6)   f(2, 3, 6)
+idx[2]=1 (k₂= 0):  f(1, (1,1))   f(2, (2,1))   f(2, (3,1))
+idx[2]=2 (k₂=+1):  f(1, (1,2))   f(2, (2,2))   f(2, (3,2))
+idx[2]=3 (k₂=+2):  f(1, (1,3))   f(2, (2,3))   f(2, (3,3))
+idx[2]=4 (k₂=+3):  f(1, (1,4))   f(2, (2,4))   f(2, (3,4))
+idx[2]=5 (k₂=−2):  f(1, (1,5))   f(2, (2,5))   f(2, (3,5))
+idx[2]=6 (k₂=−1):  f(1, (1,6))   f(2, (2,6))   f(2, (3,6))
 ```
 
-`i_H1` is the inner (fastest-changing) index; `i_H2` is outer.
+`idx[1]` is the inner (fastest-changing) index; `idx[2]` is outer.
 """
 @generated function for_each_homogeneous_index(f, g::AbstractGrid{T, D, AXES, FFT_DIMS_ORDER}) where {T, D, AXES, FFT_DIMS_ORDER}
     N          = length(FFT_DIMS_ORDER)
@@ -63,9 +64,10 @@ i_H2=6 (k₂=−1):  f(1, 1, 6)   f(2, 2, 6)   f(2, 3, 6)
     one_or_two = :($(syms[1]) == 1 ? 1 : 2)
 
     # Innermost: rfft dimension — non-negative wavenumbers only, single block.
-    # one_or_two is passed as the first argument so callers need no branch.
+    # Indices are bundled into a tuple literal so the concrete NTuple type is
+    # visible to the caller without vararg collection or boxing.
     body = :(for $(syms[1]) in 1:(Base.size(g, $(FFT_DIMS_ORDER[1])) >> 1) + 1
-                 f($one_or_two, $(syms...))
+                 f($one_or_two, ($(syms...),))
              end)
 
     # Wrap in signed-FFT loops FFT_DIMS_ORDER[2:end] from innermost to outermost.

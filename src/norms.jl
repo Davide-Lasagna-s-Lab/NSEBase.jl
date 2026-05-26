@@ -199,14 +199,18 @@ The loop uses axis 1 as the mode index `m` (see Storage layout in
 `for_each_homogeneous_index`, which correspond to axes 2 onward in FFT_DIMS_ORDER order.
 """
 function LinearAlgebra.dot(a::ProjectedField{G}, b::ProjectedField{G}) where {G<:AbstractGrid}
-    s = zero(real(eltype(a)))
-    for_each_homogeneous_index(grid(a)) do one_or_two, homogeneous_indices...
+    # Use a Ref accumulator: a plain scalar mutated inside a closure gets boxed
+    # by Julia's closure-capture analysis, causing heap allocations on every
+    # inner-loop iteration.  Wrapping it in a Ref keeps the value on the heap
+    # once and eliminates repeated boxing.
+    s = Ref(zero(real(eltype(a))))
+    for_each_homogeneous_index(grid(a)) do one_or_two, homogeneous_indices
         for m in axes(a, 1)
-            @inbounds s += one_or_two * real(LinearAlgebra.dot(a[m, homogeneous_indices...], 
-                                                               b[m, homogeneous_indices...]))
+            @inbounds s[] += one_or_two * real(LinearAlgebra.dot(a[m, homogeneous_indices...],
+                                                                 b[m, homogeneous_indices...]))
         end
     end
-    return s / 2
+    return s[] / 2
 end
 
 """
@@ -217,37 +221,42 @@ Norm induced from [`dot(a::ProjectedField, b::ProjectedField)`](@ref).
 LinearAlgebra.norm(a::ProjectedField) = sqrt(dot(a, a))
 
 """
-    normdiff(a::ProjectedField, b::ProjectedField,
-             shifts=zeros, tmp=nothing) -> Real
+    normdiff(a::ProjectedField, b::ProjectedField) -> Real
 
-Return `‖a − shift(b, shifts)‖`, the norm of the difference after optionally
-shifting `b` along the homogeneous directions.
+Return `‖a − b‖`.
 
-`shifts` is a tuple with one entry per homogeneous dimension in
-`fft_dims(grid(a)) = FFT_DIMS_ORDER` order, defaulting to all zeros (no shift).
-
-`tmp` is an optional pre-allocated `ProjectedField` workspace used to hold the
-shifted copy of `b` when shifts are non-zero; if `nothing` a temporary is
-allocated internally.
-
-Follows the same rfft/signed-FFT weighting as [`dot`](@ref): rfft wavenumbers with
-`nx > 0` contribute with weight 2 (they represent both `±nx`), and the result
-is divided by 2 to remove signed-FFT double-counting.
+Follows the same rfft/signed-FFT weighting as [`dot`](@ref): rfft wavenumbers
+with `nx > 0` contribute with weight 2 (they represent both `±nx`), and the
+result is divided by 2 to remove signed-FFT double-counting.
 """
-function normdiff(a::ProjectedField{G}, b::ProjectedField{G},
-                  shifts=ntuple(Returns(0), length(FFT_DIMS_ORDER)),
-                  tmp=nothing) where {G<:AbstractGrid{T, D, AXES, FFT_DIMS_ORDER}} where {T, D, AXES, FFT_DIMS_ORDER}
-    if any(!iszero, shifts)
-        tmp = tmp === nothing ? zero(b) : tmp
-        tmp .= b
-        shift!(tmp, shifts)
-        b = tmp
-    end
-    s = zero(real(eltype(a)))
-    for_each_homogeneous_index(grid(a)) do one_or_two, homogeneous_indices...
+function normdiff(a::ProjectedField{G}, b::ProjectedField{G}) where {G<:AbstractGrid}
+    # Ref accumulator: a plain scalar mutated inside a closure is heap-boxed on
+    # every iteration by Julia's escape analysis.  A Ref is allocated once.
+    s = Ref(zero(real(eltype(a))))
+    for_each_homogeneous_index(grid(a)) do one_or_two, homogeneous_indices
         for m in axes(a, 1)
-            @inbounds s += one_or_two * abs2(a[m, homogeneous_indices...] - b[m, homogeneous_indices...])
+            @inbounds s[] += one_or_two * abs2(a[m, homogeneous_indices...] - b[m, homogeneous_indices...])
         end
     end
-    return sqrt(s / 2)
+    return sqrt(s[] / 2)
+end
+
+"""
+    normdiff(a::ProjectedField, b::ProjectedField, shifts, tmp::ProjectedField) -> Real
+
+Return `‖a − shift(b, shifts)‖`.
+
+`shifts` is a tuple with one entry per homogeneous dimension in
+`fft_dims(grid(a)) = FFT_DIMS_ORDER` order.
+
+`tmp` is a pre-allocated `ProjectedField` workspace of the same type as `a`
+and `b`; `b` is copied into `tmp` and (if needed) shifted in place, so `b`
+itself is not modified.  Providing `tmp` avoids any allocations: use this form
+in performance-critical loops.
+"""
+function normdiff(a::ProjectedField{G}, b::ProjectedField{G},
+                  shifts, tmp::ProjectedField{G}) where {G<:AbstractGrid{T, D, AXES, FFT_DIMS_ORDER}} where {T, D, AXES, FFT_DIMS_ORDER}
+    tmp .= b
+    any(!iszero, shifts) && shift!(tmp, shifts)
+    return normdiff(a, tmp)
 end
