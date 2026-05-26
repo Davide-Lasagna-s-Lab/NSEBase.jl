@@ -30,16 +30,16 @@ is skipped, i.e. no base flow in that direction).
 # Index construction
 
 For a field stored as a `D`-dimensional spectral array, the zero-wavenumber
-slice is selected by the index tuple `idx` built from the grid's `fft_dims`:
+slice is selected by an index pattern derived from the grid's `fft_dims`:
 
 - FFT dimensions (homogeneous, transformed): index `1`, the DC bin.
   FFTW always places the zero-frequency coefficient first, for both the real
   FFT (rfft) and the full complex FFT.
 - Inhomogeneous dimensions: `Colon()`, selecting all grid points.
 
-For a 4D channel grid with `CHANNEL_FFT_ORDER = (2, 3, 4)` this gives
-`idx = (Colon(), 1, 1, 1)`, i.e. `parent(u[n])[:, 1, 1, 1]` — the full
-wall-normal profile at zero streamwise, spanwise, and temporal wavenumber.
+For a 4D channel grid with `CHANNEL_FFT_ORDER = (2, 3, 4)` this emits
+`parent(u[n])[:, 1, 1, 1]` — the full wall-normal profile at zero streamwise,
+spanwise, and temporal wavenumber.
 
 # Example
 
@@ -51,18 +51,30 @@ add_base_flow!(u, (U, nothing, nothing))
 #   u[1][:, 1, 1, 1] .+= U
 ```
 """
-function add_base_flow!(u::VectorField{N, <:FTField{<:AbstractGrid}},
-                        base::Tuple{Vararg{Any, N}}) where {N}
-    g   = grid(u)
-    # For each array dimension d: FFT dims use index 1 (DC bin), inhomogeneous
-    # dims use Colon() to span all grid points.
-    idx = ntuple(d -> d ∈ fft_dims(g) ? 1 : Colon(), ndims(parent(u[1])))
-    for n in 1:N
-        base[n] !== nothing && (parent(u[n])[idx...] .+= base[n])
+# `D` and `FFT_DIMS_ORDER` live in the grid type, so generate the DC-slice
+# indexing once per grid/component count. Emitting direct `[:, 1, ...]`
+# references with `@views` and unrolling the component updates avoids runtime
+# index-tuple construction, tuple splatting, and dynamic dispatch in this hot
+# path.
+@generated function add_base_flow!(u::VectorField{N, <:FTField{G}},
+                                   base::Tuple{Vararg{Any, N}}) where {N, T, D, AXES, FFT_DIMS_ORDER, G<:AbstractGrid{T, D, AXES, FFT_DIMS_ORDER}}
+    idx = Any[(d ∈ FFT_DIMS_ORDER ? 1 : :(Colon())) for d in 1:D]
+
+    return quote
+        Base.Cartesian.@nexprs $N n -> begin
+            if base[n] !== nothing
+                Base.@views $(Expr(:ref, :(parent(u[n])), idx...)) .+= base[n]
+            end
+        end
+        return u
     end
-    return u
 end
 
+"""
+    grid(u::VectorField)
+
+Return the grid shared by the scalar field components of `u`.
+"""
 grid(u::VectorField) = grid(u[1])
 
 """
