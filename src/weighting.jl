@@ -39,7 +39,7 @@ struct FarazmandWeight{N, T<:Real}
 end
 
 function FarazmandWeight(g::AbstractGrid{T, D, AXES, FFT_DIMS_ORDER}) where {T, D, AXES, FFT_DIMS_ORDER}
-    FarazmandWeight(ntuple(k -> T(wavenumber_scale(g, FFT_DIMS_ORDER[k])), length(FFT_DIMS_ORDER)))
+    FarazmandWeight(ntuple(k -> T(wavenumber_scale(g, FFT_DIMS_ORDER[k])), Val(length(FFT_DIMS_ORDER))))
 end
 
 FarazmandWeight(σ::Real, σs::Real...) = FarazmandWeight(promote(σ, σs...))
@@ -57,8 +57,13 @@ Both `A.scales` and `k` are interpreted in the grid's `fft_dims = FFT_DIMS_ORDER
 (see the [`FarazmandWeight`](@ref) docstring), so `k[j]` is the signed integer
 wavenumber along the `j`-th homogeneous dimension.
 """
-Base.getindex(A::FarazmandWeight{N}, k::WaveNumberVector{N}) where {N} =
-    1 / (1 + sum(j -> (A.scales[j] * k[j])^2, 1:N))
+function Base.getindex(A::FarazmandWeight{N}, k::WaveNumberVector{N}) where {N}
+    s = one(first(A.scales))
+    for j in 1:N
+        @inbounds s += (A.scales[j] * k[j])^2
+    end
+    return inv(s)
+end
 
 
 """
@@ -68,17 +73,52 @@ Apply the spectral weight `A` in-place to every coefficient of `a`, multiplying
 each `a[m, k]` by `A[k]`, and return `a`.
 """
 function LinearAlgebra.lmul!(A::FarazmandWeight{N},
-                             a::ProjectedField{G}) where {N, G<:AbstractGrid}
-    g = grid(a)
-    # Scale every Galerkin coefficient at this wavenumber by the Farazmand weight.
-    for_each_homogeneous_index(g) do _, homogeneous_indices...
-        k = to_wavenumber_vector(g, homogeneous_indices)
-        w = A[k]
+                             a::ProjectedField{G}) where {N, T, D, AXES, FFT_DIMS_ORDER, G<:AbstractGrid{T, D, AXES, FFT_DIMS_ORDER}}
+    N == length(FFT_DIMS_ORDER) ||
+        throw(DimensionMismatch("FarazmandWeight has incompatible size: expected $(length(FFT_DIMS_ORDER)) scales, got $N"))
+    _lmul_farazmand!(A, a)
+    return a
+end
+
+@generated function _lmul_farazmand!(A::FarazmandWeight{N},
+                                     a::ProjectedField{G}) where {N, T, D, AXES, FFT_DIMS_ORDER, G<:AbstractGrid{T, D, AXES, FFT_DIMS_ORDER}}
+    syms = [Symbol("_i", j) for j in 1:N]
+
+    # Compute the signed integer wavenumber associated with each ProjectedField
+    # storage index. The first homogeneous axis is rfft and stores only n >= 0.
+    wavenumber_terms = Expr[]
+    for (j, dim) in enumerate(FFT_DIMS_ORDER)
+        n = j == 1 ? :($(syms[j]) - 1) :
+                     :($(syms[j]) <= (Base.size(grid(a), $dim) >> 1) + 1 ?
+                       $(syms[j]) - 1 :
+                       $(syms[j]) - 1 - Base.size(grid(a), $dim))
+        push!(wavenumber_terms, quote
+            _n = $n
+            _s += (A.scales[$j] * _n)^2
+        end)
+    end
+
+    body = quote
+        _s = one(first(A.scales))
+        $(wavenumber_terms...)
+        _w = inv(_s)
         for m in axes(a, 1)
-            @inbounds a[m, homogeneous_indices...] *= w
+            @inbounds parent(a)[m, $(syms...)] *= _w
         end
     end
-    return a
+
+    # ProjectedField storage is `(mode, H1, H2, ...)`, so homogeneous index
+    # `j` lives on array axis `j + 1`.
+    for j in 1:N
+        body = :(for $(syms[j]) in axes(a, $(j + 1))
+                     $body
+                 end)
+    end
+
+    return quote
+        $body
+        return a
+    end
 end
 
 """
@@ -96,18 +136,50 @@ where `c_{k_1}` is `1` for the zero rfft wavenumber and `2` otherwise.
 """
 function LinearAlgebra.dot(a::ProjectedField{G},
                            A::FarazmandWeight{N},
-                           b::ProjectedField{G}) where {N, G<:AbstractGrid}
-    T = real(eltype(a))
-    s = zero(T)
-    g = grid(a)
-    # Accumulate the weighted inner product over all wavenumbers and Galerkin modes.
-    # one_or_two accounts for rfft Hermitian symmetry (+k stored, −k implicit).
-    for_each_homogeneous_index(g) do one_or_two, homogeneous_indices...
-        k = to_wavenumber_vector(g, homogeneous_indices)
-        w = A[k]
+                           b::ProjectedField{G}) where {N, T, D, AXES, FFT_DIMS_ORDER, G<:AbstractGrid{T, D, AXES, FFT_DIMS_ORDER}}
+    N == length(FFT_DIMS_ORDER) ||
+        throw(DimensionMismatch("FarazmandWeight has incompatible size: expected $(length(FFT_DIMS_ORDER)) scales, got $N"))
+    return _dot_farazmand(a, A, b)
+end
+
+@generated function _dot_farazmand(a::ProjectedField{G},
+                                   A::FarazmandWeight{N},
+                                   b::ProjectedField{G}) where {N, T, D, AXES, FFT_DIMS_ORDER, G<:AbstractGrid{T, D, AXES, FFT_DIMS_ORDER}}
+    syms = [Symbol("_i", j) for j in 1:N]
+
+    wavenumber_terms = Expr[]
+    for (j, dim) in enumerate(FFT_DIMS_ORDER)
+        n = j == 1 ? :($(syms[j]) - 1) :
+                     :($(syms[j]) <= (Base.size(grid(a), $dim) >> 1) + 1 ?
+                       $(syms[j]) - 1 :
+                       $(syms[j]) - 1 - Base.size(grid(a), $dim))
+        push!(wavenumber_terms, quote
+            _n = $n
+            _weight_denominator += (A.scales[$j] * _n)^2
+        end)
+    end
+
+    body = quote
+        _weight_denominator = one(first(A.scales))
+        $(wavenumber_terms...)
+        _weight = inv(_weight_denominator)
+        _one_or_two = $(syms[1]) == 1 ? 1 : 2
         for m in axes(a, 1)
-            @inbounds s += one_or_two * w * real(LinearAlgebra.dot(a[m, homogeneous_indices...], b[m, homogeneous_indices...]))
+            @inbounds _s += _one_or_two * _weight *
+                            real(conj(parent(a)[m, $(syms...)]) *
+                                 parent(b)[m, $(syms...)])
         end
     end
-    return s / 2
+
+    for j in 1:N
+        body = :(for $(syms[j]) in axes(a, $(j + 1))
+                     $body
+                 end)
+    end
+
+    return quote
+        _s = zero($T)
+        $body
+        return _s / 2
+    end
 end
