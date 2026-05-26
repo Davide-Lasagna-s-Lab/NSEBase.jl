@@ -29,6 +29,7 @@ include("test_shifts.jl")
 include("test_norms.jl")
 include("test_weighting.jl")
 include("test_galerkin.jl")
+include("test_allocations.jl")
 include("test_io.jl")
 
 # Integration tests for the bundled equations module.
