@@ -1,4 +1,4 @@
-@testset "Field                               " begin
+@testset "Field                                                               " begin
     # construct grid
     Nx = 16; Ny = 11
     L = 10*rand()
@@ -46,7 +46,7 @@
     @test bar(u) == 0
 end
 
-@testset "Hermitian symmetry                  " begin
+@testset "Hermitian symmetry                                                  " begin
     # 1 dimension
     out = randn(ComplexF64, 11)
     @test NSEBase.apply_symmetry!(copy(out), ()) == out
@@ -97,7 +97,7 @@ end
     end
 end
 
-@testset "FTField                             " begin
+@testset "FTField                                                             " begin
     # construct grid
     Nx = 16; Ny = 11
     L = 10*rand()
@@ -149,21 +149,21 @@ end
     @test u == 2*v + w/3
     @test bar(u) == 0
 
-    # test mode number indexing
+    # test wavenumber vector indexing
     A = randn(ComplexF64, Nx, (Ny >> 1) +1)
     A_new = NSEBase.apply_symmetry!(NSEBase.normalise_mean!(A, (2, 3, 4)), (2, 3, 4))
     u = FTField(g, A)
     for nx in 1:Nx
         for ny in 0:(Ny >> 1)
-            @test u[ModeNumber(ny), nx] == A_new[nx, ny+1]
+            @test u[WaveNumberVector(ny), nx] == A_new[nx, ny+1]
         end
         for ny in -(Ny >> 1):-1
-            @test u[ModeNumber(ny), nx] == conj(A_new[nx, -ny+1])
+            @test u[WaveNumberVector(ny), nx] == conj(A_new[nx, -ny+1])
         end
     end
 end
 
-@testset "VectorField                         " begin
+@testset "VectorField                                                         " begin
     # construct grid
     Nx = 16; Ny = 11
     L = 10*rand()
@@ -221,7 +221,7 @@ end
     @test bar(u) == 0
 end
 
-@testset "ProjectedField                      " begin
+@testset "ProjectedField                                                      " begin
     # construct grid
     Nx = 16; Ny = 11
     L = 10*rand()
@@ -270,16 +270,16 @@ end
     @test a == 2*b + c/3
     @test bar(a) == 0
 
-    # test mode number indexing
+    # test wavenumber vector indexing
     A = randn(ComplexF64, M, (Ny >> 1) + 1)
     A_new = NSEBase.apply_symmetry!(NSEBase.normalise_mean!(A, (2, 3, 4)), (2, 3, 4))
     a = ProjectedField(g, A, Ψ)
     for m in 1:1
         for ny in 0:(Ny >> 1)
-            @test a[m, ModeNumber(ny)] == A_new[m, ny+1]
+            @test a[m, WaveNumberVector(ny)] == A_new[m, ny+1]
         end
         for ny in -(Ny >> 1):-1
-            @test a[m, ModeNumber(ny)] == conj(A_new[m, -ny+1])
+            @test a[m, WaveNumberVector(ny)] == conj(A_new[m, -ny+1])
         end
     end
 end

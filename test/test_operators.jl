@@ -1,4 +1,4 @@
-@testset "Projected Navier-Stokes equations   " begin
+@testset "Projected Navier-Stokes equations                                   " begin
     # construct grid
     Nx = 16; Ny = 11
     L = 10*rand()
@@ -20,9 +20,9 @@
     Ψ[3][:, :, 1] .= real.(Ψ[3][:, :, 1])
 
     # operator construction
-    nl = CartesianPrimitiveNSE(g, 100; flags=FFTW.ESTIMATE)
-    ln = CartesianPrimitiveLNSE(g, 100; mode=AdjointDiscrete(), flags=FFTW.ESTIMATE)
-    op = construct_equations(g, 100, nothing, CartesianPrimitive(); flags=FFTW.ESTIMATE)
+    nl = CartesianPrimitive3DNSE(g, 100; flags=FFTW.ESTIMATE)
+    ln = CartesianPrimitive3DLNSE(g, 100; mode=AdjointDiscrete(), flags=FFTW.ESTIMATE)
+    op = construct_equations(g, 100, nothing, CartesianPrimitive3D(); flags=FFTW.ESTIMATE)
     @test op.cache1 isa VectorField{3, <:FTField{FakeGrid}}
     @test op.cache2 isa VectorField{3, <:FTField{FakeGrid}}
 

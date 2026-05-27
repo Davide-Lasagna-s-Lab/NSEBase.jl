@@ -1,4 +1,29 @@
-# Fourier transformed scalar field.
+# Fourier-transformed scalar field and its low-level spectral symmetry utilities.
+#
+# `FTField` is the spectral counterpart of `Field`: it stores complex Fourier
+# coefficients on the half-spectrum produced by an rfft.  The first axis of
+# the underlying array is the rfft axis (non-negative wavenumbers only);
+# the remaining FFT-transformed axes store both positive and negative wavenumbers
+# in FFTW's standard wrap-around order.  Non-FFT (inhomogeneous) dimensions
+# appear in the array at whatever position the grid's `AXES` and `FFT_DIMS_ORDER`
+# specify.
+#
+# FTField enforces two invariants on construction (when given a plain Julia Array):
+#   1. Hermitian symmetry — the zero-rfft-wavenumber plane must satisfy û(-k) = conj(û(k)).
+#      Enforced by `apply_symmetry!`.
+#   2. Reality of the zero wavenumber — the fully-zero mode must be real-valued.
+#      Enforced by `normalise_mean!`.
+#
+# Two indexing APIs are provided beyond the base IndexLinear interface:
+#   u[k::WaveNumberVector]         — returns a view over all inhomogeneous indices
+#                                    at signed wavenumber k, handling conjugate-
+#                                    symmetry for negative rfft wavenumbers.
+#   u[k::WaveNumberVector, I...]   — returns (or writes) the single complex
+#                                    coefficient at wavenumber k and inhomogeneous
+#                                    index I, with full symmetry maintenance on write.
+#
+# `apply_symmetry!` and `normalise_mean!` are `@generated` utilities defined at
+# the bottom of this file and are also used by `ProjectedField` on construction.
 
 """
     FTField{G} where {G<:AbstractGrid}
@@ -30,7 +55,8 @@ FTField(grid::AbstractGrid{T}) where {T} = FTField(grid, zeros(Complex{T}, trans
 Base.IndexStyle(::Type{<:FTField})                                    = Base.IndexLinear()
 Base.parent(u::FTField)                                               = u.data
 Base.eltype(::FTField{<:AbstractGrid{T}}) where {T}                   = Complex{T}
-Base.similar(u::FTField{<:AbstractGrid{T}}, ::Type{S}=T) where {T, S} = FTField(convert(real(S), grid(u)), zero(parent(u)))
+Base.similar(u::FTField{<:AbstractGrid{T}}, ::Type{S}=T) where {T, S} =
+    FTField(real(S) == T ? grid(u) : convert(real(S), grid(u)), zero(parent(u)))
 Base.size(u::FTField)                                                 = Base.size(parent(u))
 Base.copy(u::FTField)                                                 = (v = Base.similar(u); parent(v) .= parent(u); return v)
 Base.zero(u::FTField{<:AbstractGrid{T}}) where {T}                    = (v = Base.similar(u); parent(v) .= zero(T)  ; return v)
@@ -51,63 +77,84 @@ end
 grid(u::FTField) = u.grid
 
 """
-    growto(u::FTField, target_size)
+    growto(u::FTField{G}, target_size::NTuple{N, Int}) where {G<:AbstractGrid, N}
 
-Return an equivalent field with a new homogeneous resolution.
+Return an equivalent spectral field with a new homogeneous resolution.
+
+`target_size` contains one physical-space grid size for each homogeneous
+direction in `fft_dims(grid(u)) = FFT_DIMS_ORDER`, in `FFT_DIMS_ORDER` order. It must therefore
+have length `length(FFT_DIMS_ORDER)`, not the full dimension `D` of `grid(u)`.
+Inhomogeneous directions are preserved by the grid-specific
+`growto(grid(u), target_size)` method.
+
+The spectral coefficients are copied by wavenumber vector: each stored
+wavenumber of `u` is converted to a [`WaveNumberVector`](@ref), then copied to
+the same wavenumber in the output field. This requires the target grid to
+represent every copied source wavenumber, so this method is primarily intended
+for increasing homogeneous resolution.
 
 This is optional.  Packages should only implement it if they support
 resolution-changing transforms such as `FFT(u, target_size)` and
 `IFFT(û, target_size)`.
 """
-function growto(u::FTField, target_size)
+function growto(u::FTField{G}, target_size::NTuple{N, Int}) where {T, D, AXES, FFT_DIMS_ORDER, N, G<:AbstractGrid{T, D, AXES, FFT_DIMS_ORDER}}
+    N == length(FFT_DIMS_ORDER) ||
+        throw(ArgumentError("target_size has incompatible size: expected a tuple of length $(length(FFT_DIMS_ORDER)), got length $N"))
+
     out = FTField(growto(grid(u), target_size))
-    for_each_freq(grid(u)) do args...
-        ar1 = out[ModeNumber(args...)]
-        ar2 = u[ModeNumber(args...)]
-        ar1 .= ar2
+    # Iterate source storage indices, convert them to signed wavenumbers,
+    # and copy the matching wavenumber slice in the target grid.
+    for_each_homogeneous_index(grid(u)) do _, homogeneous_indices
+        k = to_wavenumber_vector(grid(u), homogeneous_indices)
+
+        # Bind the views explicitly.  `out[k] .= u[k]` can route through
+        # broadcast's dotview machinery, which expects ordinary array indices;
+        # these temporaries force our WaveNumberVector getindex method first.
+        dst = out[k]
+        src = u[k]
+        dst .= src
     end
     return out
 end
 
-# TODO: an equivalent setindex! method?
 """
-    u[n::ModeNumber]
+    u[k::WaveNumberVector]
 
 Return a view of the underlying array over all non-transform dimensions for
-the mode with wavenumber tuple `n`. The wavenumbers in `n` follow the order
-of `fft_dims(grid(u)) = ORDER`.
+the wavenumber vector `k`. The wavenumbers in `k` follow the order
+of `fft_dims(grid(u)) = FFT_DIMS_ORDER`.
 
-If the first (rfft) wavenumber `n.ns[1]` is negative the view is into the
-conjugate-symmetric storage location `(-n.ns[1], -n.ns[2:N]…)`; the caller
+If the first (rfft) wavenumber `k[1]` is negative the view is into the
+conjugate-symmetric storage location `(-k[1], -k[2:N]…)`; the caller
 is responsible for applying conjugation if needed.
 
-The returned view has one dimension for each axis of `u` not in `ORDER`,
+The returned view has one dimension for each axis of `u` not in `FFT_DIMS_ORDER`,
 in their original order.
 """
 Base.@propagate_inbounds function Base.getindex(u::FTField{G},
-                                                n::ModeNumber) where {T, D, AXES, ORDER, G<:AbstractGrid{T, D, AXES, ORDER}}
-    tpl     = _modenumber_to_indices(grid(u), n)
+                                                k::WaveNumberVector) where {T, D, AXES, FFT_DIMS_ORDER, G<:AbstractGrid{T, D, AXES, FFT_DIMS_ORDER}}
+    tpl     = to_homogeneous_indices(grid(u), k)
     indices = Base.front(tpl)
-    colons  = ntuple(_ -> Colon(), ndims(u) - length(ORDER))
+    colons  = ntuple(_ -> Colon(), ndims(u) - length(FFT_DIMS_ORDER))
     @boundscheck checkbounds(u, _combine_indices(grid(u), colons, indices)...)
     @inbounds return view(parent(u), _combine_indices(grid(u), colons, indices)...)
 end
 
 """
-    u[n::ModeNumber, I...]
+    u[k::WaveNumberVector, I...]
 
-Return the complex modal coefficient for index `I` at wavenumber tuple `n`.
+Return the complex modal coefficient for index `I` at wavenumber vector `k`.
 
-The wavenumbers in `n` follow the order of `fft_dims(grid(a)) = ORDER`.
-If the first (rfft) wavenumber `n.ns[1]` is negative the coefficient is
-obtained by conjugate symmetry: the entry stored at `(-n.ns[1], -n.ns[2:N]…)`
+The wavenumbers in `k` follow the order of `fft_dims(grid(a)) = FFT_DIMS_ORDER`.
+If the first (rfft) wavenumber `k[1]` is negative the coefficient is
+obtained by conjugate symmetry: the entry stored at `(-k[1], -k[2:N]…)`
 is read and conjugated.
 """
 Base.@propagate_inbounds function Base.getindex(u::FTField,
-                                                n::ModeNumber,
+                                                k::WaveNumberVector,
                                                i1::Int,
                                                 I::Vararg{Int})
-    tpl     = _modenumber_to_indices(grid(u), n)
+    tpl     = to_homogeneous_indices(grid(u), k)
     do_conj = last(tpl)
     indices = Base.front(tpl)
     @boundscheck checkbounds(u, _combine_indices(grid(u), (i1, I...), indices)...)
@@ -116,33 +163,33 @@ Base.@propagate_inbounds function Base.getindex(u::FTField,
 end
 
 """
-    u[n::ModeNumber, I...] = val
+    u[k::WaveNumberVector, I...] = val
 
-Write the complex modal coefficient `val` for index `I` at wavenumber tuple `n`.
+Write the complex modal coefficient `val` for index `I` at wavenumber vector `k`.
 
 Two symmetry invariants are maintained automatically:
 
-- **Hermitian symmetry** — when the rfft wavenumber `n.ns[1] == 0`, the
-  conjugate-symmetric entry at `(0, -n.ns[2:N]…)` is also updated so that
+- **Hermitian symmetry** — when the rfft wavenumber `k[1] == 0`, the
+  conjugate-symmetric entry at `(0, -k[2:N]…)` is also updated so that
   the physical field remains real-valued.
-- **Zero-mode reality** — the fully-zero mode `ModeNumber(0, 0, …)` is
+- **Zero-wavenumber reality** — the fully-zero wavenumber `WaveNumberVector(0, 0, …)` is
   forced to be real (imaginary part discarded).
 
-If `n.ns[1] < 0` the write targets the conjugate-symmetric storage location
+If `k[1] < 0` the write targets the conjugate-symmetric storage location
 and `conj(val)` is stored, keeping the representation consistent with reads.
 """
 Base.@propagate_inbounds function Base.setindex!(u::FTField{G},
                                                val,
-                                                 n::ModeNumber{N},
+                                                 k::WaveNumberVector{N},
                                                  I::Vararg{Int}) where {T, N, G<:AbstractGrid{T}}
     CT      = Complex{T}
-    tpl     = _modenumber_to_indices(grid(u), n)
+    tpl     = to_homogeneous_indices(grid(u), k)
     do_conj = last(tpl)
     indices = Base.front(tpl)
     i0      = first(indices)      # rfft axis index (axis 2 of ProjectedField)
     rest    = Base.tail(indices)  # signed-fft axis indices (axes 3…)
 
-    # Force the fully-zero mode to be real.
+    # Force the fully-zero wavenumber to be real.
     val = (i0 == 1 && all(==(1), rest)) ? CT(real(val)) : CT(val)
 
     # Conjugate-symmetric indices for each signed-fft axis.
@@ -160,15 +207,15 @@ end
     _combine_indices(grid, I, K) -> Tuple
 
 Combine free indices `I` and constrained indices `K` into a single index tuple
-of length `D`, interleaving them according to the constrained dimensions `ORDER`
-defined by `grid`. Dimensions in `ORDER` draw from `K`; all others draw from `I`.
+of length `D`, interleaving them according to the constrained dimensions `FFT_DIMS_ORDER`
+defined by `grid`. Dimensions in `FFT_DIMS_ORDER` draw from `K`; all others draw from `I`.
 
 The index layout is fully resolved at compile time via a generated function.
 """
-@generated function _combine_indices(::AbstractGrid{T, D, AXES, ORDER}, I, K) where {T, D, AXES, ORDER}
+@generated function _combine_indices(::AbstractGrid{T, D, AXES, FFT_DIMS_ORDER}, I, K) where {T, D, AXES, FFT_DIMS_ORDER}
     inds = []; k = 1; i = 1
     for d in 1:D
-        if d ∈ ORDER
+        if d ∈ FFT_DIMS_ORDER
             push!(inds, :(K[$k])); k += 1
         else
             push!(inds, :(I[$i])); i += 1
@@ -176,23 +223,6 @@ The index layout is fully resolved at compile time via a generated function.
     end
     return :(($(inds...),))
 end
-
-
-# --------------------- #
-# inner-product methods #
-# --------------------- #
-# TODO: can this be implemented with the ModeNumber indexing above?
-# TODO: Might need a special case to take a slice of `u` and `v` at ModeNumber `n`?
-# function LinearAlgebra.dot(u::FTField, v::FTField)
-#     s = real(eltype(u))
-#     for_each_mode(grid(u)) do args...
-#         w = first(args) == 1 ? 1 : 2
-#         s += w * dot(u[ModeNumber(args...)], v[ModeNumber(args...)])
-#     end
-#     return s/2
-# end
-LinearAlgebra.dot(u::FTField, v::FTField) = throw(NotImplementedError(u, v))
-LinearAlgebra.norm(u::FTField) = sqrt(dot(u, u))
 
 
 # --------------- #

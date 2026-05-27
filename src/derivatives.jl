@@ -1,4 +1,30 @@
-# Generic derivative methods for each dimension of an FTField
+# Spectral differentiation operators for FTField, ProjectedField, and VectorField.
+#
+# Differentiation in a homogeneous (FFT-transformed) direction is exact in
+# spectral space: the derivative of mode k is simply multiplied by
+# ±i·n·wavenumber_scale(g, dim), where n is the signed integer wavenumber and
+# the sign is +1 for the forward operator and −1 for its L2 adjoint.
+#
+# The core primitive is `ddx!(out, u, Val{DIM})`, a `@generated` function that
+# emits a fully unrolled loop nest specialised to the grid type.  The generated
+# code splits signed-FFT dimensions into two contiguous blocks (positive and
+# negative wavenumbers) so that the signed wavenumber value can be computed
+# branch-free from the loop variable, and processes dimensions in ascending
+# order so that dimension 1 (the column-major stride-1 axis) is always the
+# innermost loop.
+#
+# Four named wrappers `ddx_1!`, `ddx_2!`, `ddx_3!`, `ddx_4!` forward to
+# `ddx!` with the array dimension read from `AXES[1]`, `AXES[2]`, `AXES[3]`,
+# `AXES[4]` respectively.  When `AXES[j] === nothing` (e.g. a steady 3D grid
+# has no time dimension), the generated code is a compile-time no-op.
+#
+# Inhomogeneous (non-FFT) directions are NOT handled here — `ddx!` throws
+# `NotImplementedError` for those, and downstream packages must extend it with
+# a grid-specific method (typically a matrix–vector multiply).
+#
+# The full Laplacian combines `inhomogeneous_laplacian!` (provided by
+# downstream) with `add_homogeneous_laplacian!` (provided here), which
+# subtracts ‖k‖² · u from each spectral coefficient.
 
 """
     ddx!(out::FTField, u::FTField, ::Val{DIM}; adjoint=false)
@@ -6,12 +32,12 @@
 
 In-place spectral derivative of `u` along array dimension `DIM`, writing into `out`.
 
-For `DIM in ORDER` the derivative is multiplication by
+For `DIM in FFT_DIMS_ORDER` the derivative is multiplication by
 `±im * n * wavenumber_scale(grid, DIM)` where `n` is the signed wavenumber.
 `adjoint=false` (default) gives `+im·n·scale·u`; `adjoint=true` gives `-im·n·scale·u`
 (the L2 adjoint of the spectral derivative for homogeneous directions).
 
-For `DIM not in ORDER` the method throws `NotImplementedError`. Downstream packages
+For `DIM not in FFT_DIMS_ORDER` the method throws `NotImplementedError`. Downstream packages
 should extend this for each non-homogeneous direction (e.g. matrix multiply
 with a differentiation matrix) and handle the `adjoint` keyword there too.
 
@@ -20,7 +46,7 @@ For `AXES[DIM] === nothing` the function reduces to identity.
 # Generated loop shape
 
 The generated code is arranged for memory order, not physical-coordinate order.
-For a 4D spectral array `(a, b, c, d)` with `ORDER = (2, 3, 4)`,
+For a 4D spectral array `(a, b, c, d)` with `FFT_DIMS_ORDER = (2, 3, 4)`,
 differentiating in the rfft dimension `b` generates the
 equivalent of:
 
@@ -59,9 +85,11 @@ end
 @generated function ddx!(out::F,
                            u::F,
                             ::Val{DIM};
-                     adjoint::Bool=false) where {T, D, AXES, ORDER, G<:AbstractGrid{T, D, AXES, ORDER}, F<:Union{FTField{G}, ProjectedField{G}}, DIM}
+                     adjoint::Bool=false) where {T, D, AXES, FFT_DIMS_ORDER, G<:AbstractGrid{T, D, AXES, FFT_DIMS_ORDER}, F<:Union{FTField{G}, ProjectedField{G}}, DIM}
+    # A missing logical coordinate, e.g. AXES[4] === nothing on a steady grid,
+    # is represented by Val(nothing) and should be a no-op.
     (isnothing(DIM) || isnothing(AXES[DIM])) && return :(return out)
-    DIM ∉ ORDER && return :(throw(NotImplementedError(grid(u), Val($DIM))))
+    DIM ∉ FFT_DIMS_ORDER && return :(throw(NotImplementedError(grid(u), Val($DIM))))
 
     syms  = [Symbol("_i", d) for d in 1:D]
     n_sym = Symbol("_n", DIM)
@@ -96,7 +124,7 @@ end
     ranges = [:(1:Base.size(u, $d)) for d in 1:D]
     wnums  = Any[:nothing for _ in 1:D]
 
-    if DIM == ORDER[1]
+    if DIM == FFT_DIMS_ORDER[1]
         # rfft dimension: only non-negative wavenumbers are stored.
         wnums[DIM] = :($(syms[DIM]) - 1)
         body = cache_ordered_loop(assign, ranges, wnums)
@@ -127,35 +155,71 @@ end
 ddx!(out::VectorField{N}, u::VectorField{N}, d; kwargs...) where {N} =
     (for n in 1:N; ddx!(out[n], u[n], d; kwargs...); end; return out)
 
-# These look up the array dim from the field's grid type (via x_dim/y_dim/z_dim)
-# and forward all kwargs to ddx!, so callers need not know array dim indices.
-ddx_x!(out::ProjectedField, a::ProjectedField; kwargs...) =
-    ddx!(out, a, Val(x_dim(grid(a))); kwargs...)
-ddx_x!(out::FTField, u::FTField; kwargs...) =
-    ddx!(out, u, Val(x_dim(grid(u))); kwargs...)
-ddx_x!(out::VectorField{N}, u::VectorField{N}; kwargs...) where {N} =
-    (for n in 1:N; ddx_x!(out[n], u[n]; kwargs...); end; return out)
+"""
+    ddx_1!(out, u; adjoint=false) -> out
 
-ddx_y!(out::ProjectedField, a::ProjectedField; kwargs...) =
-    ddx!(out, a, Val(y_dim(grid(a))); kwargs...)
-ddx_y!(out::FTField, u::FTField; kwargs...) =
-    ddx!(out, u, Val(y_dim(grid(u))); kwargs...)
-ddx_y!(out::VectorField{N}, u::VectorField{N}; kwargs...) where {N} =
-    (for n in 1:N; ddx_y!(out[n], u[n]; kwargs...); end; return out)
+Differentiate `u` in the first physical coordinate (`x`), storing
+the result in `out`.  The array dimension is read from `AXES[1]` of the grid
+type parameter at compile time and forwarded to [`ddx!`](@ref).
 
-ddx_z!(out::ProjectedField, a::ProjectedField; kwargs...) =
-    ddx!(out, a, Val(z_dim(grid(a))); kwargs...)
-ddx_z!(out::FTField, u::FTField; kwargs...) =
-    ddx!(out, u, Val(z_dim(grid(u))); kwargs...)
-ddx_z!(out::VectorField{N}, u::VectorField{N}; kwargs...) where {N} =
-    (for n in 1:N; ddx_z!(out[n], u[n]; kwargs...); end; return out)
+Defined for `FTField`, `ProjectedField`, and `VectorField` arguments on any
+`AbstractGrid`.
+"""
+ddx_1!(out::ProjectedField{G}, a::ProjectedField{G}; kwargs...) where {AXES, D, G<:AbstractGrid{<:Any, D, AXES}} =
+    ddx!(out, a, Val(AXES[1]); kwargs...)
+ddx_1!(out::FTField{G}, u::FTField{G}; kwargs...) where {AXES, D, G<:AbstractGrid{<:Any, D, AXES}} =
+    ddx!(out, u, Val(AXES[1]); kwargs...)
+ddx_1!(out::VectorField{N}, u::VectorField{N}; kwargs...) where {N} =
+    (for n in 1:N; ddx_1!(out[n], u[n]; kwargs...); end; return out)
 
-dds!(out::ProjectedField, a::ProjectedField) =
-    ddx!(out, a, Val(t_dim(grid(a))); adjoint=false)
-dds!(out::FTField, u::FTField) =
-    ddx!(out, u, Val(t_dim(grid(u))); adjoint=false)
-dds!(out::VectorField{N}, u::VectorField{N}) where {N} =
-    (for n in 1:N; dds!(out[n], u[n]); end; return out)
+"""
+    ddx_2!(out, u; adjoint=false) -> out
+
+Differentiate `u` in the second physical coordinate (`y`, or `r`), storing
+the result in `out`.  The array dimension is read from `AXES[2]` of the grid
+type parameter at compile time and forwarded to [`ddx!`](@ref).
+
+For inhomogeneous (non-FFT) directions this dispatches to the downstream
+package's extension of `ddx!` (e.g. a matrix–vector product with the
+wall-normal differentiation matrix).
+"""
+ddx_2!(out::ProjectedField{G}, a::ProjectedField{G}; kwargs...) where {AXES, D, G<:AbstractGrid{<:Any, D, AXES}} =
+    ddx!(out, a, Val(AXES[2]); kwargs...)
+ddx_2!(out::FTField{G}, u::FTField{G}; kwargs...) where {AXES, D, G<:AbstractGrid{<:Any, D, AXES}} =
+    ddx!(out, u, Val(AXES[2]); kwargs...)
+ddx_2!(out::VectorField{N}, u::VectorField{N}; kwargs...) where {N} =
+    (for n in 1:N; ddx_2!(out[n], u[n]; kwargs...); end; return out)
+
+"""
+    ddx_3!(out, u; adjoint=false) -> out
+
+Differentiate `u` in the third physical coordinate (`z`, or `theta`), storing the
+result in `out`.  The array dimension is read from `AXES[3]` of the grid type
+parameter at compile time and forwarded to [`ddx!`](@ref).
+
+For 2D grids `AXES[3] === nothing`, so this call is a compile-time no-op that
+leaves `out` unchanged.
+"""
+ddx_3!(out::ProjectedField{G}, a::ProjectedField{G}; kwargs...) where {AXES, D, G<:AbstractGrid{<:Any, D, AXES}} =
+    ddx!(out, a, Val(AXES[3]); kwargs...)
+ddx_3!(out::FTField{G}, u::FTField{G}; kwargs...) where {AXES, D, G<:AbstractGrid{<:Any, D, AXES}} =
+    ddx!(out, u, Val(AXES[3]); kwargs...)
+ddx_3!(out::VectorField{N}, u::VectorField{N}; kwargs...) where {N} =
+    (for n in 1:N; ddx_3!(out[n], u[n]; kwargs...); end; return out)
+
+"""
+    ddx_4!(out, u; adjoint=false) -> out
+
+Differentiate `u` in the fourth physical coordinate (`t`), storing
+the result in `out`.  The array dimension is read from `AXES[4]` of the grid
+type parameter at compile time and forwarded to [`ddx!`](@ref).
+"""
+ddx_4!(out::ProjectedField{G}, a::ProjectedField{G}; kwargs...) where {AXES, D, G<:AbstractGrid{<:Any, D, AXES}} =
+    ddx!(out, a, Val(AXES[4]); kwargs...)
+ddx_4!(out::FTField{G}, u::FTField{G}; kwargs...) where {AXES, D, G<:AbstractGrid{<:Any, D, AXES}} =
+    ddx!(out, u, Val(AXES[4]); kwargs...)
+ddx_4!(out::VectorField{N}, u::VectorField{N}; kwargs...) where {N} =
+    (for n in 1:N; ddx_4!(out[n], u[n]; kwargs...); end; return out)
 
 """
     add_homogeneous_laplacian!(out::FTField, u::FTField)
@@ -163,13 +227,13 @@ dds!(out::VectorField{N}, u::VectorField{N}) where {N} =
 
 Add the homogeneous Laplacian contribution of `u` to `out`:
 
-    out[mode] -= (∑_{d∈ORDER} (wavenumber_scale(g, d) · n_d)²) · u[mode]
+    out[mode] -= (∑_{d∈FFT_DIMS_ORDER} (wavenumber_scale(g, d) · n_d)²) · u[mode]
 
 Call after computing the non-homogeneous (e.g. wall-normal) second derivative.
 
 # Generated loop shape
 
-For a 4D spectral array `(a, b, c, d)` with `ORDER = (2, 3, 4)`,
+For a 4D spectral array `(a, b, c, d)` with `FFT_DIMS_ORDER = (2, 3, 4)`,
 the generated code computes:
 
 ```julia
@@ -191,12 +255,14 @@ nz <  0, nt <  0
 Inside every block, dimension 1 remains the innermost loop and the signed
 wavenumbers are plain loop-local integers.
 """
-@generated function add_homogeneous_laplacian!(out::FTField{G}, u::FTField{G}) where {T, D, AXES, ORDER, G<:AbstractGrid{T, D, AXES, ORDER}}
-    H = filter(d->d!=AXES[4], ORDER) # exclude time from derivative contributions
+@generated function add_homogeneous_laplacian!(out::FTField{G}, u::FTField{G}) where {T, D, AXES, FFT_DIMS_ORDER, G<:AbstractGrid{T, D, AXES, FFT_DIMS_ORDER}}
+    # The Laplacian includes spatial homogeneous directions only.  If the
+    # fourth logical coordinate is time, AXES[4] is filtered out here.
+    H = filter(d->d!=AXES[4], FFT_DIMS_ORDER)
     syms = [Symbol("_i", d) for d in 1:D]
 
     # Build the symbolic k² expression from per-dimension scale and wavenumber
-    # variables.  The loops below define `_n<dim>` for each dimension in ORDER.
+    # variables.  The loops below define `_n<dim>` for each dimension in FFT_DIMS_ORDER.
     k2_terms = Expr[]
     for d in H
         n_expr = Symbol("_n", d)
@@ -214,8 +280,8 @@ wavenumbers are plain loop-local integers.
     signed_dims = H[2:end]
     blocks = Expr[]
     for mask in 0:(1 << length(signed_dims)) - 1
-        # One generated block for each sign combination of ORDER[2:end].
-        # The rfft dimension ORDER[1] is not split because it stores only n >= 0.
+        # One generated block for each sign combination of FFT_DIMS_ORDER[2:end].
+        # The rfft dimension FFT_DIMS_ORDER[1] is not split because it stores only n >= 0.
         ranges = [:(1:Base.size(u, $d)) for d in 1:D]
         wnums  = Any[:nothing for _ in 1:D]
         wnums[H[1]] = :($(syms[H[1]]) - 1)
@@ -259,8 +325,20 @@ end
 add_homogeneous_laplacian!(out::VectorField{N}, u::VectorField{N}) where {N} =
     (for n in 1:N; add_homogeneous_laplacian!(out[n], u[n]); end; return out)
 
-# Downstream packages must extend this for their grid type (the inhomogeneous
-# part is not knowable generically); add_homogeneous_laplacian! handles the rest.
+"""
+    inhomogeneous_laplacian!(out::FTField, u::FTField; kwargs...) -> out
+
+Apply the inhomogeneous (non-FFT) part of the Laplacian of `u` to `out`.
+
+This is a required interface method: downstream packages must extend it for
+each concrete grid type, typically as a matrix–vector multiply with a
+wall-normal differentiation matrix.  NSEBase does not implement the
+inhomogeneous part — it only provides the spectral complement via
+[`add_homogeneous_laplacian!`](@ref).
+
+The full Laplacian [`laplacian!`](@ref) calls this first, then accumulates
+the homogeneous wavenumber contribution via [`add_homogeneous_laplacian!`](@ref).
+"""
 inhomogeneous_laplacian!(out::FTField, u::FTField) = throw(NotImplementedError(out, u))
 
 """
@@ -269,10 +347,11 @@ inhomogeneous_laplacian!(out::FTField, u::FTField) = throw(NotImplementedError(o
 
 Compute the full Laplacian of `u` in-place, storing the result in `out`:
 
-    out[mode] = (∂²/∂y² + ∑_{d∈ORDER} (wavenumber_scale(g, d) · n_d)²) · u[mode]
+    out[mode] = (inhomogeneous second derivatives
+                 - ∑_{d∈FFT_DIMS_ORDER} (wavenumber_scale(g, d) · n_d)²) · u[mode]
 
-Combines the inhomogeneous (e.g. wall-normal) second derivative with the
-homogeneous (spectral) Laplacian by calling, in order:
+Combines the grid-specific non-FFT contribution with the homogeneous
+(spectral) Laplacian by calling, in order:
 
     inhomogeneous_laplacian!(out, u; kwargs...)
     add_homogeneous_laplacian!(out, u)
@@ -283,11 +362,12 @@ independently to each component `n ∈ 1:N`.
 
 # Example
 
-For a 4D spectral array `(t, x, z, y)` with `ORDER = (1, 2, 3)` the
-combined operation is equivalent to:
+For a 4D spectral array stored as `(y, x, z, t)` with
+`FFT_DIMS_ORDER = (2, 3, 4)` and one inhomogeneous dimension `y`, the combined
+operation is equivalent to:
 
 ```julia
-# inhomogeneous_laplacian! fills out with the wall-normal contribution:
+# inhomogeneous_laplacian! fills out with the grid-specific contribution:
 out[:, nx_index, nz_index, nt_index] = D2 * u[:, nx_index, nz_index, nt_index]
 
 # add_homogeneous_laplacian! then accumulates the spectral part:
@@ -296,7 +376,7 @@ out[:, nx_index, nz_index, nt_index] -= k2 * u[:, nx_index, nz_index, nt_index]
 ```
 
 See [`inhomogeneous_laplacian!`](@ref) and [`add_homogeneous_laplacian!`](@ref)
-for the loop s
+for the two pieces of the operation.
 """
 function laplacian!(out::FTField{G}, u::FTField{G}; kwargs...) where {G}
     inhomogeneous_laplacian!(out, u; kwargs...)

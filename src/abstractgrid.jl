@@ -1,8 +1,27 @@
-# Abstract interface for computational grids that
-# FTField and Field use for their construction.
+# Abstract interface for all computational grids in NSEBase.
+#
+# `AbstractGrid{T, D, AXES, FFT_DIMS_ORDER}` is the single point of coupling between
+# field types (`FTField`, `Field`, `VectorField`, `ProjectedField`) and the
+# underlying geometry.  Every field stores a reference to its grid and
+# dispatches size queries, FFT index ranges, quadrature weights, and coordinate
+# arrays through this interface.
+#
+# Downstream packages (e.g. Resolver-ChannelFlow.jl) implement a concrete grid subtype
+# by defining a small set of required methods (`size`, `points`,
+# `wavenumber_scale`, `weights`).  All other grid-aware behaviour — spectral
+# loop generation, transform sizing, base-flow injection, derivative operators —
+# is derived automatically from the four compile-time type parameters without
+# any runtime overhead.
+#
+# The four type parameters encode:
+#   T              — real scalar type (Float64 by default)
+#   D              — number of array dimensions
+#   AXES           — 4-tuple mapping logical coordinates (x,y,z,t) to array dims
+#   FFT_DIMS_ORDER — ordered tuple of array dimensions that are FFT-transformed;
+#                    FFT_DIMS_ORDER[1] is always the rfft dimension
 
 """
-    AbstractGrid{T, D, AXES, ORDER} where {T<:Real}
+    AbstractGrid{T, D, AXES, FFT_DIMS_ORDER} where {T<:Real}
 
 Abstract type that represents a generic computational grid of a
 `D`-dimensional domain.
@@ -10,31 +29,14 @@ Abstract type that represents a generic computational grid of a
 Type parameters:
 - `T`: scalar real type used by physical-space fields on this grid.
 - `D`: number of array dimensions.
-- `AXES`: length-4 tuple `(x_dim, y_dim, z_dim, t_dim)` giving the array
-  dimension associated with the streamwise, wall-normal, spanwise, and
-  temporal coordinates. If a direction isn't required, then a nothing
-  is given for that direction.
-- `ORDER`: tuple of statistically homogeneous array dimensions. These are
-  transformed by FFTs; `ORDER[1]` is the rfft dimension.
-
-# Examples
-
-A channel-flow grid stored as `(t, x, z, y)` uses:
-
-```julia
-struct ChannelGrid{T} <: AbstractGrid{T, 4, (2, 4, 3, 1), (1, 2, 3)} end
-```
-
-A streamwise independent square-duct flow stored as `(y, z, t)` uses:
-
-```julia
-struct DuctGrid{T} <: AbstractGrid{T, 3, (nothing, 1, 2, 3), (3,)}
-```
-
-Here `t` is the first array dimension and is the rfft direction. The direction
-`x` is array dimension 2, `z` is array dimension 3, both of which are ordinary
-FFT directions, and the inhomogeneous wall-normal direction `y` is array
-dimension 4.
+- `AXES`: four-entry Cartesian axis layout `(x_dim, y_dim, z_dim, t_dim)`.
+  NSEBase assumes this tuple always has four entries, one for each logical
+  Cartesian coordinate.  Each entry is the array dimension occupied by that
+  coordinate, or `nothing` when the coordinate is absent.  The non-`nothing`
+  entries should be a permutation of `1:D`.  For example, a three-dimensional
+  grid stored as `(y, x, z)` should use `AXES = (2, 1, 3, nothing)`.
+- `FFT_DIMS_ORDER`: tuple of statistically homogeneous array dimensions. These are
+  transformed by FFTs; `FFT_DIMS_ORDER[1]` is the rfft dimension.
 
 # Required downstream methods
 
@@ -61,49 +63,49 @@ homogeneous resolution.  Implementing grid growth is also required for
   counts used to normalise forward transforms.
 - `transform_size(grid)`: returns the size of the corresponding `FTField`.
 """
-abstract type AbstractGrid{T<:Real, D, AXES, ORDER} end
-
-
-
-# ---------------------- #
-# compile-time accessors #
-# ---------------------- #
-"""
-    x_dim(grid::AbstractGrid) -> Int
-
-Return the array dimension corresponding to the streamwise coordinate.
-"""
-x_dim(::AbstractGrid{<:Any, <:Any, AXES}) where {AXES} = AXES[1]
+abstract type AbstractGrid{T<:Real, D, AXES, FFT_DIMS_ORDER} end
 
 """
-    y_dim(grid::AbstractGrid) -> Int
+    fft_dims(grid::AbstractGrid) -> Tuple{Int, …}
 
-Return the array dimension corresponding to the wall-normal coordinate.
-"""
-y_dim(::AbstractGrid{<:Any, <:Any, AXES}) where {AXES} = AXES[2]
+Return the tuple of FFT-transformed array dimensions in transform order,
+i.e. the grid type parameter `FFT_DIMS_ORDER`.
 
+`fft_dims(g)[1]` is the rfft dimension (only non-negative wavenumbers are
+stored); the remaining entries are full-spectrum complex FFT dimensions.
 """
-    z_dim(grid::AbstractGrid) -> Int
-
-Return the array dimension corresponding to the spanwise coordinate.
-"""
-z_dim(::AbstractGrid{<:Any, <:Any, AXES}) where {AXES} = AXES[3]
+fft_dims(::AbstractGrid{<:Any, <:Any, <:Any, FFT_DIMS_ORDER}) where {FFT_DIMS_ORDER} = FFT_DIMS_ORDER
 
 """
-    t_dim(grid::AbstractGrid) -> Int
+    inhomogeneous_dims(grid::AbstractGrid) -> Tuple
 
-Return the array dimension corresponding to time.
+Return the array dimensions that are NOT transformed by FFTs, i.e. the
+complement of `fft_dims(grid)` within `1:D`.  These are the directions over
+which quadrature weights are needed for inner products.
 """
-t_dim(::AbstractGrid{<:Any, <:Any, AXES}) where {AXES} = AXES[4]
+@generated function inhomogeneous_dims(::AbstractGrid{<:Any, D, <:Any, FFT_DIMS_ORDER}) where {D, FFT_DIMS_ORDER}
+    :($(Tuple(d for d in 1:D if d ∉ FFT_DIMS_ORDER)))
+end
 
 """
-    fft_dims(grid::AbstractGrid) -> Tuple
+    to_storage_order(values, grid) -> Tuple
 
-Return all transformed dimensions in FFT order, i.e. `(spatial_hom_dims(grid)...,
-t_dim(grid))`.
+Permute a tuple from logical coordinate order into storage/array-dimension
+order.
+
+The axis layout is read from the grid type parameter `AXES`, where `AXES[i]`
+is the array dimension occupied by logical coordinate `i`.  `values` must have
+the four Cartesian coordinate slots `(X, Y, Z, T)`.  Coordinates whose `AXES`
+entry is `nothing` are omitted from the result.  For example, if
+`values = (X, Y, Z, T)` and `AXES = (2, 1, 3, 4)`, then
+`to_storage_order(values, grid)` returns `(Y, X, Z, T)`.
 """
-fft_dims(::AbstractGrid{<:Any, <:Any, <:Any, ORDER}) where {ORDER} = ORDER
-
+@generated function to_storage_order(values::Tuple{Vararg{Any, 4}},
+                                     ::AbstractGrid{<:Any, D, AXES}) where {D, AXES}
+    present = [(coordinate, axis) for (coordinate, axis) in pairs(AXES) if !isnothing(axis)]
+    order = first.(sort(present; by=last))
+    return Expr(:tuple, (:(values[$coordinate]) for coordinate in order)...)
+end
 
 # ------------------ #
 # required interface #
@@ -149,6 +151,19 @@ Downstream packages must extend this for each dimension in `fft_dims(grid)`.
 """
 wavenumber_scale(grid::AbstractGrid, dim::Int) = throw(NotImplementedError(grid, dim))
 
+"""
+    weights(grid::AbstractGrid) -> AbstractArray
+
+Return the quadrature weights for the inhomogeneous directions of `grid`.
+The returned array has one axis per dimension in `inhomogeneous_dims(grid)`,
+in ascending array-dimension order: a `Vector` when there is one inhomogeneous
+direction, a `Matrix` when there are two, and so on.
+
+Used by `dot(u::FTField, v::FTField)` to weight each inhomogeneous index
+combination.
+"""
+weights(grid::AbstractGrid) = throw(NotImplementedError(grid))
+
 
 # ------------------ #
 # optional interface #
@@ -171,16 +186,16 @@ growto(grid::AbstractGrid, target_size) = throw(NotImplementedError(grid, target
 """
     transform_size(g::AbstractGrid)
 
-Size of the spectral (FTField) array: `ORDER[1]` (rfft) becomes `(N÷2)+1`,
+Size of the spectral (FTField) array: `FFT_DIMS_ORDER[1]` (rfft) becomes `(N÷2)+1`,
 all other dimensions are unchanged.
 """
-transform_size(g::AbstractGrid{<:Any, D, <:Any, ORDER}) where {D, ORDER} =
-    ntuple(d -> d == ORDER[1] ? (size(g, d) >> 1) + 1 : size(g, d), D)
+transform_size(g::AbstractGrid{<:Any, D, <:Any, FFT_DIMS_ORDER}) where {D, FFT_DIMS_ORDER} =
+    ntuple(d -> d == FFT_DIMS_ORDER[1] ? (size(g, d) >> 1) + 1 : size(g, d), D)
 
 """
     fft_norm(g::AbstractGrid)
 
-Number of grid points in each FFT dimension `ORDER`. Used to normalise
+Number of grid points in each FFT dimension `FFT_DIMS_ORDER`. Used to normalise
 forward transforms. Default: reads from `size(g)`.
 """
 fft_norm(g::AbstractGrid) = map(d -> size(g, d), fft_dims(g))
