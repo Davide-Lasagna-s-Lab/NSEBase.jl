@@ -72,6 +72,11 @@
         @test dot(u, v) ≈ sum(dot(u[n], v[n]) for n in 1:Nc) atol=1e-14
         @test norm(u)^2 ≈ dot(u, u)
         @test normdiff(u, u) == 0
+
+        # Shift tuples must have one entry per homogeneous dimension, even
+        # when every requested shift is zero.
+        @test_throws DimensionMismatch normdiff(u, v, (0.0, 0.0))
+        @test_throws DimensionMismatch normdiff(u, v, (0.0, 0.0), zero(v[1]))
     end
 
     @testset "normdiff with shifts == norm of explicitly shifted diff" begin
@@ -96,6 +101,11 @@
         rhs = norm(diff)
 
         @test lhs ≈ rhs atol=1e-13
+
+        # TripleGrid has two homogeneous dimensions.  Reject short and long
+        # shift tuples before any zero-shift fast path can hide the mismatch.
+        @test_throws DimensionMismatch normdiff(u, v, (0.0,))
+        @test_throws DimensionMismatch normdiff(u, v, (0.0, 0.0, 0.0), zero(v))
     end
 
     @testset "minnormdiff follows the number of transform dimensions" begin
@@ -144,5 +154,6 @@
         @test dot(a, b) ≈ ref atol=1e-13
         @test norm(a)^2 ≈ dot(a, a)
         @test normdiff(a, a) == 0
+        @test_throws DimensionMismatch normdiff(a, b, (0.0, 0.0), zero(b))
     end
 end
