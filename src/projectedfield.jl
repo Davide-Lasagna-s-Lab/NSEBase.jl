@@ -21,32 +21,50 @@
 #   a[m::Int, i1::Int, …]          — storage-index, for spectral inner loops
 #   a[m::Int, k::WaveNumberVector] — wavenumber, public API with symmetry logic
 
-#TODO: document the type parameters
 """
-    ProjectedField{G<:AbstractGrid, M}
+    ProjectedField{G, M, A, T, D}
 
 A representation of a vector field derived from the projection
 of an `FTField` onto a set of basis `modes`.
 
+# Type parameters
+- `G`: concrete grid type, a subtype of `AbstractGrid{T, _, _, FFT_DIMS_ORDER}`
+- `M`: type of the `modes` collection (tuple or vector of arrays)
+- `A`: type of the underlying coefficient array (`AbstractArray{Complex{T}, D}`)
+- `T`: real floating-point type (e.g. `Float64`); elements are stored as `Complex{T}`
+- `D`: dimensionality of the coefficient array — one mode axis plus one axis per
+  homogeneous dimension: `D = length(fft_dims(grid)) + 1`
+
 # Fields
 - `grid`: concrete instance of `AbstractGrid`
-- `data`: modal coefficients stored as a multi-dimensional array
+- `data`: modal coefficients stored as a multi-dimensional array of shape
+  `(Nm, rfft_size, fft2_size, …)`, where axis 1 is the mode index
 - `modes`: set of basis modes
 
 # Constructors
-- `ProjectedField(grid::AbstractGrid, M, modes)`
+- `ProjectedField(grid::AbstractGrid, modes)` — zero-initialised
+- `ProjectedField(grid::AbstractGrid, data, modes)` — wrap existing array
 - `ProjectedField(u::Union{FTField, Field, VectorField}, modes)`
-- `project(u::VectorField, modes)`
 
 # Storage layout
 
 The parent array has axis 1 reserved for the mode index and the spectral
 dimensions (from `fft_dims(grid) = FFT_DIMS_ORDER`) occupying the subsequent axes in
-FFT_DIMS_ORDER order.  Concretely, `parent(a)[m, i_H1, i_H2, …]` gives the coefficient
+`FFT_DIMS_ORDER` order.  Concretely, `parent(a)[m, i_H1, i_H2, …]` gives the coefficient
 of mode `m` at the spectral storage index `(i_H1, i_H2, …)`, where `i_H1`
 indexes the rfft dimension (`FFT_DIMS_ORDER[1]`) and each subsequent index steps over a
 full signed-FFT dimension.  This layout differs from the physical grid layout:
 non-FFT (inhomogeneous) dimensions are not present.
+
+# Indexing
+
+Three indexing APIs are available, ordered from lowest to highest level:
+
+- `a[i::Int]` / `a[i] = val` — linear, for broadcasting / `copyto!`; no symmetry logic
+- `a[I::CartesianIndex]` / `a[I] = val` — full storage index; no symmetry logic
+- `a[m, i1, i2, …]` / `a[m, i1, i2, …] = val` — storage index per axis; no symmetry logic
+- `a[m, k::WaveNumberVector]` / `a[m, k] = val` — public API; enforces Hermitian symmetry
+  and zero-wavenumber reality (see [`WaveNumberVector`](@ref))
 """
 struct ProjectedField{G<:AbstractGrid, M, A<:AbstractArray, T, D} <: AbstractArray{Complex{T}, D}
      grid :: G
@@ -195,39 +213,54 @@ Base.@propagate_inbounds function Base.setindex!(u::ProjectedField, val, i::Int)
     return val
 end
 
-# TODO: do we use N or D?
 """
     a[m::Int, i1::Int, i2::Int, …]
     a[m::Int, i1::Int, i2::Int, …] = val
 
-Read or write the coefficient for mode `m` at FFTW 1-based storage indices
-`i1, i2, …` (one per homogeneous dimension in `FFT_DIMS_ORDER` order).
+Read or write the coefficient for mode `m` at 1-based storage indices
+`i1, i2, …` (one index per homogeneous dimension in `FFT_DIMS_ORDER` order;
+`M = length(fft_dims(grid(a)))`, one less than the parent array rank `D = M+1`).
 
-The `Vararg{Int, N}` signature forces specialisation on the number of
-homogeneous dimensions `N` at compile time, so the body can index
-`parent(a)` directly without runtime overhead.
+`Vararg{Int, M}` forces compile-time specialisation on the number of homogeneous
+dimensions so the body can index `parent(a)` with a known-length tuple and
+generate no runtime overhead.
 
-No symmetry invariants are checked or maintained.  Use the `WaveNumberVector` API for that.
+No symmetry invariants are checked or maintained.  Use the `WaveNumberVector`
+API for writes that must preserve Hermitian symmetry.
 """
-Base.@propagate_inbounds function Base.getindex(a::ProjectedField, m::Int, indices::Vararg{Int, N}) where {N}
+Base.@propagate_inbounds function Base.getindex(a::ProjectedField, m::Int, indices::Vararg{Int, M}) where {M}
     @boundscheck checkbounds(parent(a), m, indices...)
     @inbounds parent(a)[m, indices...]
 end
-Base.@propagate_inbounds function Base.setindex!(a::ProjectedField, val, m::Int, indices::Vararg{Int, N}) where {N}
+Base.@propagate_inbounds function Base.setindex!(a::ProjectedField, val, m::Int, indices::Vararg{Int, M}) where {M}
     @boundscheck checkbounds(parent(a), m, indices...)
     @inbounds parent(a)[m, indices...] = val
 end
 
-# TODO: document this
-Base.@propagate_inbounds function Base.getindex(a::ProjectedField{G, M, A, T, D},  I::CartesianIndex{D}) where {G, M, A, T, D}
+"""
+    a[I::CartesianIndex]
+    a[I::CartesianIndex] = val
+
+Read or write the coefficient at the full `D`-dimensional storage index
+`I = CartesianIndex(m, i1, i2, …)`, where `m` is the mode index and
+`i1, i2, …` are the 1-based storage indices for each homogeneous dimension
+in `FFT_DIMS_ORDER` order.
+
+The `CartesianIndex{D}` type parameter ensures this method only dispatches when
+the index rank matches the parent array rank (`D = length(fft_dims(grid)) + 1`).
+No symmetry logic is applied.  Used internally by loops over `CartesianIndices(a)`,
+e.g. in [`shift!`](@ref) for `ProjectedField`.
+"""
+Base.@propagate_inbounds function Base.getindex(a::ProjectedField{<:Any, <:Any, <:Any, <:Any, D}, I::CartesianIndex{D}) where {D}
     @boundscheck checkbounds(parent(a), I)
     @inbounds parent(a)[I]
 end
-Base.@propagate_inbounds function Base.setindex!(a::ProjectedField{G, M, A, T, D}, val, I::CartesianIndex{D}) where {G, M, A, T, D}
+Base.@propagate_inbounds function Base.setindex!(a::ProjectedField{<:Any, <:Any, <:Any, <:Any, D}, val, I::CartesianIndex{D}) where {D}
     @boundscheck checkbounds(parent(a), I)
     @inbounds parent(a)[I] = val
 end
 
+#TODO: can the two functions below be made easier to understand?
 """
     a[m::Int, k::WaveNumberVector]
     a[m::Int, k::WaveNumberVector] = val
