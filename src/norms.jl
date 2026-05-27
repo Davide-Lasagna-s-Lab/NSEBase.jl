@@ -48,7 +48,7 @@ function LinearAlgebra.dot(u::FTField{G}, v::FTField{G}) where {G<:AbstractGrid}
     @inbounds for I in CartesianIndices(u)
         # apply a different weight to the zero rfft wavenumber, extract the 
         # inhomogeneous indices for the weights lookup and accumulate
-        s += one_or_two(I, g) * ws[inhomogeneous_indices(I, g)] * real(conj(u[I]) * v[I])
+        s += one_or_two(I, g) * ws[inhomogeneous_indices(I, g)...] * real(conj(u[I]) * v[I])
     end
     return s / 2
 end
@@ -93,7 +93,7 @@ function normdiff(u::FTField{G}, v::FTField{G}) where {G<:AbstractGrid}
     g = grid(u)
     ws = weights(g)
     @inbounds for I in CartesianIndices(u)
-        s += one_or_two(I, g) * ws[inhomogeneous_indices(I, g)] * abs2(u[I] - v[I])
+        s += one_or_two(I, g) * ws[inhomogeneous_indices(I, g)...] * abs2(u[I] - v[I])
     end
     return sqrt(s / 2)
 end
