@@ -16,7 +16,7 @@ export FFTPlans, FFT, IFFT
 export ProjectedField, modes, project!, project, expand!, expand
 export LoopGalerkin, GemmGalerkin
 export ddx!, ddx_1!, ddx_2!, ddx_3!, ddx_4!
-export add_homogeneous_laplacian!, laplacian!
+export inhomogeneous_laplacian!, add_homogeneous_laplacian!, laplacian!
 export shift!, shift, normdiff, minnormdiff
 export save_grid, load_grid, save_field, load_field
 export FarazmandWeight

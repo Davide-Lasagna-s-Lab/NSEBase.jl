@@ -233,15 +233,15 @@ end
 # project!                                                            #
 # ------------------------------------------------------------------ #
 
-raw"""
+"""
     project!(a, u, alg=LoopGalerkin()) -> a
 
 Project the spectral vector field `u` onto the basis stored by `a` and write
 the modal coefficients into `a`:
 
 ```math
-a_{m,\mathbf{k}} = \sum_n \sum_\mathbf{j} w_\mathbf{j}
-    \overline{\phi_{n,m,\mathbf{j},\mathbf{k}}}\, u_{n,\mathbf{j},\mathbf{k}}
+a_{m,\\mathbf{k}} = \\sum_n \\sum_{\\mathbf{j}} w_{\\mathbf{j}}\\,
+    \\overline{\\phi_{n,m,\\mathbf{j},\\mathbf{k}}}\\, u_{n,\\mathbf{j},\\mathbf{k}}
 ```
 
 where `φ_{n,m,j,k} = modes(a)[n][j..., m, k...]` and `w` is
@@ -273,13 +273,13 @@ project(u::VectorField, modes, alg=LoopGalerkin()) =
 # expand!                                                             #
 # ------------------------------------------------------------------ #
 
-raw"""
+"""
     expand!(u, a, alg=LoopGalerkin()) -> u
 
 Reconstruct the spectral velocity field `u` from the modal coefficients `a`:
 
 ```math
-u_n[\mathbf{j}, \mathbf{k}] = \sum_m a_{m,\mathbf{k}}\, \phi_{n,m,\mathbf{j},\mathbf{k}}
+u_n[\\mathbf{j}, \\mathbf{k}] = \\sum_m a_{m,\\mathbf{k}}\\, \\phi_{n,m,\\mathbf{j},\\mathbf{k}}
 ```
 
 where `φ_{n,m,j,k} = modes(a)[n][j..., m, k...]`.

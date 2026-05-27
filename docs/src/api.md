@@ -50,6 +50,7 @@ ddx_1!
 ddx_2!
 ddx_3!
 ddx_4!
+inhomogeneous_laplacian!
 add_homogeneous_laplacian!
 laplacian!
 ```

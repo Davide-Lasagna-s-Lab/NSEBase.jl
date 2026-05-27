@@ -325,8 +325,20 @@ end
 add_homogeneous_laplacian!(out::VectorField{N}, u::VectorField{N}) where {N} =
     (for n in 1:N; add_homogeneous_laplacian!(out[n], u[n]); end; return out)
 
-# Downstream packages must extend this for their grid type (the inhomogeneous
-# part is not knowable generically); add_homogeneous_laplacian! handles the rest.
+"""
+    inhomogeneous_laplacian!(out::FTField, u::FTField; kwargs...) -> out
+
+Apply the inhomogeneous (non-FFT) part of the Laplacian of `u` to `out`.
+
+This is a required interface method: downstream packages must extend it for
+each concrete grid type, typically as a matrix–vector multiply with a
+wall-normal differentiation matrix.  NSEBase does not implement the
+inhomogeneous part — it only provides the spectral complement via
+[`add_homogeneous_laplacian!`](@ref).
+
+The full Laplacian [`laplacian!`](@ref) calls this first, then accumulates
+the homogeneous wavenumber contribution via [`add_homogeneous_laplacian!`](@ref).
+"""
 inhomogeneous_laplacian!(out::FTField, u::FTField) = throw(NotImplementedError(out, u))
 
 """

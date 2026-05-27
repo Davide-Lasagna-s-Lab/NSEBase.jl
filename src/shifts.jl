@@ -80,7 +80,7 @@ end
 """
     shift!(u::VectorField, shifts) -> u
 
-Shift each component of `u` in-place. See [`shift!(::FTField, ...)`](@ref).
+Shift each component of `u` in-place. See [`shift!`](@ref).
 """
 shift!(u::VectorField{N}, shifts) where {N} = (for n in 1:N; shift!(u[n], shifts); end; return u)
 
@@ -89,7 +89,7 @@ shift!(u::VectorField{N}, shifts) where {N} = (for n in 1:N; shift!(u[n], shifts
 
 Shift the projected field `a` in-place by `shifts`, one entry per homogeneous
 dimension in `fft_dims(grid(a)) = FFT_DIMS_ORDER` order. The same phase factor as for
-[`shift!(::FTField, ...)`](@ref) is applied to every modal coefficient at each
+[`shift!`](@ref) is applied to every modal coefficient at each
 spectral index independently of the mode index `m`, since the shift acts on
 the underlying physical-space field.
 

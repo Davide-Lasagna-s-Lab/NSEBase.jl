@@ -67,11 +67,6 @@ add_base_flow!(u, (U, nothing, nothing))
 #   u[1][:, 1, 1, 1] .+= U
 ```
 """
-# `D` and `FFT_DIMS_ORDER` live in the grid type, so generate the DC-slice
-# indexing once per grid/component count. Emitting direct `[:, 1, ...]`
-# references with `@views` and unrolling the component updates avoids runtime
-# index-tuple construction, tuple splatting, and dynamic dispatch in this hot
-# path.
 @generated function add_base_flow!(u::VectorField{N, <:FTField{G}},
                                    base::Tuple{Vararg{Any, N}}) where {N, T, D, AXES, FFT_DIMS_ORDER, G<:AbstractGrid{T, D, AXES, FFT_DIMS_ORDER}}
     idx = Any[(d ∈ FFT_DIMS_ORDER ? 1 : :(Colon())) for d in 1:D]
