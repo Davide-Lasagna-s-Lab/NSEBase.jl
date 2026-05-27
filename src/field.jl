@@ -1,14 +1,29 @@
-# Physical representation of scalar field.
+# Physical-space scalar field wrapping a raw Julia array and an AbstractGrid.
+#
+# A `Field` is the physical-space counterpart of `FTField`: it stores real values
+# at the collocation points defined by `points(grid)`.  The type tracks which
+# grid it lives on so that transforms, derivatives, and inner products can
+# dispatch correctly without the caller carrying separate grid arguments.
+#
+# Broadcasting delegates to the underlying `data` array through the
+# `FieldType` style defined in broadcasting.jl, so `u .* v`, `@. f(u)`, etc.
+# all work element-wise.  The constructor accepting a `Function` evaluates the
+# function at every grid point via broadcasting, making it easy to initialise
+# analytical initial conditions.
 
 """
     Field{G} where {G<:AbstractGrid}
 
-Physical representation of a scalar field on a concrete
-sub-type of `AbstractGrid`.
+Physical-space scalar field on a concrete sub-type of `AbstractGrid`.
+
+Values are stored at the collocation points returned by `points(grid)`.
+The type parameter `G` encodes the grid geometry, scalar type `T`, array
+dimensionality `D`, axis layout `AXES`, and FFT dimension order
+`FFT_DIMS_ORDER` — all without any runtime overhead.
 
 # Fields
-- `grid`: concrete instance of `AbstractGrid`
-- `data`: value of scalar field at collocation points from `points(grid)`
+- `grid`: the grid on which the field is defined
+- `data`: the underlying `AbstractArray` holding real values at each collocation point
 """
 struct Field{G<:AbstractGrid, A<:AbstractArray, T, D} <: AbstractArray{T, D}
     grid::G
@@ -17,22 +32,83 @@ struct Field{G<:AbstractGrid, A<:AbstractArray, T, D} <: AbstractArray{T, D}
     Field(grid::G, data::A) where {T, D, H, G<:AbstractGrid{T, D, H}, A<:AbstractArray{T, D}} =
         new{G, A, T, D}(grid, data)
 end
+
+"""
+    Field(grid::AbstractGrid, data::AbstractArray)
+
+Construct a `Field` from `grid` and a pre-existing array `data`.  If the
+element type of `data` does not match `T` of the grid, the array is converted.
+"""
 Field(grid::AbstractGrid{T}, data::AbstractArray) where {T} = Field(grid, T.(data))
 
-# construct from functions
+# TODO: we should change the interface and require func to take x, y, z, and t in physical order, not array order
+# TODO: we then also need to change the code in resolver-channelflow to match this, and the code in the tests
+"""
+    Field(grid::AbstractGrid, func::Function; dealias=false)
+
+Construct a `Field` by evaluating `func` at every collocation point.
+
+`func` must accept one argument per grid dimension (in array-dimension order)
+and return a scalar.  The coordinate arrays are obtained via `points(grid;
+dealias=dealias)`, so setting `dealias=true` constructs a field on the padded
+(dealiased) physical grid — the right choice when computing nonlinear products
+that will be transformed back to spectral space.
+"""
 Field(grid::AbstractGrid{T}, func::Function; dealias=false) where {T} = Field(grid, T.(func.(points(grid, dealias=dealias)...)))
+
+"""
+    Field(grid::AbstractGrid; dealias=false)
+
+Construct a zero-initialised `Field` on `grid`.  Setting `dealias=true` uses
+the padded grid size, matching the layout expected by `FFTPlans` with dealiasing.
+"""
 Field(grid::AbstractGrid{T}                ; dealias=false) where {T} = Field(grid, (pts...)->zero(T); dealias=dealias)
 
-Base.IndexStyle(::Type{<:Field})                                    = Base.IndexLinear()
-Base.parent(u::Field)                                               = u.data
-Base.eltype(::Field{<:AbstractGrid{T}}) where {T}                   = T
+# ---------------------------------- #
+# AbstractArray interface             #
+# ---------------------------------- #
+Base.IndexStyle(::Type{<:Field}) = Base.IndexLinear()
+
+"""
+    parent(u::Field) -> AbstractArray
+
+Return the underlying data array of `u`.  Prefer `parent(u)` over `u.data` in
+library code so that the abstraction boundary is maintained.
+"""
+Base.parent(u::Field) = u.data
+
+Base.eltype(::Field{<:AbstractGrid{T}}) where {T} = T
+
+"""
+    similar(u::Field[, ::Type{S}]) -> Field
+
+Allocate a new `Field` of the same shape as `u`, optionally with element type
+`S`.  If `S` differs from `T` the grid is also converted to scalar type `S`
+via `convert(S, grid(u))`.
+"""
 Base.similar(u::Field{<:AbstractGrid{T}}, ::Type{S}=T) where {T, S} =
     Field(S == T ? grid(u) : convert(S, grid(u)), zero(parent(u)))
-Base.size(u::Field)                                                 = Base.size(parent(u))
-Base.copy(u::Field)                                                 = (v = Base.similar(u); parent(v) .= parent(u); return v)
-Base.zero(u::Field{<:AbstractGrid{T}}) where {T}                    = (v = Base.similar(u); parent(v) .= zero(T)  ; return v)
 
-# linear indexing
+Base.size(u::Field) = Base.size(parent(u))
+
+"""
+    copy(u::Field) -> Field
+
+Return a deep copy of `u` sharing the same grid but with an independent data
+array.
+"""
+Base.copy(u::Field) = (v = Base.similar(u); parent(v) .= parent(u); return v)
+
+"""
+    zero(u::Field) -> Field
+
+Return a zero-valued `Field` on the same grid as `u`.
+"""
+Base.zero(u::Field{<:AbstractGrid{T}}) where {T} = (v = Base.similar(u); parent(v) .= zero(T); return v)
+
+# Linear indexing — required by IndexLinear.  Bounds checking is delegated to
+# the underlying array; @propagate_inbounds propagates any @inbounds annotation
+# from the call site into this method body.
 Base.@propagate_inbounds function Base.getindex(u::Field, i)
     @boundscheck checkbounds(parent(u), i)
     @inbounds v = parent(u)[i]
@@ -45,4 +121,9 @@ Base.@propagate_inbounds function Base.setindex!(u::Field, v, i)
     return v
 end
 
+"""
+    grid(u::Field) -> AbstractGrid
+
+Return the grid on which `u` is defined.
+"""
 grid(u::Field) = u.grid

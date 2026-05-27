@@ -33,3 +33,6 @@ include("test_io.jl")
 
 # Integration tests for the bundled equations module.
 include("test_operators.jl")
+
+# Allocation tests — check that no unexpected allocations occur
+include("test_allocations.jl")

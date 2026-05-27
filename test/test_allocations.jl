@@ -374,9 +374,9 @@ end
         (; g) = alloc_polynomial_fixture()
         base = (zeros(size(g, 1)), nothing)
 
-        @test allocs_after_warmup(() -> NSEBase.ncomp(CartesianPrimitive())) == 0
-        @test allocs_after_warmup(() -> NSEBase.cache_length(CartesianPrimitive(), FTField)) == 0
-        @test allocs_after_warmup(() -> NSEBase.cache_length(CartesianPrimitive(), Field)) == 0
+        @test allocs_after_warmup(() -> NSEBase.ncomp(CartesianPrimitive3D())) == 0
+        @test allocs_after_warmup(() -> NSEBase.cache_length(CartesianPrimitive3D(), FTField)) == 0
+        @test allocs_after_warmup(() -> NSEBase.cache_length(CartesianPrimitive3D(), Field)) == 0
         @test allocs_after_warmup(() -> NSEBase.nonlinear_operator(CartesianPrimitive2D())) == 0
         @test allocs_after_warmup(() -> NSEBase.linearised_operator(CartesianPrimitive2D(), AdjointDiscrete())) == 0
         @test allocs_after_warmup(() -> construct_equations(g, 100.0, base, CartesianPrimitive2D(); flags=FFTW.ESTIMATE, dealias=false)) > 0

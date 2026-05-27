@@ -1,4 +1,26 @@
-# Inner products, norms, and normdiff for all field types.
+# Inner products, norms, and distance functions for all field types.
+#
+# Every field type (FTField, VectorField of FTField, ProjectedField) gets a
+# consistent set of three operations:
+#
+#   dot(u, v)        — L2 inner product, weighted by rfft Hermitian multiplicity
+#                      and, for FTField, the grid quadrature weights.
+#   norm(u)          — induced norm sqrt(dot(u, u)).
+#   normdiff(u, v)   — norm of the difference ‖u − v‖, optionally after shifting
+#                      v along the homogeneous directions by a continuous phase shift.
+#
+# All implementations share two private accumulators:
+#   _accumulate_dot!       — adds the weighted dot product into a Ref{Real}
+#   _accumulate_normdiff2! — adds the weighted squared difference into a Ref{Real}
+#
+# Accumulating into a `Ref` rather than a plain scalar avoids the heap boxing
+# that Julia's escape analysis applies when a scalar captured by a closure is
+# mutated — each `s[] +=` is a single dereferenced-pointer update with no
+# allocation.
+#
+# `minnormdiff` searches over a grid of candidate continuous shifts and returns
+# the minimum ‖u − shift(v, s)‖ together with the minimising shift tuple `s`.
+# It is implemented for both FTField and VectorField inputs.
 
 # --------- #
 # FTField   #

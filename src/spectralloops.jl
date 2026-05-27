@@ -1,6 +1,25 @@
-# Generic index iteration over homogeneous and inhomogeneous dimensions of
-# FTField / ProjectedField.  Both @generated functions specialise on the grid
-# type — no hardcoded dimension counts.
+# Generic spectral index iteration, specialised at compile time on the grid type.
+#
+# This file provides two `@generated` loop generators that are the backbone of
+# every inner-product, norm, derivative, and projection kernel in NSEBase:
+#
+#   for_each_homogeneous_index(f, g)
+#       Iterates over all stored FFTW indices for the FFT-transformed dimensions
+#       of `g`.  The callback receives the Hermitian multiplicity (1 or 2) and
+#       a typed NTuple of storage indices.  Used by projections, shifts, norms
+#       over `ProjectedField`, and the shift operator.
+#
+#   for_each_index(f, g)
+#       Iterates over every element of an FTField parent array, visiting all
+#       dimensions (homogeneous and inhomogeneous) in column-major order.
+#       Used by FTField inner products and norms where the inhomogeneous
+#       quadrature weights must also be applied.
+#
+# Both functions are `@generated`: the loop nests are fully unrolled at compile
+# time into plain `for` statements with literal dimension sizes, so there are no
+# closures, no `CartesianIndices` allocations, and no runtime dispatch in the
+# hot path.  The callback `f` is inlined by the compiler when it is a do-block
+# or a simple anonymous function.
 
 """
     for_each_homogeneous_index(f, g::AbstractGrid)

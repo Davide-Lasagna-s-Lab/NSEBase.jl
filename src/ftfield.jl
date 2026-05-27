@@ -1,4 +1,29 @@
-# Fourier transformed scalar field.
+# Fourier-transformed scalar field and its low-level spectral symmetry utilities.
+#
+# `FTField` is the spectral counterpart of `Field`: it stores complex Fourier
+# coefficients on the half-spectrum produced by an rfft.  The first axis of
+# the underlying array is the rfft axis (non-negative wavenumbers only);
+# the remaining FFT-transformed axes store both positive and negative wavenumbers
+# in FFTW's standard wrap-around order.  Non-FFT (inhomogeneous) dimensions
+# appear in the array at whatever position the grid's `AXES` and `FFT_DIMS_ORDER`
+# specify.
+#
+# FTField enforces two invariants on construction (when given a plain Julia Array):
+#   1. Hermitian symmetry — the zero-rfft-wavenumber plane must satisfy û(-k) = conj(û(k)).
+#      Enforced by `apply_symmetry!`.
+#   2. Reality of the zero wavenumber — the fully-zero mode must be real-valued.
+#      Enforced by `normalise_mean!`.
+#
+# Two indexing APIs are provided beyond the base IndexLinear interface:
+#   u[k::WaveNumberVector]         — returns a view over all inhomogeneous indices
+#                                    at signed wavenumber k, handling conjugate-
+#                                    symmetry for negative rfft wavenumbers.
+#   u[k::WaveNumberVector, I...]   — returns (or writes) the single complex
+#                                    coefficient at wavenumber k and inhomogeneous
+#                                    index I, with full symmetry maintenance on write.
+#
+# `apply_symmetry!` and `normalise_mean!` are `@generated` utilities defined at
+# the bottom of this file and are also used by `ProjectedField` on construction.
 
 """
     FTField{G} where {G<:AbstractGrid}

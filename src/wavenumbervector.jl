@@ -1,12 +1,24 @@
-# WaveNumberVector: integer wavenumber index for spectral fields.
-
-# A WaveNumberVector{N} holds N integer wavenumbers ordered to match
-# fft_dims(g) = FFT_DIMS_ORDER.  The first wavenumber (k[1]) is for the rfft
-# dimension FFT_DIMS_ORDER[1]; negative values trigger conjugate-symmetry lookup. All
-# others are signed FFT wavenumbers in FFTW order: 0, 1, ..., N/2, -(N/2-1), ..., -1.
-
-# ProjectedField[m, WaveNumberVector] indexing lives in projectedfield.jl.
-# FTField[..., WaveNumberVector] is grid-layout-specific and belongs downstream.
+# Integer wavenumber index type and the FFTW index-arithmetic helpers.
+#
+# `WaveNumberVector{N}` is a lightweight struct holding N signed integer
+# wavenumbers, one per FFT-transformed dimension, ordered to match
+# `fft_dims(g) = FFT_DIMS_ORDER`.  It serves as a public, coordinate-space key for
+# reading and writing individual spectral coefficients without exposing the
+# internal 1-based FFTW storage layout to callers.
+#
+# The first wavenumber k[1] corresponds to the rfft dimension.  Because rfft
+# stores only non-negative wavenumbers, a negative k[1] is valid and triggers
+# a conjugate-symmetry lookup: the entry stored at (-k[1], -k[2:N]...) is
+# returned (or targeted for writing) with a complex conjugate applied.
+#
+# Two private helpers translate between the public signed-wavenumber space and
+# the internal 1-based FFTW index space:
+#   _fftw_index     — signed wavenumber n → 1-based storage index
+#   _fftw_sym_index — 1-based index i → index of its Hermitian partner
+#
+# `FTField[WaveNumberVector]` indexing (which must also interleave non-FFT grid
+# dimensions) is defined in ftfield.jl; `ProjectedField[m, WaveNumberVector]`
+# indexing is in projectedfield.jl.
 
 """
     WaveNumberVector(ns::Int...)
@@ -35,13 +47,23 @@ Base.length(::WaveNumberVector{N}) where {N} = N
 # ------------------------------------------------------------------ #
 # Index arithmetic helpers                                             #
 # ------------------------------------------------------------------ #
-# 1-based FFTW storage index for signed wavenumber n in a dimension of size N.
-# Positive and zero wavenumbers occupy the first half of the array; negative
-# wavenumbers are stored at the end in wrap-around order.
+"""
+    _fftw_index(n::Int, N::Int) -> Int
+
+Convert a signed wavenumber `n` to a 1-based FFTW storage index in a dimension
+of physical size `N`.  Positive and zero wavenumbers occupy the first half of
+the storage array (`n ≥ 0 → n + 1`); negative wavenumbers are packed at the
+end in wrap-around order (`n < 0 → N + n + 1`).
+"""
 _fftw_index(n::Int, N::Int) = n >= 0 ? n + 1 : N + n + 1
 
-# Given a 1-based FFTW index i, return the index of the conjugate-symmetric
-# entry (wavenumber -n).  Index 1 (n = 0) maps to itself.
+"""
+    _fftw_sym_index(i::Int, N::Int) -> Int
+
+Given a 1-based FFTW storage index `i` in a dimension of size `N`, return
+the index of the Hermitian-conjugate entry (the one at wavenumber `−n`).
+Index 1 (zero wavenumber) is self-conjugate and maps to itself.
+"""
 _fftw_sym_index(i::Int, N::Int) = i == 1 ? 1 : N - i + 2
 
 """

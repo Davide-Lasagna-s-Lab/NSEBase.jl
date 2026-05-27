@@ -21,7 +21,7 @@ export FarazmandWeight
 export CartesianPrimitive3DNSE, CartesianPrimitive3DLNSE
 export CartesianPrimitive2DNSE, CartesianPrimitive2DLNSE
 export Forward, AdjointContinuous, AdjointDiscrete, NoForce, CompoundForcing, Mode
-export construct_equations, CartesianPrimitive, CartesianPrimitive2D, PolarPrimitive
+export construct_equations, CartesianPrimitive3D, CartesianPrimitive2D, PolarPrimitive
 export ProjectedNSE
 
 include("notimplementederror.jl")

@@ -1,5 +1,27 @@
-# Wrappers around paired FFTW rfft/brfft plans for in-place physical<->spectral
-# transformations on multi-dimensional grids, with optional 3/2-rule dealiasing.
+# Paired FFTW plans for in-place physical↔spectral transforms with optional dealiasing.
+#
+# `FFTPlans` bundles an rfft plan and a brfft plan that share a spectral-space
+# staging cache.  Transforms are dispatched through callable syntax:
+#
+#   f(û, u)   — forward:  physical Field → spectral FTField
+#   f(u, û)   — backward: spectral FTField → physical Field
+#
+# Both directions also accept `VectorField` inputs and apply the scalar
+# transform component-wise.
+#
+# Dealiasing: when `dealias=true` (the default), the physical arrays used for
+# planning are 3/2 times larger in each transformed dimension (rounded up to
+# the nearest odd number).  The forward transform pads, transforms, then
+# truncates to the resolved wavenumber range; the backward transform zero-pads
+# the spectral input, transforms, and returns the full dealiased physical field.
+# This eliminates aliasing errors from quadratic nonlinearities.
+#
+# Cache routing: FFTW's `unsafe_execute!` writes directly into whatever buffer
+# it is given, bypassing layout checks.  A staging cache (`f.cache`) is used
+# whenever the output is non-contiguous, dealiasing is active, or the result
+# must be accumulated rather than overwritten.  The private helpers
+# `_forward_transform!`, `_backward_transform!`, and `_transfer_padded!` manage
+# all these routing decisions so the public callable interface stays simple.
 
 
 # ------------------------------------------- #

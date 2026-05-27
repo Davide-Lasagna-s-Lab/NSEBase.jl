@@ -1,13 +1,28 @@
-# Concrete Cartesian primitive NSE/LNSE operators for 2-component (2D) flows.
+# Concrete Navier-Stokes operators for two-component (u, v) planar Cartesian flows.
 #
-# These operators govern flows with velocity (u_x, u_y) in the x-y plane
-# with no spanwise z-direction.  All cache naming follows the 3D convention
-# (cartesianprimitive_3d.jl); z-derivative terms are simply absent.
+# Mirror of cartesianprimitive_3d.jl for 2D flows: velocity has no spanwise w
+# component and no z-derivative terms appear.  All cache naming and operator
+# conventions follow the 3D file; refer to that file for the full design notes.
+#
+# Variants provided:
+#   CartesianPrimitive2DNSE  — nonlinear NSE: out = Δu/Re − (u·∇)u + force
+#   CartesianPrimitive2DLNSE{Forward}          — forward linearised operator
+#   CartesianPrimitive2DLNSE{AdjointContinuous}— continuous adjoint
+#   CartesianPrimitive2DLNSE{AdjointDiscrete}  — discrete adjoint
 
 
 # ----------------------- #
 # concrete 2D NSE struct  #
 # ----------------------- #
+"""
+    CartesianPrimitive2DNSE{T, FFT, S, P, BF}
+
+Nonlinear Navier-Stokes operator for two-component planar Cartesian flows.
+
+Evaluates `out = Δu/Re − (u·∇)u + force(out, u, Forward())` in spectral space.
+Identical structure to [`CartesianPrimitive3DNSE`](@ref) with the spanwise
+velocity component and all z-derivatives removed.
+"""
 mutable struct CartesianPrimitive2DNSE{T, FFT, S, P, BF}
               Re::T
      const plans::FFT
@@ -28,6 +43,16 @@ end
 # ----------------------- #
 # concrete 2D LNSE struct #
 # ----------------------- #
+"""
+    CartesianPrimitive2DLNSE{MODE, T, FFT, S, P, BF}
+
+Linearised Navier-Stokes operator for two-component planar Cartesian flows,
+parameterised on `MODE <: Mode`.
+
+Identical structure to [`CartesianPrimitive3DLNSE`](@ref) with z-derivative
+terms absent.  The three-argument `(t, u, v, out)` form caches base-flow
+gradients from `u` then delegates to the two-argument `(t, v, out)` form.
+"""
 mutable struct CartesianPrimitive2DLNSE{MODE, T, FFT, S, P, BF}
               Re::T
      const plans::FFT

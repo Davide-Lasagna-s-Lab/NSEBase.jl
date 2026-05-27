@@ -1,5 +1,24 @@
-# Abstract interface for computational grids that
-# FTField and Field use for their construction.
+# Abstract interface for all computational grids in NSEBase.
+#
+# `AbstractGrid{T, D, AXES, FFT_DIMS_ORDER}` is the single point of coupling between
+# field types (`FTField`, `Field`, `VectorField`, `ProjectedField`) and the
+# underlying geometry.  Every field stores a reference to its grid and
+# dispatches size queries, FFT index ranges, quadrature weights, and coordinate
+# arrays through this interface.
+#
+# Downstream packages (e.g. Resolver-ChannelFlow.jl) implement a concrete grid subtype
+# by defining a small set of required methods (`size`, `points`,
+# `wavenumber_scale`, `weights`).  All other grid-aware behaviour — spectral
+# loop generation, transform sizing, base-flow injection, derivative operators —
+# is derived automatically from the four compile-time type parameters without
+# any runtime overhead.
+#
+# The four type parameters encode:
+#   T              — real scalar type (Float64 by default)
+#   D              — number of array dimensions
+#   AXES           — 4-tuple mapping logical coordinates (x,y,z,t) to array dims
+#   FFT_DIMS_ORDER — ordered tuple of array dimensions that are FFT-transformed;
+#                    FFT_DIMS_ORDER[1] is always the rfft dimension
 
 """
     AbstractGrid{T, D, AXES, FFT_DIMS_ORDER} where {T<:Real}
@@ -47,10 +66,13 @@ homogeneous resolution.  Implementing grid growth is also required for
 abstract type AbstractGrid{T<:Real, D, AXES, FFT_DIMS_ORDER} end
 
 """
-    fft_dims(grid::AbstractGrid) -> Tuple
+    fft_dims(grid::AbstractGrid) -> Tuple{Int, …}
 
-Return all transformed dimensions in FFT order, i.e. `(spatial_hom_dims(grid)...,
-t_dim(grid))`.
+Return the tuple of FFT-transformed array dimensions in transform order,
+i.e. the grid type parameter `FFT_DIMS_ORDER`.
+
+`fft_dims(g)[1]` is the rfft dimension (only non-negative wavenumbers are
+stored); the remaining entries are full-spectrum complex FFT dimensions.
 """
 fft_dims(::AbstractGrid{<:Any, <:Any, <:Any, FFT_DIMS_ORDER}) where {FFT_DIMS_ORDER} = FFT_DIMS_ORDER
 

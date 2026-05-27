@@ -1,4 +1,25 @@
-# Modal coefficients for a vector field projected onto a set of modes.
+# Modal coefficients for a vector field projected onto a set of basis functions.
+#
+# `ProjectedField` is the reduced-order complement of `FTField`: instead of
+# storing full spectral coefficients for every wavenumber and every wall-normal
+# point, it stores Nm scalar coefficients per wavenumber, where Nm is the
+# number of basis modes.  Each coefficient a[m, k] represents the amplitude of
+# basis function φ_m at wavenumber k after projecting a physical velocity field
+# onto the basis via an L2 inner product weighted by `weights(grid)`.
+#
+# Storage layout: the parent array has shape `(Nm, kH1_size, kH2_size, …)`,
+# where axis 1 is the mode index and the remaining axes follow `FFT_DIMS_ORDER`
+# (rfft dim first).  Non-FFT (inhomogeneous) grid dimensions are NOT present —
+# the basis functions absorb the inhomogeneous dependence.
+#
+# The same Hermitian-symmetry and zero-wavenumber-reality invariants as
+# `FTField` are enforced on construction via `apply_symmetry!` and
+# `normalise_mean!`.
+#
+# Three indexing APIs are provided (described in detail below the struct):
+#   a[i::Int]                      — linear, for broadcasting / copyto!
+#   a[m::Int, i1::Int, …]          — storage-index, for spectral inner loops
+#   a[m::Int, k::WaveNumberVector] — wavenumber, public API with symmetry logic
 
 """
     ProjectedField{G<:AbstractGrid, M}
@@ -74,17 +95,69 @@ ProjectedField(u::Union{FTField, Field, VectorField}, modes) = ProjectedField(gr
 # ----------------- #
 # interface methods #
 # ----------------- #
-Base.IndexStyle(::Type{<:ProjectedField})                                    = Base.IndexLinear()
-Base.parent(a::ProjectedField)                                               = a.data
-Base.eltype(::ProjectedField{<:AbstractGrid{T}}) where {T}                   = Complex{T}
-Base.size(a::ProjectedField)                                                 = size(parent(a))
+Base.IndexStyle(::Type{<:ProjectedField}) = Base.IndexLinear()
+
+"""
+    parent(a::ProjectedField) -> AbstractArray
+
+Return the underlying coefficient array.  Its shape is
+`(Nm, rfft_size, fft2_size, …)` — mode index first, then one axis per
+homogeneous dimension in `FFT_DIMS_ORDER` order.
+"""
+Base.parent(a::ProjectedField) = a.data
+
+Base.eltype(::ProjectedField{<:AbstractGrid{T}}) where {T} = Complex{T}
+Base.size(a::ProjectedField) = size(parent(a))
+
+"""
+    similar(a::ProjectedField[, ::Type{S}]) -> ProjectedField
+
+Allocate a new zero-initialised `ProjectedField` with the same grid, shape,
+and modes as `a`.  Optionally pass element type `S` to change the scalar
+precision; the grid is also converted via `convert(real(S), grid(a))`.
+"""
 Base.similar(a::ProjectedField{<:AbstractGrid{T}}, ::Type{S}=T) where {S, T} =
     ProjectedField(real(S) == T ? grid(a) : convert(real(S), grid(a)), zero(parent(a)), modes(a))
-Base.copy(a::ProjectedField)                                                 = ProjectedField(grid(a), copy(parent(a)), modes(a))
-Base.zero(a::ProjectedField)                                                 = ProjectedField(grid(a), zero(parent(a)), modes(a))
-Base.abs(a::ProjectedField)                                                  = (b = zero(a); parent(b) .= abs.(parent(a)); return b)
 
+"""
+    copy(a::ProjectedField) -> ProjectedField
+
+Return a deep copy of `a` with an independent coefficient array but the same
+grid and modes objects.
+"""
+Base.copy(a::ProjectedField) = ProjectedField(grid(a), copy(parent(a)), modes(a))
+
+"""
+    zero(a::ProjectedField) -> ProjectedField
+
+Return a zero-coefficient `ProjectedField` with the same grid and modes as `a`.
+"""
+Base.zero(a::ProjectedField) = ProjectedField(grid(a), zero(parent(a)), modes(a))
+
+"""
+    abs(a::ProjectedField) -> ProjectedField
+
+Return a new `ProjectedField` whose coefficients are the element-wise absolute
+values of `a`.  Note: the result does not in general satisfy Hermitian symmetry
+and is intended for diagnostics, not further spectral computations.
+"""
+Base.abs(a::ProjectedField) = (b = zero(a); parent(b) .= abs.(parent(a)); return b)
+
+"""
+    modes(a::ProjectedField)
+
+Return the basis-mode collection associated with `a`.  The returned object
+is an indexable collection (tuple or `Vector`) with one array per velocity
+component; see the Storage layout section of [`ProjectedField`](@ref) for the
+required array shape.
+"""
 modes(a::ProjectedField) = a.modes
+
+"""
+    grid(a::ProjectedField) -> AbstractGrid
+
+Return the grid on which `a` is defined.
+"""
 grid(a::ProjectedField)  = a.grid
 
 

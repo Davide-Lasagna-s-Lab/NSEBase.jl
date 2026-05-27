@@ -1,4 +1,22 @@
-# Spectral norm weights for weighted inner products on projected fields.
+# Spectral norm weight for Farazmand-style weighted inner products on ProjectedField.
+#
+# When searching for exact coherent structures in wall-bounded flows, it is
+# useful to weight the optimisation inner product so that small-scale (high
+# wavenumber) structures are penalised relative to large-scale ones.  This
+# avoids iterates converging to spurious high-frequency noise.
+#
+# `FarazmandWeight` implements the weight function
+#
+#   w(k) = 1 / (1 + Σ_j (σ_j · k_j)²)
+#
+# where σ_j is a user-supplied length scale for each homogeneous direction and
+# k_j is the signed wavenumber.  The weight is 1 at k=0 and decays to zero at
+# high wavenumbers.  The scales σ can be read from the grid (default) or
+# supplied explicitly for non-physical re-scalings.
+#
+# Two operations are provided:
+#   lmul!(A, a)       — multiply every coefficient of a by w(k), in-place.
+#   dot(a, A, b)      — compute ⟨a, b⟩_A = Σ_k w(k) Re(ā · b) / 2.
 
 """
     FarazmandWeight{N, T}

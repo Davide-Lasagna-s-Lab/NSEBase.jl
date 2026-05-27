@@ -1,4 +1,30 @@
-# Generic derivative methods for each dimension of an FTField
+# Spectral differentiation operators for FTField, ProjectedField, and VectorField.
+#
+# Differentiation in a homogeneous (FFT-transformed) direction is exact in
+# spectral space: the derivative of mode k is simply multiplied by
+# ±i·n·wavenumber_scale(g, dim), where n is the signed integer wavenumber and
+# the sign is +1 for the forward operator and −1 for its L2 adjoint.
+#
+# The core primitive is `ddx!(out, u, Val{DIM})`, a `@generated` function that
+# emits a fully unrolled loop nest specialised to the grid type.  The generated
+# code splits signed-FFT dimensions into two contiguous blocks (positive and
+# negative wavenumbers) so that the signed wavenumber value can be computed
+# branch-free from the loop variable, and processes dimensions in ascending
+# order so that dimension 1 (the column-major stride-1 axis) is always the
+# innermost loop.
+#
+# Four named wrappers `ddx_1!`, `ddx_2!`, `ddx_3!`, `ddx_4!` forward to
+# `ddx!` with the array dimension read from `AXES[1]`, `AXES[2]`, `AXES[3]`,
+# `AXES[4]` respectively.  When `AXES[j] === nothing` (e.g. a steady 3D grid
+# has no time dimension), the generated code is a compile-time no-op.
+#
+# Inhomogeneous (non-FFT) directions are NOT handled here — `ddx!` throws
+# `NotImplementedError` for those, and downstream packages must extend it with
+# a grid-specific method (typically a matrix–vector multiply).
+#
+# The full Laplacian combines `inhomogeneous_laplacian!` (provided by
+# downstream) with `add_homogeneous_laplacian!` (provided here), which
+# subtracts ‖k‖² · u from each spectral coefficient.
 
 """
     ddx!(out::FTField, u::FTField, ::Val{DIM}; adjoint=false)

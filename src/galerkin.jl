@@ -1,4 +1,11 @@
-# Galerkin projection and reconstruction operators for `ProjectedField`.
+# Galerkin projection and reconstruction for reduced-order spectral bases.
+#
+# `project!(a, u)` computes the L2 inner product of each basis mode with the
+# spectral velocity field `u` and writes the resulting modal amplitudes into `a`.
+# `expand!(u, a)` reverses the operation: it reconstructs `u` from the modal
+# amplitudes in `a` by summing weighted basis modes at each wavenumber.
+#
+# Two algorithm implementations are provided and selected via a tag argument:
 #
 # ------------------------------------------------------------------ #
 # Required mode-array layout                                         #

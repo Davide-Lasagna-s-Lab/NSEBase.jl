@@ -1,14 +1,42 @@
-# Concrete Cartesian primitive NSE/LNSE operators for 3-component (3D) flows.
+# Concrete Navier-Stokes operators for three-component (u, v, w) Cartesian flows.
 #
-# Body forces (Coriolis, buoyancy, …) are passed as a callable at construction
-# time.  The callable signature is: body_force(out, u, mode::Mode)
-# where `mode` identifies the equation type (Forward, AdjointDiscrete, …).
-# Use NoForce() for flows with no body force.
+# Each operator is a callable struct whose `(::Real, u, out)` method evaluates
+# one of the following PDEs in spectral space, writing the result into `out`:
+#
+#   CartesianPrimitive3DNSE  — nonlinear NSE: out = Δu/Re − (u·∇)u + force
+#   CartesianPrimitive3DLNSE{Forward}          — forward linearised operator
+#   CartesianPrimitive3DLNSE{AdjointContinuous}— continuous adjoint
+#   CartesianPrimitive3DLNSE{AdjointDiscrete}  — discrete adjoint
+#
+# All variants share the same cache layout: `scache` holds spectral-space
+# scratch VectorFields (for derivative intermediates) and `pcache` holds
+# physical-space scratch VectorFields (for de-aliased nonlinear products).
+#
+# Body forces are injected via a callable `force(out, u, mode::Mode)`.
+# Pass `NoForce()` when no body force is needed.
+#
+# Construct via [`construct_equations`](@ref) rather than directly to ensure
+# cache and plan sizes are consistent.
 
 
 # ----------------------- #
 # concrete 3D NSE struct  #
 # ----------------------- #
+"""
+    CartesianPrimitive3DNSE{T, FFT, S, P, BF}
+
+Nonlinear Navier-Stokes operator for three-component Cartesian flows.
+
+Evaluates `out = Δu/Re − (u·∇)u + force(out, u, Forward())` in spectral space,
+using dealiased physical-space products for the nonlinear term.
+
+# Fields
+- `Re`: Reynolds number
+- `plans`: `FFTPlans` for physical↔spectral transforms
+- `scache`: spectral-space scratch `VectorField`s (3 entries of 3 components)
+- `pcache`: physical-space scratch `VectorField`s (4 entries of 3 components)
+- `force`: body-force callable with signature `(out, u, mode)`
+"""
 mutable struct CartesianPrimitive3DNSE{T, FFT, S, P, BF}
               Re::T
      const plans::FFT
@@ -29,6 +57,21 @@ end
 # ----------------------- #
 # concrete 3D LNSE struct #
 # ----------------------- #
+"""
+    CartesianPrimitive3DLNSE{MODE, T, FFT, S, P, BF}
+
+Linearised Navier-Stokes operator for three-component Cartesian flows,
+parameterised on `MODE <: Mode` to select between the forward linearisation,
+continuous adjoint, and discrete adjoint.
+
+The three-argument call `eq(t, u, v, out)` first caches the physical base-flow
+gradients from `u`, then delegates to the two-argument form `eq(t, v, out)`.
+The two-argument form applies the chosen linearised operator to `v`.
+
+# Fields
+- `Re`: Reynolds number
+- `plans`, `scache`, `pcache`, `force`: same as [`CartesianPrimitive3DNSE`](@ref)
+"""
 mutable struct CartesianPrimitive3DLNSE{MODE, T, FFT, S, P, BF}
               Re::T
      const plans::FFT

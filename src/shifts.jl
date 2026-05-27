@@ -1,17 +1,28 @@
 # Continuous phase shifts of spectral fields along homogeneous directions.
+#
+# A continuous shift by displacement `s` in a homogeneous direction multiplies
+# every Fourier coefficient at signed wavenumber `n` by the phase factor
+# `exp(i · n · s · wavenumber_scale(g, dim))`.  This is a lossless, exact
+# operation in spectral space — no interpolation is needed.
+#
+# `_shift_phase` computes the complex phase factor for a given wavenumber
+# vector and shift tuple.  `shift!(u, shifts)` applies it in-place to every
+# element of an FTField or ProjectedField (and, by iteration, to VectorField).
+# `shift(u, shifts)` is the allocating wrapper.
+#
+# Shifts are specified in physical units (same units as the period `L` used to
+# define `wavenumber_scale`), with one entry per homogeneous dimension in
+# `fft_dims(grid(u)) = FFT_DIMS_ORDER` order.  Passing all-zero shifts is a
+# no-op (guarded by an early return).
 
 """
-    shift!(u::FTField, shifts) -> u
+    _shift_phase(g, shifts, k) -> Complex
 
-Shift `u` in-place by `shifts`, one entry per homogeneous dimension in
-`fft_dims(grid(u)) = FFT_DIMS_ORDER` order.  Each entry is a displacement in physical
-units: the phase factor applied to spectral coefficient `(k_1, k_2, …)` is
+Compute the complex phase factor for a continuous shift of `shifts` (one entry
+per homogeneous dimension in `FFT_DIMS_ORDER` order) at signed wavenumber vector `k`.
 
-```math
-\\exp\\!\\left(i \\sum_{j} k_j \\cdot \\text{shifts}_j \\cdot \\text{wavenumber\\_scale}(g, \\text{FFT_DIMS_ORDER}_j)\\right).
-```
-
-Returns `u` unchanged when all shifts are zero.
+The factor is `∏_j exp(i · k[j] · shifts[j] · wavenumber_scale(g, FFT_DIMS_ORDER[j]))`.
+Zero wavenumbers contribute a factor of `1` (exact, no floating-point error).
 """
 function _shift_phase(g::AbstractGrid{T, D, AXES, FFT_DIMS_ORDER},
                       shifts::NTuple{N, Real},
@@ -25,6 +36,21 @@ function _shift_phase(g::AbstractGrid{T, D, AXES, FFT_DIMS_ORDER},
     end
 end
 
+"""
+    shift!(u::FTField, shifts) -> u
+
+Shift `u` in-place by `shifts`, one entry per homogeneous dimension in
+`fft_dims(grid(u)) = FFT_DIMS_ORDER` order.  Each entry is a displacement in
+physical units (same units as the period `L` used to define `wavenumber_scale`).
+
+The phase factor applied to spectral coefficient at signed wavenumber vector `k` is
+
+```math
+\\exp\\!\\left(i \\sum_{j} k_j \\cdot \\text{shifts}_j \\cdot \\text{wavenumber\\_scale}(g, \\text{FFT\\_DIMS\\_ORDER}_j)\\right).
+```
+
+Returns `u` unchanged when all shifts are zero.
+"""
 function shift!(u::FTField{G}, shifts) where {G<:AbstractGrid{T, D, AXES, FFT_DIMS_ORDER}} where {T, D, AXES, FFT_DIMS_ORDER}
     any(!iszero, shifts) || return u
     g         = grid(u)
