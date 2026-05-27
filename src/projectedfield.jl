@@ -56,12 +56,11 @@ struct ProjectedField{G<:AbstractGrid, M, A<:AbstractArray, T, D} <: AbstractArr
     ProjectedField(grid::G, data::A, modes::M) where {T, D, G<:AbstractGrid{T, D}, A<:AbstractArray{Complex{T}, D}, M} =
         new{G, M, A, T, D}(grid, data, modes)
 
-    ProjectedField(grid::G, data::A, modes::M) where {T, D, G<:AbstractGrid{T, D}, A<:Array{<:Any, D}, M} = begin
+    ProjectedField(grid::G, data::A, modes::M) where {T, D, G<:AbstractGrid{T, D}, A<:Array{<:Any, D}, M} =
         # ProjectedField storage is `(mode, fft_dims...)`, not physical grid
-        # storage.  The rfft dimension is therefore axis 2, followed by the
+        # storage. The rfft dimension is therefore axis 2, followed by the
         # remaining transformed axes in FFT order.
         new{G, M, A, T, D}(grid, Complex{T}.(normalise_mean!(apply_symmetry!(data, fft_dims(grid)), fft_dims(grid))), modes)
-    end
 end
 
 ProjectedField(grid::AbstractGrid{T}, data::AbstractArray, modes) where {T} = 
