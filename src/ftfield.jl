@@ -117,10 +117,11 @@ function growto(u::FTField{G}, target_size::NTuple{N, Int}) where {T, D, AXES, F
     N == length(FFT_DIMS_ORDER) ||
         throw(ArgumentError("target_size has incompatible size: expected a tuple of length $(length(FFT_DIMS_ORDER)), got length $N"))
     out = FTField(growto(grid(u), target_size))
-    for Ih in CartesianIndices(homogeneous_axes(u, grid(u))) 
-        # get the full index tuple for this homogeneous index, with colons for the inhomogeneous dimensions
-        I = combine_indices(grid(u), Colon(), Ih) 
-        out[I] .= u[I]
+    for Ih in CartesianIndices(homogeneous_axes(grid(u), u))
+        # Build an index tuple with Colon() for each inhomogeneous dimension and
+        # the spectral storage index for each homogeneous dimension, then splat it.
+        I = combine_indices(grid(u), Colon(), Ih)
+        out[I...] .= u[I...]
     end
     return out
 end
@@ -140,7 +141,7 @@ The returned view has one dimension for each axis of `u` not in `FFT_DIMS_ORDER`
 in their original order.
 """
 Base.@propagate_inbounds function Base.getindex(u::FTField{G},
-                                                k::WaveNumberVector) where {T, D, AXES, FFT_DIMS_ORDER, G<:AbstractGrid{T, D, AXES, FFT_DIMS_ORDER}}
+                                                k::WaveNumberVector) where {FFT_DIMS_ORDER, G<:AbstractGrid{<:Any, <:Any, <:Any, FFT_DIMS_ORDER}}
     tpl     = to_homogeneous_indices(grid(u), k)
     indices = Base.front(tpl)
     colons  = ntuple(_ -> Colon(), ndims(u) - length(FFT_DIMS_ORDER))
@@ -186,10 +187,10 @@ Two symmetry invariants are maintained automatically:
 If `k[1] < 0` the write targets the conjugate-symmetric storage location
 and `conj(val)` is stored, keeping the representation consistent with reads.
 """
-Base.@propagate_inbounds function Base.setindex!(u::FTField{G},
+Base.@propagate_inbounds function Base.setindex!(u::FTField{<:AbstractGrid{T}},
                                                val,
                                                  k::WaveNumberVector{N},
-                                                 I::Vararg{Int}) where {T, N, G<:AbstractGrid{T}}
+                                                 I::Vararg{Int}) where {T, N}
     CT      = Complex{T}
     tpl     = to_homogeneous_indices(grid(u), k)
     do_conj = last(tpl)

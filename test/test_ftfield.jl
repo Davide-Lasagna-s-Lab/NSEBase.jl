@@ -26,6 +26,34 @@
         end
     end
 
+    @testset "growto copies source coefficients to the same wavenumbers" begin
+        Ny, Nx, Nz = 3, 8, 5
+        g  = TripleGrid(Ny, Nx, Nz)
+        u  = FTField(g)
+
+        # Write distinct values at a few representative wavenumbers.
+        u[WaveNumberVector(0, 0), 1] = 1.0 + 0im   # zero mode (real)
+        u[WaveNumberVector(1, 0), 2] = 2.0 + 3im   # positive rfft, kz=0
+        u[WaveNumberVector(0, 1), 3] = 4.0 + 5im   # kx=0, kz=1
+        u[WaveNumberVector(2, 1), 1] = 6.0 + 7im   # positive rfft, kz=1
+
+        # Grow to a larger grid: (Nx, Nz) → (16, 11)
+        v = NSEBase.growto(u, (16, 11))
+
+        @test size(grid(v)) == (Ny, 16, 11)
+        @test size(parent(v)) == (Ny, 9, 11)   # rfft: (16>>1)+1=9, Nz stays 11
+
+        # All source wavenumbers must be preserved exactly.
+        @test v[WaveNumberVector(0, 0), 1] ≈ u[WaveNumberVector(0, 0), 1]
+        @test v[WaveNumberVector(1, 0), 2] ≈ u[WaveNumberVector(1, 0), 2]
+        @test v[WaveNumberVector(0, 1), 3] ≈ u[WaveNumberVector(0, 1), 3]
+        @test v[WaveNumberVector(2, 1), 1] ≈ u[WaveNumberVector(2, 1), 1]
+
+        # Wavenumbers beyond the source resolution are zero.
+        @test iszero(v[WaveNumberVector(4, 0), 1])
+        @test iszero(v[WaveNumberVector(0, 3), 1])
+    end
+
     @testset "WaveNumberVector getindex and setindex preserve symmetry" begin
         Ny, Nx, Nz = 2, 8, 5
         g = TripleGrid(Ny, Nx, Nz)

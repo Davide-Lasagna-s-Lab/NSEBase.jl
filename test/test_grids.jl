@@ -43,6 +43,13 @@ NSEBase.wavenumber_scale(g::TripleGrid, dim::Int)         = dim == 2 ? g.α :
                                                             one(g.α)
 Base.convert(::Type{Float64}, g::TripleGrid)              = g
 
+# `growto` increases the homogeneous resolution while keeping the inhomogeneous
+# size (Ny) and the wavenumber scales (α, β) fixed.
+function NSEBase.growto(g::TripleGrid, target_size::NTuple{2, Int})
+    Nx_new, Nz_new = target_size
+    return TripleGrid(g.Ny, Nx_new, Nz_new, g.α, g.β, g.ws)
+end
+
 # Broadcastable coordinate arrays in storage order.  The inhomogeneous
 # direction is exposed as a custom non-uniform `g.y` vector; the two
 # homogeneous directions cover their full periods with equally-spaced points.
