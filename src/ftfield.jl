@@ -119,7 +119,7 @@ function growto(u::FTField{G}, target_size::NTuple{N, Int}) where {T, D, AXES, F
     out = FTField(growto(grid(u), target_size))
     for Ih in CartesianIndices(homogeneous_axes(u, grid(u))) 
         # get the full index tuple for this homogeneous index, with colons for the inhomogeneous dimensions
-        I = _combine_indices(grid(u), Colon(), Ih) 
+        I = combine_indices(grid(u), Colon(), Ih) 
         out[I] .= u[I]
     end
     return out
@@ -144,8 +144,8 @@ Base.@propagate_inbounds function Base.getindex(u::FTField{G},
     tpl     = to_homogeneous_indices(grid(u), k)
     indices = Base.front(tpl)
     colons  = ntuple(_ -> Colon(), ndims(u) - length(FFT_DIMS_ORDER))
-    @boundscheck checkbounds(u, _combine_indices(grid(u), colons, indices)...)
-    @inbounds return view(parent(u), _combine_indices(grid(u), colons, indices)...)
+    @boundscheck checkbounds(u, combine_indices(grid(u), colons, indices)...)
+    @inbounds return view(parent(u), combine_indices(grid(u), colons, indices)...)
 end
 
 """
@@ -165,8 +165,8 @@ Base.@propagate_inbounds function Base.getindex(u::FTField,
     tpl     = to_homogeneous_indices(grid(u), k)
     do_conj = last(tpl)
     indices = Base.front(tpl)
-    @boundscheck checkbounds(u, _combine_indices(grid(u), (i1, I...), indices)...)
-    @inbounds val = parent(u)[_combine_indices(grid(u), (i1, I...), indices)...]
+    @boundscheck checkbounds(u, combine_indices(grid(u), (i1, I...), indices)...)
+    @inbounds val = parent(u)[combine_indices(grid(u), (i1, I...), indices)...]
     return do_conj ? conj(val) : val
 end
 
@@ -203,11 +203,11 @@ Base.@propagate_inbounds function Base.setindex!(u::FTField{G},
     # Conjugate-symmetric indices for each signed-fft axis.
     sym_rest = ntuple(j -> _fftw_sym_index(rest[j], size(u, j + 2)), Val(N-1))
 
-    @boundscheck checkbounds(u, _combine_indices(grid(u), I, (i0, rest...))...)
-    @inbounds parent(u)[_combine_indices(grid(u), I, (i0, rest...))...] = do_conj ? conj(val) : val
+    @boundscheck checkbounds(u, combine_indices(grid(u), I, (i0, rest...))...)
+    @inbounds parent(u)[combine_indices(grid(u), I, (i0, rest...))...] = do_conj ? conj(val) : val
     # When the rfft wavenumber is zero, also write the mirror entry so that
     # the Hermitian-symmetry invariant is preserved across all signed dims.
-    i0 == 1 && @inbounds parent(u)[_combine_indices(grid(u), I, (i0, sym_rest...))...] = do_conj ? val  : conj(val)
+    i0 == 1 && @inbounds parent(u)[combine_indices(grid(u), I, (i0, sym_rest...))...] = do_conj ? val  : conj(val)
     return val
 end
 

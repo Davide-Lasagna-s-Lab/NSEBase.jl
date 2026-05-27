@@ -131,16 +131,16 @@ to the grid layout and return a tuple.
 end
 
 """
-    _combine_indices(grid, Inh, Ih) -> Tuple
+    combine_indices(grid, Inh, Ih) -> Tuple
 
-Combine homogeneousindices `Inh` and non-homogeneous indices `Ih` into a single index 
+Combine homogeneous indices `Inh` and non-homogeneous indices `Ih` into a single index 
 tuple of length `D`, interleaving them according to the constrained dimensions 
 `FFT_DIMS_ORDER` defined by `grid`. Dimensions in `FFT_DIMS_ORDER` draw from `Ih`, all 
 others draw from `Inh`.
 
 The index layout is fully resolved at compile time via a generated function.
 """
-@generated function _combine_indices(::AbstractGrid{T,D,AXES,FFT_DIMS_ORDER}, Inh, Ih) where {T,D,AXES,FFT_DIMS_ORDER}
+@generated function combine_indices(::AbstractGrid{T,D,AXES,FFT_DIMS_ORDER}, Inh, Ih) where {T,D,AXES,FFT_DIMS_ORDER}
     inds = []
     k = 1
     i = 1
@@ -157,13 +157,13 @@ The index layout is fully resolved at compile time via a generated function.
 end
 
 """
-    _combine_indices(grid, ::Colon, Ih) -> Tuple
+    combine_indices(grid, ::Colon, Ih) -> Tuple
 
 Combine homogeneous indices `Ih` with `Colon` for the non-homogeneous dimensions, returning a tuple 
-of length `D` suitable for indexing into a `Field`.  This is mostly used to create views of `FTField`s
+of length `D` suitable for indexing into a `FTField`.  This is mostly used to create views of `FTField`s
 that span all inhomogeneous indices at a particular homogeneous index.
 """
-@generated function _combine_indices(::AbstractGrid{T,D,AXES,FFT_DIMS_ORDER}, ::Colon, Ih) where {T,D,AXES,FFT_DIMS_ORDER}
+@generated function combine_indices(::AbstractGrid{T,D,AXES,FFT_DIMS_ORDER}, ::Colon, Ih) where {T,D,AXES,FFT_DIMS_ORDER}
     inds = []
     k = 1
     for d in 1:D
