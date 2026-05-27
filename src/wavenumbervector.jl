@@ -99,7 +99,7 @@ to a `WaveNumberVector`.
 - Full-FFT dimensions (k≥2): positive block `i ≤ N÷2+1` → `i - 1`;
   negative block `i > N÷2+1` → `i - 1 - N`.
 """
-function to_wavenumber_vector(g::AbstractGrid{T, D, AXES, FFT_DIMS_ORDER}, homogeneous_indices::NTuple{N, Int}) where {T, D, AXES, FFT_DIMS_ORDER, N}
+function to_wavenumber_vector(g::AbstractGrid{T, D, AXES, FFT_DIMS_ORDER}, homogeneous_indices::Union{NTuple{N, Int}, CartesianIndex{N}}) where {T, D, AXES, FFT_DIMS_ORDER, N}
     N == length(FFT_DIMS_ORDER) || throw(ArgumentError("Mismatch between homogeneous_indices length and FFT_DIMS_ORDER"))
     ns = ntuple(Val(N)) do k
         i = homogeneous_indices[k]
