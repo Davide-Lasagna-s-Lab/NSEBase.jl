@@ -178,16 +178,6 @@ that span all inhomogeneous indices at a particular homogeneous index.
 end
 
 """
-    homogeneous_axes(u::FieldType, grid) -> Tuple
-
-Return the tuple of axes corresponding to the homogeneous dimensions of `grid` for a field of
-type `FieldType`. This is used to generate CartesianIndices over the homogeneous dimensions.
-"""
-@generated function homogeneous_axes(u::FieldType, ::AbstractGrid{<:Any,D,AXES,FFT_DIMS_ORDER}) where {D,AXES,FFT_DIMS_ORDER}
-    return Expr(:tuple, (:(axes(u, $d)) for d in FFT_DIMS_ORDER)...)
-end
-
-"""
     to_storage_order(values, grid) -> Tuple
 
 Permute a tuple from logical coordinate order into storage/array-dimension
