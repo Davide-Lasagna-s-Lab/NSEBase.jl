@@ -67,7 +67,7 @@ Index 1 (zero wavenumber) is self-conjugate and maps to itself.
 _fftw_sym_index(i::Int, N::Int) = i == 1 ? 1 : N - i + 2
 
 """
-    to_indices(g::AbstractGrid, k::WaveNumberVector{N}) where {N}
+    to_homogeneous_indices(g::AbstractGrid, k::WaveNumberVector{N}) where {N}
 
 Convert a `WaveNumberVector` to 1-based `ProjectedField` axis indices plus a
 conjugate flag.  Returns the `(N+1)`-tuple `(i_H1, i_H2, …, i_HN, do_conj)`
@@ -78,7 +78,7 @@ where each `i_Hk` is the 1-based index along axis `k+1` of the
 requested wavenumber (the rfft axis stores only `n ≥ 0`, so negative wavenumbers
 are reached via conjugate symmetry).
 """
-function to_indices(g::AbstractGrid, k::WaveNumberVector{N}) where {N}
+function to_homogeneous_indices(g::AbstractGrid, k::WaveNumberVector{N}) where {N}
     H = fft_dims(g)
     if k[1] >= 0
         rest = ntuple(j -> _fftw_index( k[j+1], size(g, H[j+1])), Val(N-1))

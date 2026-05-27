@@ -16,7 +16,7 @@
         # Non-conjugate half: n1 ≥ 0, forward ordering
         for _n1 in 1:(N1 >> 1) + 1
             k = WaveNumberVector(n1s[_n1])
-            @test NSEBase.to_indices(g, k) == (_n1, false)
+            @test NSEBase.to_homogeneous_indices(g, k) == (_n1, false)
             @test NSEBase.to_wavenumber_vector(g, (_n1,)) == k
         end
 
@@ -25,7 +25,7 @@
         # Conjugate half: n1 < 0, reversed ordering
         for _n1 in 2:(N1 >> 1) + 1
             k = WaveNumberVector(n1s[_n1])
-            @test NSEBase.to_indices(g, k) == (_n1, true)
+            @test NSEBase.to_homogeneous_indices(g, k) == (_n1, true)
         end
     end
 
@@ -40,7 +40,7 @@
         # Non-conjugate half: n1 ≥ 0, forward ordering
         for _n1 in 1:(N1 >> 1) + 1, _n2 in 1:N2
             k = WaveNumberVector(n1s[_n1], n2s[_n2])
-            @test NSEBase.to_indices(g, k) == (_n1, _n2, false)
+            @test NSEBase.to_homogeneous_indices(g, k) == (_n1, _n2, false)
             @test NSEBase.to_wavenumber_vector(g, (_n1, _n2)) == k
         end
 
@@ -50,7 +50,7 @@
         # Conjugate half: n1 < 0, reversed ordering
         for _n1 in 2:(N1 >> 1) + 1, _n2 in 1:N2
             k = WaveNumberVector(n1s[_n1], n2s[_n2])
-            @test NSEBase.to_indices(g, k) == (_n1, _n2, true)
+            @test NSEBase.to_homogeneous_indices(g, k) == (_n1, _n2, true)
         end
     end
 
@@ -67,7 +67,7 @@
         # Non-conjugate half: n1 ≥ 0, forward ordering
         for _n1 in 1:(N1 >> 1) + 1, _n2 in 1:N2, _n3 in 1:N3
             k = WaveNumberVector(n1s[_n1], n2s[_n2], n3s[_n3])
-            @test NSEBase.to_indices(g, k) == (_n1, _n2, _n3, false)
+            @test NSEBase.to_homogeneous_indices(g, k) == (_n1, _n2, _n3, false)
             @test NSEBase.to_wavenumber_vector(g, (_n1, _n2, _n3)) == k
         end
 
@@ -78,7 +78,7 @@
         # Conjugate half: n1 < 0, reversed ordering
         for _n1 in 2:(N1 >> 1) + 1, _n2 in 1:N2, _n3 in 1:N3
             k = WaveNumberVector(n1s[_n1], n2s[_n2], n3s[_n3])
-            @test NSEBase.to_indices(g, k) == (_n1, _n2, _n3, true)
+            @test NSEBase.to_homogeneous_indices(g, k) == (_n1, _n2, _n3, true)
         end
     end
 

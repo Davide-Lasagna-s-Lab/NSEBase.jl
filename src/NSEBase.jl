@@ -8,13 +8,15 @@ export FFTW
 
 export AbstractGrid
 export points, growto, weights, fft_dims, inhomogeneous_dims, to_storage_order
-export ddx_1!, ddx_2!, ddx_3!, ddx_4!
-export WaveNumberVector, to_indices, to_wavenumber_vector
+export transform_size, fft_norm, wavenumber_scale
+export WaveNumberVector, to_homogeneous_indices, to_wavenumber_vector
 export FTField, Field, VectorField, grid
 export add_base_flow!
 export FFTPlans, FFT, IFFT
 export ProjectedField, modes, project!, project, expand!, expand
 export LoopGalerkin, GemmGalerkin
+export ddx!, ddx_1!, ddx_2!, ddx_3!, ddx_4!
+export add_homogeneous_laplacian!, laplacian!
 export shift!, shift, normdiff, minnormdiff
 export save_grid, load_grid, save_field, load_field
 export FarazmandWeight
@@ -22,6 +24,7 @@ export CartesianPrimitive3DNSE, CartesianPrimitive3DLNSE
 export CartesianPrimitive2DNSE, CartesianPrimitive2DLNSE
 export Forward, AdjointContinuous, AdjointDiscrete, NoForce, CompoundForcing, Mode
 export construct_equations, CartesianPrimitive3D, CartesianPrimitive2D, PolarPrimitive
+export ncomp, cache_length, nonlinear_operator, linearised_operator
 export ProjectedNSE
 
 include("notimplementederror.jl")

@@ -121,7 +121,7 @@ end
         @test allocs_after_warmup(() -> k[2]) == 0
         @test allocs_after_warmup(() -> NSEBase._fftw_index(-1, 6)) == 0
         @test allocs_after_warmup(() -> NSEBase._fftw_sym_index(3, 6)) == 0
-        @test allocs_after_warmup(() -> NSEBase.to_indices(g, k)) == 0
+        @test allocs_after_warmup(() -> NSEBase.to_homogeneous_indices(g, k)) == 0
         @test allocs_after_warmup(() -> NSEBase.to_wavenumber_vector(g, storage_indices)) == 0
     end
 

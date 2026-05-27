@@ -133,7 +133,7 @@ in their original order.
 """
 Base.@propagate_inbounds function Base.getindex(u::FTField{G},
                                                 k::WaveNumberVector) where {T, D, AXES, FFT_DIMS_ORDER, G<:AbstractGrid{T, D, AXES, FFT_DIMS_ORDER}}
-    tpl     = to_indices(grid(u), k)
+    tpl     = to_homogeneous_indices(grid(u), k)
     indices = Base.front(tpl)
     colons  = ntuple(_ -> Colon(), ndims(u) - length(FFT_DIMS_ORDER))
     @boundscheck checkbounds(u, _combine_indices(grid(u), colons, indices)...)
@@ -154,7 +154,7 @@ Base.@propagate_inbounds function Base.getindex(u::FTField,
                                                 k::WaveNumberVector,
                                                i1::Int,
                                                 I::Vararg{Int})
-    tpl     = to_indices(grid(u), k)
+    tpl     = to_homogeneous_indices(grid(u), k)
     do_conj = last(tpl)
     indices = Base.front(tpl)
     @boundscheck checkbounds(u, _combine_indices(grid(u), (i1, I...), indices)...)
@@ -183,7 +183,7 @@ Base.@propagate_inbounds function Base.setindex!(u::FTField{G},
                                                  k::WaveNumberVector{N},
                                                  I::Vararg{Int}) where {T, N, G<:AbstractGrid{T}}
     CT      = Complex{T}
-    tpl     = to_indices(grid(u), k)
+    tpl     = to_homogeneous_indices(grid(u), k)
     do_conj = last(tpl)
     indices = Base.front(tpl)
     i0      = first(indices)      # rfft axis index (axis 2 of ProjectedField)

@@ -241,7 +241,7 @@ If `k[1] < 0` the write targets the conjugate-symmetric storage location and
 Base.@propagate_inbounds function Base.getindex(a::ProjectedField,
                                                 m::Int,
                                                 k::WaveNumberVector)
-    tpl     = to_indices(grid(a), k)
+    tpl     = to_homogeneous_indices(grid(a), k)
     do_conj = last(tpl)
     indices = Base.front(tpl)
     @boundscheck checkbounds(a, m, indices...)
@@ -253,7 +253,7 @@ Base.@propagate_inbounds function Base.setindex!(a::ProjectedField{G},
                                                  m::Int,
                                                  k::WaveNumberVector{N}) where {T, N, G<:AbstractGrid{T}}
     CT      = Complex{T}
-    tpl     = to_indices(grid(a), k)
+    tpl     = to_homogeneous_indices(grid(a), k)
     do_conj = last(tpl)
     indices = Base.front(tpl)
     i0      = first(indices)      # rfft axis index (axis 2 of ProjectedField)
