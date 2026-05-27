@@ -9,14 +9,12 @@
 #   normdiff(u, v)   — norm of the difference ‖u − v‖, optionally after shifting
 #                      v along the homogeneous directions by a continuous phase shift.
 #
-# All implementations share two private accumulators:
-#   _accumulate_dot!       — adds the weighted dot product into a Ref{Real}
-#   _accumulate_normdiff2! — adds the weighted squared difference into a Ref{Real}
+# Each operation accumulates directly into a plain scalar `s`; no Ref boxing or
+# closures are needed because the loops are written as explicit for-loops.
 #
-# Accumulating into a `Ref` rather than a plain scalar avoids the heap boxing
-# that Julia's escape analysis applies when a scalar captured by a closure is
-# mutated — each `s[] +=` is a single dereferenced-pointer update with no
-# allocation.
+# All three inner products are consistent: dot(VectorField) = sum_n dot(u_n, v_n),
+# norm(VectorField) = sqrt(dot(u,u)) = sqrt(sum_n norm(u_n)^2), and
+# normdiff(VectorField) = sqrt(sum_n normdiff(u_n, v_n)^2) matches the induced norm.
 #
 # `minnormdiff` searches over a grid of candidate continuous shifts and returns
 # the minimum ‖u − shift(v, s)‖ together with the minimising shift tuple `s`.
@@ -160,9 +158,10 @@ function normdiff(u::VectorField{N, <:FTField{G}},
                   v::VectorField{N, <:FTField{G}}) where {N, G<:AbstractGrid}
     s = zero(real(eltype(u[1])))
     for n in 1:N
-        s += normdiff(u[n], v[n])
+        d = normdiff(u[n], v[n])
+        s += d * d
     end
-    return s
+    return sqrt(s)
 end
 
 function normdiff(u::VectorField{N, <:FTField{G}},
@@ -182,9 +181,10 @@ function normdiff(u::VectorField{N, <:FTField{G}},
     for n in 1:N
         tmp .= v[n]
         any(!iszero, shifts) && shift!(tmp, shifts)
-        s += normdiff(u[n], tmp)
+        d = normdiff(u[n], tmp)
+        s += d * d
     end
-    return s
+    return sqrt(s)
 end
 
 normdiff(u::VectorField, v::VectorField, shifts::NTuple{M, Real}, ::Nothing) where {M} =
@@ -268,8 +268,10 @@ signed-FFT pairs `(nz, nt)` and `(-nz, -nt)` that both appear in storage.
 """
 function LinearAlgebra.dot(a::ProjectedField{G}, b::ProjectedField{G}) where {G<:AbstractGrid{T, D}} where {T, D}
     s = zero(real(eltype(a)))
-    # rfft dimension is always dim 2 for ProjectedField; split into two branch-free
-    # loops so the compiler can vectorise the inner loop over dim 1 (mode index)
+    # ProjectedField parent has D+1 dimensions: 1 mode dim + D grid dims.
+    # rfft dimension is always dim 2 (first grid dim after the mode index).
+    # Split into two branch-free loops so the compiler can vectorise the
+    # inner loop over dim 1 (mode index, stride-1 in storage).
     ix1 = ntuple(d -> d == 2 ? (1:1)          : axes(parent(a), d), Val(D+1))
     ix2 = ntuple(d -> d == 2 ? (2:size(a, 2)) : axes(parent(a), d), Val(D+1))
     @inbounds for I in CartesianIndices(ix1)
@@ -299,6 +301,7 @@ result is divided by 2 to remove signed-FFT double-counting.
 """
 function normdiff(a::ProjectedField{G}, b::ProjectedField{G}) where {G<:AbstractGrid{T, D}} where {T, D}
     s = zero(real(eltype(a)))
+    # D+1: one mode dim + D grid dims; rfft on dim 2 (first grid dim).
     ix1 = ntuple(d -> d == 2 ? (1:1)          : axes(parent(a), d), Val(D+1))
     ix2 = ntuple(d -> d == 2 ? (2:size(a, 2)) : axes(parent(a), d), Val(D+1))
     @inbounds for I in CartesianIndices(ix1)

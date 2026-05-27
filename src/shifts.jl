@@ -24,9 +24,9 @@ per homogeneous dimension in `FFT_DIMS_ORDER` order) at signed wavenumber vector
 The factor is `∏_j exp(i · k[j] · shifts[j] · wavenumber_scale(g, FFT_DIMS_ORDER[j]))`.
 Zero wavenumbers contribute a factor of `1` (exact, no floating-point error).
 """
-function _shift_phase(     g::AbstractGrid{T, D, AXES, FFT_DIMS_ORDER},
+function _shift_phase(     g::AbstractGrid{T, <:Any, <:Any, FFT_DIMS_ORDER},
                       shifts::NTuple{N, Real},
-                           k::WaveNumberVector{N}) where {T, D, AXES, FFT_DIMS_ORDER, N}
+                           k::WaveNumberVector{N}) where {T, FFT_DIMS_ORDER, N}
     N == length(FFT_DIMS_ORDER) ||
         throw(DimensionMismatch("shifts must have one entry per homogeneous dimension; got $(N), expected $(length(FFT_DIMS_ORDER))"))
     # Sum all phase angles first, then call cis once — cheaper than N separate
@@ -60,8 +60,8 @@ function shift!(u::FTField, shifts)
     # Outer loop: homogeneous wavenumber — compute phase factor once per k.
     # Inner loop: inhomogeneous indices — scalar indexing (plain integer tuple)
     # so no temporary slice is allocated on each iteration.
-    # Note that this loop ordering is optimal if the homogeneous dimensions are 
-    # the last axes of the array
+    # This loop ordering is cache-friendly when the inhomogeneous dimensions are
+    # the first (lowest-stride) storage axes, as in the channel-flow layout.
     for Ih in CartesianIndices(homogeneous_axes(g, u))
         k     = to_wavenumber_vector(g, Ih)
         phase = _shift_phase(g, shifts, k)
@@ -78,7 +78,12 @@ end
 
 Shift each component of `u` in-place. See [`shift!`](@ref).
 """
-shift!(u::VectorField{N}, shifts) where {N} = (for n in 1:N; shift!(u[n], shifts); end; return u)
+function shift!(u::VectorField{N}, shifts) where {N}
+    for n in 1:N
+        shift!(u[n], shifts)
+    end
+    return u
+end
 
 """
     shift!(a::ProjectedField, shifts) -> a
@@ -91,7 +96,7 @@ the underlying physical-space field.
 
 Returns `a` unchanged when all shifts are zero.
 """
-function shift!(a::ProjectedField{G}, shifts) where {G<:AbstractGrid{T, D, AXES, FFT_DIMS_ORDER}} where {T, D, AXES, FFT_DIMS_ORDER}
+function shift!(a::ProjectedField{G}, shifts) where {G<:AbstractGrid}
     any(!iszero, shifts) || return a
     g = grid(a)
     for I in CartesianIndices(a)
