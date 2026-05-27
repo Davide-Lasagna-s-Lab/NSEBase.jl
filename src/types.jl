@@ -1,4 +1,4 @@
-# This file contains tyope definitions
+# This file contains type definitions
 
 """
     FieldType
