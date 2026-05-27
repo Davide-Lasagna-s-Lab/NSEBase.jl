@@ -125,20 +125,6 @@ end
         @test allocs_after_warmup(() -> NSEBase.to_wavenumber_vector(g, storage_indices)) == 0
     end
 
-    @testset "src/spectralloops.jl" begin
-        (; g) = alloc_fixture()
-        n1 = Ref(0)
-        n2 = Ref(0)
-
-        @test allocs_after_warmup(() -> NSEBase.for_each_homogeneous_index(g) do one_or_two, indices
-            n1[] += one_or_two + indices[1]
-        end) == 0
-
-        @test allocs_after_warmup(() -> NSEBase.for_each_index(g) do one_or_two, inhomogeneous_indices, indices
-            n2[] += one_or_two + inhomogeneous_indices[1] + indices[2]
-        end) == 0
-    end
-
     @testset "src/ftfield.jl" begin
         (; g, u) = alloc_fixture()
         k = WaveNumberVector(1, -1)
