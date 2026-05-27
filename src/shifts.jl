@@ -58,7 +58,7 @@ function shift!(u::FTField{G}, shifts) where {G<:AbstractGrid{T, D, AXES, FFT_DI
     for Ih in CartesianIndices(homogeneous_axes(g, u))
         k = to_wavenumber_vector(g, Ih)
         phase = _shift_phase(g, shifts, k)
-        I = combine_indices(g, Ih, Colon())
+        I = combine_indices(g, Colon(), Ih)
         @inbounds pu[I...] *= phase
     end
     return u
@@ -86,8 +86,8 @@ function shift!(a::ProjectedField{G}, shifts) where {G<:AbstractGrid{T, D, AXES,
     any(!iszero, shifts) || return a
     g = grid(a)
     for I in CartesianIndices(a)
-        # the rfft dimension is always the second, as the first is the mode index m
-        homogeneous_indices = Tuple(I[2:end])
+        # drop the mode index to get the homogeneous indices for this spectral coefficient
+        homogeneous_indices = Base.tail(Tuple(I))
         k = to_wavenumber_vector(g, homogeneous_indices)
         phase = _shift_phase(g, shifts, k)
         @inbounds a[I] *= phase

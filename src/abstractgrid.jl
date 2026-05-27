@@ -169,10 +169,10 @@ that span all inhomogeneous indices at a particular homogeneous index.
     for d in 1:D
         if d ∈ FFT_DIMS_ORDER
             push!(inds, :(Ih[$k]))
+            k += 1
         else
-            push!(inds, :(Colon))
+            push!(inds, :(Colon()))
         end
-        k += 1
     end
     return Expr(:tuple, inds...)
 end

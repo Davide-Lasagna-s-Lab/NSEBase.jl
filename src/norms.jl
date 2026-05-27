@@ -95,7 +95,7 @@ function normdiff(u::FTField{G}, v::FTField{G}) where {G<:AbstractGrid}
     @inbounds for I in CartesianIndices(u)
         s += one_or_two(I, g) * ws[inhomogeneous_indices(I, g)] * abs2(u[I] - v[I])
     end
-    return s / 2
+    return sqrt(s / 2)
 end
 
 function normdiff(u::FTField{G}, v::FTField{G},
@@ -132,7 +132,7 @@ function LinearAlgebra.dot(q::VectorField{N, <:FTField{G}},
     for n in 1:N
         s += dot(q[n], p[n])
     end
-    return s / 2
+    return s
 end
 
 LinearAlgebra.dot(q::VectorField{N}, p::VectorField{N}) where {N} = sum(dot(q[n], p[n]) for n in 1:N)

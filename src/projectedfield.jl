@@ -220,11 +220,11 @@ end
 
 # TODO: document this
 Base.@propagate_inbounds function Base.getindex(a::ProjectedField{G, M, A, T, D},  I::CartesianIndex{D}) where {G, M, A, T, D}
-    @boundscheck checkbounds(parent(a), m, I)
+    @boundscheck checkbounds(parent(a), I)
     @inbounds parent(a)[I]
 end
 Base.@propagate_inbounds function Base.setindex!(a::ProjectedField{G, M, A, T, D}, val, I::CartesianIndex{D}) where {G, M, A, T, D}
-    @boundscheck checkbounds(parent(a), m, I)
+    @boundscheck checkbounds(parent(a), I)
     @inbounds parent(a)[I] = val
 end
 
