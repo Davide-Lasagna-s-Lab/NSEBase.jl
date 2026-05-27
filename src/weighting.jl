@@ -92,7 +92,7 @@ function LinearAlgebra.lmul!(A::FarazmandWeight{N},
     # scale every Galerkin coefficient by the Farazmand weight.
     for I in CartesianIndices(a)
         # skip the mode index
-        homogeneous_indices = Tuple(I[2:end]) 
+        homogeneous_indices = Base.tail(Tuple(I))
         
         # get the signed wavenumber vector for this homogeneous index, to evaluate the weight
         k = to_wavenumber_vector(g, homogeneous_indices)
@@ -126,7 +126,7 @@ function LinearAlgebra.dot(a::ProjectedField{G},
     # one_or_two accounts for rfft Hermitian symmetry (+k stored, −k implicit).
     for I in CartesianIndices(a)
         # skip the mode index
-        homogeneous_indices = Tuple(I[2:end]) 
+        homogeneous_indices = Base.tail(Tuple(I))
         
         # rfft zero wavenumber is self-conjugate
         one_or_two = (I[2] == 1 ? 1 : 2) 
