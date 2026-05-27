@@ -88,6 +88,106 @@ which quadrature weights are needed for inner products.
 end
 
 """
+    rfft_dim(grid::AbstractGrid) -> Int
+
+Return the array dimension that is transformed by the real-to-complex FFT,
+i.e. the first entry of `fft_dims(grid)`.
+
+`rfft_dim(g)` is the rfft dimension (only non-negative wavenumbers are
+stored); the remaining entries are full-spectrum complex FFT dimensions.
+"""
+rfft_dim(::AbstractGrid{<:Any,<:Any,<:Any,FFT_DIMS_ORDER}) where {FFT_DIMS_ORDER} = FFT_DIMS_ORDER[1]
+
+"""
+    one_or_two(I::CartesianIndex, g::AbstractGrid) -> Int
+
+Return `1` if the rfft storage index in `I` corresponds to the zero
+wavenumber, and `2` otherwise.  Used to apply the correct Hermitian 
+multiplicity weight in inner products and norms, which are iterated 
+with `CartesianIndices`.
+"""
+one_or_two(I::CartesianIndex, g::AbstractGrid) = I[rfft_dim(g)] == 1 ? 1 : 2
+
+"""
+    inhomogeneous_indices(I::CartesianIndex, g::AbstractGrid) -> Tuple
+
+Extract the inhomogeneous indices from the cartesian index `I` according 
+to the grid layout and return a tuple.
+"""
+@generated function inhomogeneous_indices(I::CartesianIndex, ::AbstractGrid{<:Any,D,AXES,FFT_DIMS_ORDER}) where {D,AXES,FFT_DIMS_ORDER}
+    idxs = [d for d in 1:D if d ∉ FFT_DIMS_ORDER]
+    return Expr(:tuple, (:(I[$idx]) for idx in idxs)...)
+end
+
+"""
+    homogeneous_indices(I::CartesianIndex, g::AbstractGrid) -> Tuple
+
+Extract the homogeneous indices from the cartesian index `I` according 
+to the grid layout and return a tuple.
+"""
+@generated function homogeneous_indices(I::CartesianIndex, ::AbstractGrid{<:Any,D,AXES,FFT_DIMS_ORDER}) where {D,AXES,FFT_DIMS_ORDER}
+    idxs = [d for d in 1:D if d ∈ FFT_DIMS_ORDER]
+    return Expr(:tuple, (:(I[$idx]) for idx in idxs)...)
+end
+
+"""
+    _combine_indices(grid, Inh, Ih) -> Tuple
+
+Combine homogeneousindices `Inh` and non-homogeneous indices `Ih` into a single index 
+tuple of length `D`, interleaving them according to the constrained dimensions 
+`FFT_DIMS_ORDER` defined by `grid`. Dimensions in `FFT_DIMS_ORDER` draw from `Ih`, all 
+others draw from `Inh`.
+
+The index layout is fully resolved at compile time via a generated function.
+"""
+@generated function _combine_indices(::AbstractGrid{T,D,AXES,FFT_DIMS_ORDER}, Inh, Ih) where {T,D,AXES,FFT_DIMS_ORDER}
+    inds = []
+    k = 1
+    i = 1
+    for d in 1:D
+        if d ∈ FFT_DIMS_ORDER
+            push!(inds, :(Ih[$k]))
+            k += 1
+        else
+            push!(inds, :(Inh[$i]))
+            i += 1
+        end
+    end
+    return :(($(inds...),))
+end
+
+"""
+    _combine_indices(grid, ::Colon, Ih) -> Tuple
+
+Combine homogeneous indices `Ih` with `Colon` for the non-homogeneous dimensions, returning a tuple 
+of length `D` suitable for indexing into a `Field`.  This is mostly used to create views of `FTField`s
+that span all inhomogeneous indices at a particular homogeneous index.
+"""
+@generated function _combine_indices(::AbstractGrid{T,D,AXES,FFT_DIMS_ORDER}, ::Colon, Ih) where {T,D,AXES,FFT_DIMS_ORDER}
+    inds = []
+    k = 1
+    for d in 1:D
+        if d ∈ FFT_DIMS_ORDER
+            push!(inds, :(Ih[$k]))
+        else
+            push!(inds, :(Colon))
+        end
+        k += 1
+    end
+    return Expr(:tuple, inds...)
+end
+
+"""
+    homogeneous_axes(u::FieldType, grid) -> Tuple
+
+Return the tuple of axes corresponding to the homogeneous dimensions of `grid` for a field of
+type `FieldType`. This is used to generate CartesianIndices over the homogeneous dimensions.
+"""
+@generated function homogeneous_axes(u::FieldType, ::AbstractGrid{<:Any,D,AXES,FFT_DIMS_ORDER}) where {D,AXES,FFT_DIMS_ORDER}
+    return Expr(:tuple, (:(axes(u, $d)) for d in FFT_DIMS_ORDER)...)
+end
+
+"""
     to_storage_order(values, grid) -> Tuple
 
 Permute a tuple from logical coordinate order into storage/array-dimension

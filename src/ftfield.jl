@@ -74,6 +74,22 @@ Base.@propagate_inbounds function Base.setindex!(u::FTField, v, i::Int)
     return v
 end
 
+#TODO: document this and check
+Base.CartesianIndices(u::FTField) = CartesianIndices(size(u))
+
+# indexing with a cartesianindex
+Base.@propagate_inbounds function Base.getindex(u::FTField, I::CartesianIndex)
+    @boundscheck checkbounds(parent(u), I)
+    @inbounds v = parent(u)[I]
+    return v
+end
+
+Base.@propagate_inbounds function Base.setindex!(u::FTField, v, I::CartesianIndex)
+    @boundscheck checkbounds(parent(u), I)
+    @inbounds parent(u)[I] = v
+    return v
+end
+
 grid(u::FTField) = u.grid
 
 """
@@ -100,19 +116,11 @@ resolution-changing transforms such as `FFT(u, target_size)` and
 function growto(u::FTField{G}, target_size::NTuple{N, Int}) where {T, D, AXES, FFT_DIMS_ORDER, N, G<:AbstractGrid{T, D, AXES, FFT_DIMS_ORDER}}
     N == length(FFT_DIMS_ORDER) ||
         throw(ArgumentError("target_size has incompatible size: expected a tuple of length $(length(FFT_DIMS_ORDER)), got length $N"))
-
     out = FTField(growto(grid(u), target_size))
-    # Iterate source storage indices, convert them to signed wavenumbers,
-    # and copy the matching wavenumber slice in the target grid.
-    for_each_homogeneous_index(grid(u)) do _, homogeneous_indices
-        k = to_wavenumber_vector(grid(u), homogeneous_indices)
-
-        # Bind the views explicitly.  `out[k] .= u[k]` can route through
-        # broadcast's dotview machinery, which expects ordinary array indices;
-        # these temporaries force our WaveNumberVector getindex method first.
-        dst = out[k]
-        src = u[k]
-        dst .= src
+    for Ih in CartesianIndices(homogeneous_axes(u, grid(u))) 
+        # get the full index tuple for this homogeneous index, with colons for the inhomogeneous dimensions
+        I = _combine_indices(grid(u), Colon(), Ih) 
+        out[I] .= u[I]
     end
     return out
 end
@@ -202,28 +210,6 @@ Base.@propagate_inbounds function Base.setindex!(u::FTField{G},
     i0 == 1 && @inbounds parent(u)[_combine_indices(grid(u), I, (i0, sym_rest...))...] = do_conj ? val  : conj(val)
     return val
 end
-
-"""
-    _combine_indices(grid, I, K) -> Tuple
-
-Combine free indices `I` and constrained indices `K` into a single index tuple
-of length `D`, interleaving them according to the constrained dimensions `FFT_DIMS_ORDER`
-defined by `grid`. Dimensions in `FFT_DIMS_ORDER` draw from `K`; all others draw from `I`.
-
-The index layout is fully resolved at compile time via a generated function.
-"""
-@generated function _combine_indices(::AbstractGrid{T, D, AXES, FFT_DIMS_ORDER}, I, K) where {T, D, AXES, FFT_DIMS_ORDER}
-    inds = []; k = 1; i = 1
-    for d in 1:D
-        if d ∈ FFT_DIMS_ORDER
-            push!(inds, :(K[$k])); k += 1
-        else
-            push!(inds, :(I[$i])); i += 1
-        end
-    end
-    return :(($(inds...),))
-end
-
 
 # --------------- #
 # utility methods #

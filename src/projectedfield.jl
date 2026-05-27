@@ -21,6 +21,7 @@
 #   a[m::Int, i1::Int, …]          — storage-index, for spectral inner loops
 #   a[m::Int, k::WaveNumberVector] — wavenumber, public API with symmetry logic
 
+#TODO: document the type parameters
 """
     ProjectedField{G<:AbstractGrid, M}
 
@@ -175,8 +176,6 @@ grid(a::ProjectedField)  = a.grid
 #   3. a[m::Int, k::WaveNumberVector] — wavenumber (public API, enforces symmetry)
 #
 # Only the WaveNumberVector API maintains Hermitian-symmetry invariants.
-# Use the storage-index API inside for_each_homogeneous_index loops where the
-# caller already holds FFTW 1-based storage indices and must not double-write.
 
 """
     a[i::Int]
@@ -196,6 +195,7 @@ Base.@propagate_inbounds function Base.setindex!(u::ProjectedField, val, i::Int)
     return val
 end
 
+# TODO: do we use N or D?
 """
     a[m::Int, i1::Int, i2::Int, …]
     a[m::Int, i1::Int, i2::Int, …] = val
@@ -207,9 +207,7 @@ The `Vararg{Int, N}` signature forces specialisation on the number of
 homogeneous dimensions `N` at compile time, so the body can index
 `parent(a)` directly without runtime overhead.
 
-No symmetry invariants are checked or maintained — use this form only inside
-[`for_each_homogeneous_index`](@ref) loops where storage indices are already
-known and the caller controls every storage location explicitly.
+No symmetry invariants are checked or maintained.  Use the `WaveNumberVector` API for that.
 """
 Base.@propagate_inbounds function Base.getindex(a::ProjectedField, m::Int, indices::Vararg{Int, N}) where {N}
     @boundscheck checkbounds(parent(a), m, indices...)
@@ -218,6 +216,16 @@ end
 Base.@propagate_inbounds function Base.setindex!(a::ProjectedField, val, m::Int, indices::Vararg{Int, N}) where {N}
     @boundscheck checkbounds(parent(a), m, indices...)
     @inbounds parent(a)[m, indices...] = val
+end
+
+# TODO: document this
+Base.@propagate_inbounds function Base.getindex(a::ProjectedField{G, M, A, T, D},  I::CartesianIndex{D}) where {G, M, A, T, D}
+    @boundscheck checkbounds(parent(a), m, I)
+    @inbounds parent(a)[I]
+end
+Base.@propagate_inbounds function Base.setindex!(a::ProjectedField{G, M, A, T, D}, val, I::CartesianIndex{D}) where {G, M, A, T, D}
+    @boundscheck checkbounds(parent(a), m, I)
+    @inbounds parent(a)[I] = val
 end
 
 """

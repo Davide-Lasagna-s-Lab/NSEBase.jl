@@ -55,24 +55,11 @@ function shift!(u::FTField{G}, shifts) where {G<:AbstractGrid{T, D, AXES, FFT_DI
     any(!iszero, shifts) || return u
     g         = grid(u)
     pu        = parent(u)
-    inh_dims  = inhomogeneous_dims(g)
-    inh_sizes = map(d -> size(g, d), inh_dims)
-
-    for_each_homogeneous_index(g) do _, homogeneous_indices
-        # Convert storage indices to signed wavenumbers, then accumulate the
-        # total phase as a product over all homogeneous directions.
-        k     = to_wavenumber_vector(g, homogeneous_indices)
+    for Ih in CartesianIndices(homogeneous_axes(g, u))
+        k = to_wavenumber_vector(g, Ih)
         phase = _shift_phase(g, shifts, k)
-
-        # Apply phase to every inhomogeneous index combination for this wavenumber.
-        # CartesianIndices loop is the innermost, matching the column-major
-        # layout of dim 1 in the parent array.
-        # Merge the current inhomogeneous CartesianIndex with the homogeneous
-        # storage indices to get the full D-dimensional parent-array index.
-        for I in CartesianIndices(inh_sizes)
-            indices = _combine_indices(g, Tuple(I), homogeneous_indices)
-            @inbounds pu[indices...] *= phase
-        end
+        I = _combine_indices(g, Ih, Colon())
+        @inbounds pu[I...] *= phase
     end
     return u
 end
@@ -98,14 +85,12 @@ Returns `a` unchanged when all shifts are zero.
 function shift!(a::ProjectedField{G}, shifts) where {G<:AbstractGrid{T, D, AXES, FFT_DIMS_ORDER}} where {T, D, AXES, FFT_DIMS_ORDER}
     any(!iszero, shifts) || return a
     g = grid(a)
-    for_each_homogeneous_index(g) do _, homogeneous_indices
-        # Same phase computation as FTField shift; applied uniformly across
-        # all mode indices m at this spectral location.
-        k     = to_wavenumber_vector(g, homogeneous_indices)
+    for I in CartesianIndices(a)
+        # the rfft dimension is always the second, as the first is the mode index m
+        homogeneous_indices = Tuple(I[2:end])
+        k = to_wavenumber_vector(g, homogeneous_indices)
         phase = _shift_phase(g, shifts, k)
-        for m in axes(a, 1)
-            @inbounds a[m, homogeneous_indices...] *= phase
-        end
+        @inbounds a[I] *= phase
     end
     return a
 end

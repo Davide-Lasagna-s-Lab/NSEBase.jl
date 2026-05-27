@@ -88,14 +88,18 @@ each `a[m, k]` by `A[k]`, and return `a`.
 function LinearAlgebra.lmul!(A::FarazmandWeight{N},
                              a::ProjectedField{G}) where {N, G<:AbstractGrid}
     g = grid(a)
-    # Scale every Galerkin coefficient at this wavenumber by the Farazmand weight.
-    for_each_homogeneous_index(g) do _, homogeneous_indices
+
+    # scale every Galerkin coefficient by the Farazmand weight.
+    for I in CartesianIndices(a)
+        # skip the mode index
+        homogeneous_indices = Tuple(I[2:end]) 
+        
+        # get the signed wavenumber vector for this homogeneous index, to evaluate the weight
         k = to_wavenumber_vector(g, homogeneous_indices)
-        w = A[k]
-        for m in axes(a, 1)
-            @inbounds a[m, homogeneous_indices...] *= w
-        end
+
+        @inbounds a[I] *= A[k]
     end
+
     return a
 end
 
@@ -115,19 +119,24 @@ where `c_{k_1}` is `1` for the zero rfft wavenumber and `2` otherwise.
 function LinearAlgebra.dot(a::ProjectedField{G},
                            A::FarazmandWeight{N},
                            b::ProjectedField{G}) where {N, G<:AbstractGrid}
-    T = real(eltype(a))
-    # Ref accumulator: a plain scalar mutated inside a closure is heap-boxed on
-    # every iteration by Julia's escape analysis.  A Ref is allocated once.
-    s = Ref(zero(T))
+    s = zero(real(eltype(a)))
     g = grid(a)
-    # Accumulate the weighted inner product over all wavenumbers and Galerkin modes.
+
+    # accumulate the weighted inner product over all wavenumbers and Galerkin modes.
     # one_or_two accounts for rfft Hermitian symmetry (+k stored, −k implicit).
-    for_each_homogeneous_index(g) do one_or_two, homogeneous_indices
+    for I in CartesianIndices(a)
+        # skip the mode index
+        homogeneous_indices = Tuple(I[2:end]) 
+        
+        # rfft zero wavenumber is self-conjugate
+        one_or_two = (I[2] == 1 ? 1 : 2) 
+        
+        # get the signed wavenumber vector for this homogeneous index, to evaluate the weight
         k = to_wavenumber_vector(g, homogeneous_indices)
-        w = A[k]
-        for m in axes(a, 1)
-            @inbounds s[] += one_or_two * w * real(LinearAlgebra.dot(a[m, homogeneous_indices...], b[m, homogeneous_indices...]))
-        end
+
+        # accumulate the contribution of this coefficient to the weighted inner product
+        @inbounds s += one_or_two * A[k] * real(LinearAlgebra.dot(a[I], b[I]))
     end
-    return s[] / 2
+
+    return s / 2
 end

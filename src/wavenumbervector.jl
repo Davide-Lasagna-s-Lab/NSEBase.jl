@@ -93,7 +93,7 @@ end
     to_wavenumber_vector(g, homogeneous_indices) -> WaveNumberVector
 
 Convert the `N`-tuple of 1-based FFTW storage indices `homogeneous_indices`
-(as yielded by `for_each_homogeneous_index`) to a `WaveNumberVector`.
+to a `WaveNumberVector`.
 
 - rfft dimension (k=1): storage index `i` → wavenumber `i - 1` (always ≥ 0).
 - Full-FFT dimensions (k≥2): positive block `i ≤ N÷2+1` → `i - 1`;
@@ -105,7 +105,7 @@ function to_wavenumber_vector(g::AbstractGrid{T, D, AXES, FFT_DIMS_ORDER}, homog
         i = homogeneous_indices[k]
         # rfft dim: only non-negative wavenumbers stored, so i=1 → k=0, i=2 → k=1, …
         # Full-FFT dims: FFTW packs positive wavenumbers first (i ≤ N/2+1 → k=i-1),
-        # then negative (i > N/2+1 → k=i-1-N), matching the two-block loop in for_each_homogeneous_index.
+        # then negative (i > N/2+1 → k=i-1-N)
         k == 1 ? i - 1 :
                  (i <= (size(g, FFT_DIMS_ORDER[k]) >> 1) + 1 ? i - 1 : i - 1 - size(g, FFT_DIMS_ORDER[k]))
     end
