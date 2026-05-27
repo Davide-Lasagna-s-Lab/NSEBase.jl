@@ -266,14 +266,17 @@ both `+nx` and `-nx`, so they contribute with weight 2; the `nx = 0` plane has
 weight 1.  The result is divided by 2 to account for the double-counting of
 signed-FFT pairs `(nz, nt)` and `(-nz, -nt)` that both appear in storage.
 """
-function LinearAlgebra.dot(a::ProjectedField{G}, b::ProjectedField{G}) where {G<:AbstractGrid}
+function LinearAlgebra.dot(a::ProjectedField{G}, b::ProjectedField{G}) where {G<:AbstractGrid{T, D}} where {T, D}
     s = zero(real(eltype(a)))
-    g = grid(a)
-    for I in CartesianIndices(a)
-        # the rfft dimension is always the second for a projected field
-        # so we do not need to use NSEBase.one_or_two to determine the weight
-        _one_or_two_ = I[2] == 1 ? 1 : 2
-        s += _one_or_two_ * real(conj(a[I]) * b[I])
+    # rfft dimension is always dim 2 for ProjectedField; split into two branch-free
+    # loops so the compiler can vectorise the inner loop over dim 1 (mode index)
+    ix1 = ntuple(d -> d == 2 ? (1:1)          : axes(parent(a), d), Val(D+1))
+    ix2 = ntuple(d -> d == 2 ? (2:size(a, 2)) : axes(parent(a), d), Val(D+1))
+    @inbounds for I in CartesianIndices(ix1)
+        s += real(conj(a[I]) * b[I])
+    end
+    @inbounds for I in CartesianIndices(ix2)
+        s += 2 * real(conj(a[I]) * b[I])
     end
     return s / 2
 end
@@ -294,12 +297,15 @@ Follows the same rfft/signed-FFT weighting as [`dot`](@ref): rfft wavenumbers
 with `nx > 0` contribute with weight 2 (they represent both `±nx`), and the
 result is divided by 2 to remove signed-FFT double-counting.
 """
-function normdiff(a::ProjectedField{G}, b::ProjectedField{G}) where {G<:AbstractGrid}
+function normdiff(a::ProjectedField{G}, b::ProjectedField{G}) where {G<:AbstractGrid{T, D}} where {T, D}
     s = zero(real(eltype(a)))
-    for I in CartesianIndices(a)
-        # the rfft dimension is always the second, as the first is the mode index m
-        _one_or_two_ = I[2] == 1 ? 1 : 2
-        s += _one_or_two_ * abs2(a[I] - b[I])
+    ix1 = ntuple(d -> d == 2 ? (1:1)          : axes(parent(a), d), Val(D+1))
+    ix2 = ntuple(d -> d == 2 ? (2:size(a, 2)) : axes(parent(a), d), Val(D+1))
+    @inbounds for I in CartesianIndices(ix1)
+        s += abs2(a[I] - b[I])
+    end
+    @inbounds for I in CartesianIndices(ix2)
+        s += 2 * abs2(a[I] - b[I])
     end
     return sqrt(s / 2)
 end
