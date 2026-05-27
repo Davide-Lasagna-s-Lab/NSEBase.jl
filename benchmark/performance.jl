@@ -1,19 +1,16 @@
-# Benchmark: dot(u, v) for FTField and ProjectedField on a 4-D channel-flow
-# layout, comparing two loop strategies:
+# Performance benchmarks for NSEBase hot paths on a 4-D channel-flow layout.
 #
-#   A  CartesianIndices  — single loop over the full FTField parent array;
-#                          column-major (stride-1) access, one branch per rfft index.
-#                          Current implementation on better-spectral-loops.
-#
-#   B  hand-written split loop — rfft branch lifted out; dim-1 (j) innermost
-#                          for stride-1 access.
+# Sections:
+#   1. dot(u, v)       — FTField and ProjectedField, CartesianIndices vs split loop
+#   2. shift!(u, s)    — FTField, NSEBase vs equivalent hand-written double loop
+#   3. normdiff+shift  — overhead of the shift relative to plain normdiff
 #
 # Grid layout (mirrors ChannelGrid from ReSolver-ChannelFlow.jl):
 #   physical axes  (x, y, z, t)  →  storage dims  (2, 1, 3, 4)
-#   i.e. storage order: (y, x, z, t)  =  (Ny, Nx_half, Nz, Nt)
+#   storage order: (y, x_half, z, t) = (Ny, Nx_half, Nz, Nt)
 #   FFT dims: (2=rfft, 3=signed FFT, 4=signed FFT)
 #
-# Run: julia --project=benchmark benchmark/ftfield_dot.jl
+# Run: julia --project=benchmark benchmark/performance.jl
 
 using LinearAlgebra
 using Printf
@@ -177,3 +174,50 @@ t_proj_nse  = @belapsed dot_proj_nsebase($pa, $pb)
 @printf "  A  hand-written split loop          : %7.3f ms\n"  t_proj_hand * 1e3
 @printf "  B  NSEBase.dot (ProjectedField)     : %7.3f ms\n"  t_proj_nse  * 1e3
 @printf "  ratio B/A : %.3f\n"  (t_proj_nse / t_proj_hand)
+
+# ──────────────────────────────────────────────────────────────────────────────
+# shift! and normdiff-with-shift benchmarks
+# ──────────────────────────────────────────────────────────────────────────────
+const SHIFTS = (0.13, -0.21, 0.07)   # one per homogeneous dim (x, z, t)
+
+u2 = copy(u); v2 = copy(v)           # fresh copies so shift! doesn't accumulate
+tmp_ft = zero(u)
+
+# hand-written reference: explicit 4-D loop nest matching the storage layout
+# (Ny=dim1, Nx_half=dim2, Nz=dim3, Nt=dim4).  Wavenumbers derived inline:
+#   rfft (dim2):       k_x = ix - 1         (always ≥ 0)
+#   signed FFT (dim3): k_z = iz-1 if iz-1 ≤ Nz÷2, else iz-1-Nz
+#   signed FFT (dim4): k_t = it-1 if it-1 ≤ Nt÷2, else it-1-Nt
+# Loop order (outermost→innermost): Nt, Nz, Nx_half, Ny — Ny is stride-1.
+function shift_handwritten!(u, shifts)
+    pu = parent(u)
+    sx, sz, st = shifts
+    for it in 1:Nt
+        kt = it - 1 <= Nt >> 1 ? it - 1 : it - 1 - Nt
+        for iz in 1:Nz
+            kz = iz - 1 <= Nz >> 1 ? iz - 1 : iz - 1 - Nz
+            for ix in 1:Nx_half
+                kx = ix - 1
+                phase = cis(kx * sx + kz * sz + kt * st)
+                for j in 1:Ny                  # innermost: stride-1
+                    @inbounds pu[j, ix, iz, it] *= phase
+                end
+            end
+        end
+    end
+    return u
+end
+
+println("\n── shift!(FTField)  (Nx=$Nx, Ny=$Ny, Nz=$Nz, Nt=$Nt) ─────────────────")
+t_shift_nse  = @belapsed shift!($u2, $SHIFTS)
+t_shift_hand = @belapsed shift_handwritten!($u2, $SHIFTS)
+@printf "  A  hand-written double loop         : %7.3f ms\n"  t_shift_hand * 1e3
+@printf "  B  NSEBase.shift! (FTField)         : %7.3f ms\n"  t_shift_nse  * 1e3
+@printf "  ratio B/A : %.3f\n"  (t_shift_nse / t_shift_hand)
+
+println("\n── normdiff with shift  (Nx=$Nx, Ny=$Ny, Nz=$Nz, Nt=$Nt) ─────────────")
+t_normdiff_shift = @belapsed normdiff($u, $v, $SHIFTS, $tmp_ft)
+t_normdiff_plain = @belapsed normdiff($u, $v)
+@printf "  normdiff (no shift)                 : %7.3f ms\n"  t_normdiff_plain * 1e3
+@printf "  normdiff (with shift, pre-alloc tmp): %7.3f ms\n"  t_normdiff_shift * 1e3
+@printf "  overhead of shift : %.3f×\n"  (t_normdiff_shift / t_normdiff_plain)

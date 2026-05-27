@@ -20,3 +20,14 @@ type `FieldType`. This is used to generate CartesianIndices over the homogeneous
 @generated function homogeneous_axes(::AbstractGrid{<:Any,D,AXES,FFT_DIMS_ORDER}, u::Union{ProjectedField,FTField}) where {D,AXES,FFT_DIMS_ORDER}
     return Expr(:tuple, (:(axes(u, $d)) for d in FFT_DIMS_ORDER)...)
 end
+
+"""
+    inhomogeneous_axes(grid, u) -> Tuple
+
+Return the tuple of axes corresponding to the inhomogeneous (non-FFT) dimensions of
+`grid` for a field `u`.  Complementary to [`homogeneous_axes`](@ref).
+"""
+@generated function inhomogeneous_axes(::AbstractGrid{<:Any,D,AXES,FFT_DIMS_ORDER}, u::Union{ProjectedField,FTField}) where {D,AXES,FFT_DIMS_ORDER}
+    inh_dims = [d for d in 1:D if d ∉ FFT_DIMS_ORDER]
+    return Expr(:tuple, (:(axes(u, $d)) for d in inh_dims)...)
+end

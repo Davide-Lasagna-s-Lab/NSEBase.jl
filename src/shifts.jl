@@ -24,16 +24,18 @@ per homogeneous dimension in `FFT_DIMS_ORDER` order) at signed wavenumber vector
 The factor is `∏_j exp(i · k[j] · shifts[j] · wavenumber_scale(g, FFT_DIMS_ORDER[j]))`.
 Zero wavenumbers contribute a factor of `1` (exact, no floating-point error).
 """
-function _shift_phase(g::AbstractGrid{T, D, AXES, FFT_DIMS_ORDER},
+function _shift_phase(     g::AbstractGrid{T, D, AXES, FFT_DIMS_ORDER},
                       shifts::NTuple{N, Real},
-                      k::WaveNumberVector{N}) where {T, D, AXES, FFT_DIMS_ORDER, N}
+                           k::WaveNumberVector{N}) where {T, D, AXES, FFT_DIMS_ORDER, N}
     N == length(FFT_DIMS_ORDER) ||
         throw(DimensionMismatch("shifts must have one entry per homogeneous dimension; got $(N), expected $(length(FFT_DIMS_ORDER))"))
-    return prod(1:N) do i
-        n = k[i]
-        iszero(n) ? one(Complex{T}) :
-                    cis(n * shifts[i] * wavenumber_scale(g, FFT_DIMS_ORDER[i]))
+    # Sum all phase angles first, then call cis once — cheaper than N separate
+    # cis calls.  N is a compile-time constant so the loop is fully unrolled.
+    angle = zero(T)
+    for i in 1:N
+        angle += k[i] * shifts[i] * wavenumber_scale(g, FFT_DIMS_ORDER[i])
     end
+    return cis(angle)
 end
 
 """
@@ -51,15 +53,22 @@ The phase factor applied to spectral coefficient at signed wavenumber vector `k`
 
 Returns `u` unchanged when all shifts are zero.
 """
-function shift!(u::FTField{G}, shifts) where {G<:AbstractGrid{T, D, AXES, FFT_DIMS_ORDER}} where {T, D, AXES, FFT_DIMS_ORDER}
+function shift!(u::FTField, shifts)
     any(!iszero, shifts) || return u
-    g         = grid(u)
-    pu        = parent(u)
+    g  = grid(u)
+    pu = parent(u)
+    # Outer loop: homogeneous wavenumber — compute phase factor once per k.
+    # Inner loop: inhomogeneous indices — scalar indexing (plain integer tuple)
+    # so no temporary slice is allocated on each iteration.
+    # Note that this loop ordering is optimal if the homogeneous dimensions are 
+    # the last axes of the array
     for Ih in CartesianIndices(homogeneous_axes(g, u))
-        k = to_wavenumber_vector(g, Ih)
+        k     = to_wavenumber_vector(g, Ih)
         phase = _shift_phase(g, shifts, k)
-        I = combine_indices(g, Colon(), Ih)
-        @inbounds pu[I...] *= phase
+        for Iinh in CartesianIndices(inhomogeneous_axes(g, u))
+            I = combine_indices(g, Iinh, Ih)
+            @inbounds pu[I...] *= phase
+        end
     end
     return u
 end
