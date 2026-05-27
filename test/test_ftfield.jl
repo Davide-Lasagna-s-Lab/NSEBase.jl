@@ -9,7 +9,7 @@
 
 @testset verbose=true "FTField contract                    " begin
 
-    @testset "constructor normalises mean and Hermitian mirror pairs" begin
+    @testset "constructor normalises mean and Hermitian mirror pairs            " begin
         Ny, Nx, Nz = 3, 8, 5
         g = TripleGrid(Ny, Nx, Nz)
 

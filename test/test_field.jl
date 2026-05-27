@@ -1,22 +1,22 @@
 # Tests for src/field.jl.
 #
 # Contract:
-#   - `Field(grid, f)` evaluates `f` on `points(grid)` in storage order.
+#   - `Field(grid, fun)` evaluates `fun` on `points(grid)` in storage order.
 #   - `Field(grid)` allocates the zero field on the physical grid.
 #   - `copy`, `zero`, and `similar` preserve the field wrapper and grid.
 
-@testset verbose=true "Field contract                      " begin
+@testset verbose=true "Field contract                        " begin
     Nx, Ny = 5, 7
     g = FakeGrid(range(-1, 1, length=Nx) |> collect, Ny, 2π)
 
-    @testset "function constructor uses grid points in storage order" begin
+    @testset "function constructor uses grid points in storage order            " begin
         xpts, ypts = points(g)
-        f(x, y) = 1 + 2x - cos(y)
-        u = Field(g, f)
+        fun(x, y) = 1 + 2x - cos(y)
+        u = Field(g, fun)
 
         @test grid(u) === g
         @test size(u) == size(g)
-        @test parent(u) ≈ f.(xpts, ypts)
+        @test parent(u) ≈ fun.(xpts, ypts)
     end
 
     @testset "zero, copy, and similar preserve wrapper semantics" begin

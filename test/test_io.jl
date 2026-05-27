@@ -29,7 +29,7 @@
         @test g2.L  == g.L
     end
 
-    @testset "save_field / load_field round-trip" begin
+    @testset "save_field / load_field round-trip                                " begin
         # A ProjectedField's coefficient array must be recovered bit-exact
         # after a save/load cycle.
         Nx, Ny = 8, 12

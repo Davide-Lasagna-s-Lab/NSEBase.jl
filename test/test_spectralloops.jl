@@ -16,7 +16,7 @@ function collect_wavenumber_vectors(g)
     return result
 end
 
-@testset verbose=true "Spectral looping                    " begin
+@testset verbose=true "Spectral looping                                                    " begin
     @testset "for_each_homogeneous_index" begin
         # Grid with one rfft dimension of size 7, FFT_DIMS_ORDER = (1,)
         g = SpectralTestGrid{(7,), 1, (1, nothing, nothing, nothing), (1,)}()

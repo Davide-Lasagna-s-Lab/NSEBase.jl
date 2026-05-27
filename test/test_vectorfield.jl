@@ -30,7 +30,7 @@
         @test all(iszero, parent(z[2]))
     end
 
-    @testset "add_base_flow! touches only the homogeneous DC slice" begin
+    @testset "add_base_flow! touches only the homogeneous DC slice              " begin
         Ny, Nx, Nz = 4, 8, 5
         g = TripleGrid(Ny, Nx, Nz)
         u = VectorField(g; N=3)

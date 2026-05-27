@@ -31,7 +31,7 @@
         @test modes(b) === Ψ
     end
 
-    @testset "WaveNumberVector indexing preserves modal symmetry" begin
+    @testset "WaveNumberVector indexing preserves modal symmetry                " begin
         Ny, Nx, Nz, Nm = 2, 8, 5, 3
         g = TripleGrid(Ny, Nx, Nz)
         a = ProjectedField(g, _projected_modes(g, Nm))

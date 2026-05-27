@@ -28,7 +28,7 @@
         @test C.scales === (1.0, 2.0, 3.0)
     end
 
-    @testset "getindex evaluates the formula at a signed wavenumber" begin
+    @testset "getindex evaluates the formula at a signed wavenumber             " begin
         # w(k) = 1 / (1 + (σ₁ k₁)² + (σ₂ k₂)²).  Verify on a handful of k.
         σ₁, σ₂ = 2.0, 3.0
         A = FarazmandWeight(σ₁, σ₂)

@@ -395,7 +395,7 @@ end
         @test allocs_after_warmup(() -> ln(0.0, q, q, out)) == 0
     end
 
-    @testset "src/equations/cartesianprimitive_3d.jl" begin
+    @testset "src/equations/cartesianprimitive_3d.jl                            " begin
         (; g) = alloc_fixture()
 
         # Construction allocates caches and FFTW plans. The full 3-D operator
@@ -408,7 +408,7 @@ end
     @testset "src/equations/projectednse.jl" begin
         (; g, modes, a, b) = alloc_projected_2d_fixture()
         base = (zeros(size(g, 1)), nothing)
-        eq = construct_equations(g, 100.0, base, CartesianPrimitive2D(); flags=FFTW.ESTIMATE, dealias=false)
+        eq = construct_equations(g, 100.0, base, CartesianPrimitive2D(); flags=FFTW.ESTIMATE, dealias=true)
 
         @test allocs_after_warmup(() -> ProjectedNSE(g, 2, eq.nl, eq.ln, base)) > 0
         @test allocs_after_warmup(() -> eq(a, b)) == 0

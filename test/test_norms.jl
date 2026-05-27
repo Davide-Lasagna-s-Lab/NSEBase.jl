@@ -130,7 +130,7 @@
         @test_throws DimensionMismatch minnormdiff(u2, u2, (4,))
     end
 
-    @testset "ProjectedField: dot is real and matches the explicit formula" begin
+    @testset "ProjectedField: dot is real and matches the explicit formula      " begin
         # ProjectedField.dot is the spectral inner-product weighted by
         # Hermitian multiplicity c_{k₁} on the rfft axis, summed over (m, k).
         Nx, Ny = 8, 12
