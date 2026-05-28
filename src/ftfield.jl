@@ -79,9 +79,6 @@ Base.@propagate_inbounds function Base.setindex!(u::FTField, v, i::Int)
     return v
 end
 
-#TODO: document this and check
-Base.CartesianIndices(u::FTField) = CartesianIndices(size(u))
-
 # indexing with a cartesianindex
 Base.@propagate_inbounds function Base.getindex(u::FTField, I::CartesianIndex)
     @boundscheck checkbounds(parent(u), I)
@@ -118,7 +115,7 @@ This is optional.  Packages should only implement it if they support
 resolution-changing transforms such as `FFT(u, target_size)` and
 `IFFT(û, target_size)`.
 """
-function growto(u::FTField{G}, target_size::NTuple{N, Int}) where {T, D, AXES, FFT_DIMS_ORDER, N, G<:AbstractGrid{T, D, AXES, FFT_DIMS_ORDER}}
+function growto(u::FTField{G}, target_size::NTuple{N, Int}) where {FFT_DIMS_ORDER, N, G<:AbstractGrid{<:Any, <:Any, <:Any, FFT_DIMS_ORDER}}
     N == length(FFT_DIMS_ORDER) ||
         throw(ArgumentError("target_size has incompatible size: expected a tuple of length $(length(FFT_DIMS_ORDER)), got length $N"))
     out = FTField(growto(grid(u), target_size))
