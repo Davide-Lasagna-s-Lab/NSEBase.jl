@@ -62,10 +62,10 @@ function shift!(u::FTField, shifts)
     # so no temporary slice is allocated on each iteration.
     # This loop ordering is cache-friendly when the inhomogeneous dimensions are
     # the first (lowest-stride) storage axes, as in the channel-flow layout.
-    for Ih in CartesianIndices(homogeneous_axes(g, u))
+    for Ih in CartesianIndices(homogeneous_axes(u))
         k     = to_wavenumber_vector(g, Ih)
         phase = _shift_phase(g, shifts, k)
-        for Iinh in CartesianIndices(inhomogeneous_axes(g, u))
+        for Iinh in CartesianIndices(inhomogeneous_axes(u))
             I = combine_indices(g, Iinh, Ih)
             @inbounds pu[I...] *= phase
         end

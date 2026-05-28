@@ -24,6 +24,11 @@
 #
 # `apply_symmetry!` and `normalise_mean!` are `@generated` utilities defined at
 # the bottom of this file and are also used by `ProjectedField` on construction.
+#
+# `homogeneous_axes(u)` and `inhomogeneous_axes(u)` are @generated helpers that
+# return the axis ranges for the FFT and non-FFT storage dimensions of `u`.
+# They are resolved at compile time from the grid type embedded in `FTField{G}`
+# so no grid argument is needed.  Both are used by `shift!` and `growto`.
 
 """
     FTField{G} where {G<:AbstractGrid}
@@ -117,7 +122,7 @@ function growto(u::FTField{G}, target_size::NTuple{N, Int}) where {T, D, AXES, F
     N == length(FFT_DIMS_ORDER) ||
         throw(ArgumentError("target_size has incompatible size: expected a tuple of length $(length(FFT_DIMS_ORDER)), got length $N"))
     out = FTField(growto(grid(u), target_size))
-    for Ih in CartesianIndices(homogeneous_axes(grid(u), u))
+    for Ih in CartesianIndices(homogeneous_axes(u))
         # Build an index tuple with Colon() for each inhomogeneous dimension and
         # the spectral storage index for each homogeneous dimension, then splat it.
         I = combine_indices(grid(u), Colon(), Ih)
@@ -306,3 +311,39 @@ data.
     return :(@views $slice .= real.($slice); return data)
 end
 normalise_mean!(data, H::Dims) = normalise_mean!(data, Val(H))
+
+"""
+    homogeneous_axes(u::FTField) -> Tuple
+
+Return a tuple of `axes(u, d)` for each storage dimension `d` in
+`FFT_DIMS_ORDER` — the homogeneous (FFT) dimensions of the grid.
+
+The result is suitable for `CartesianIndices(homogeneous_axes(u))` to
+iterate over all spectral wavenumber indices of `u` without touching the
+inhomogeneous (quadrature) dimension(s).
+
+The grid type is extracted from `u` at compile time, so this call
+produces zero allocations at runtime.
+"""
+@generated function homogeneous_axes(u::FTField{<:AbstractGrid{<:Any, D, <:Any, FFT_DIMS_ORDER}}) where {D, FFT_DIMS_ORDER}
+    return Expr(:tuple, (:(axes(u, $d)) for d in FFT_DIMS_ORDER)...)
+end
+
+"""
+    inhomogeneous_axes(u::FTField) -> Tuple
+
+Return a tuple of `axes(u, d)` for each storage dimension `d` that is
+**not** in `FFT_DIMS_ORDER` — the inhomogeneous (non-FFT, e.g. Chebyshev)
+dimensions of the grid.  Complementary to [`homogeneous_axes`](@ref).
+
+Used as the inner loop range in [`shift!`](@ref) so that each inhomogeneous
+index is updated via a scalar `parent[I...] *= phase` with no temporary
+slice allocation.
+
+The grid type is extracted from `u` at compile time, so this call
+produces zero allocations at runtime.
+"""
+@generated function inhomogeneous_axes(u::FTField{<:AbstractGrid{<:Any, D, <:Any, FFT_DIMS_ORDER}}) where {D, FFT_DIMS_ORDER}
+    inh_dims = [d for d in 1:D if d ∉ FFT_DIMS_ORDER]
+    return Expr(:tuple, (:(axes(u, $d)) for d in inh_dims)...)
+end
