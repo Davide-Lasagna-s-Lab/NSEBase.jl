@@ -119,6 +119,8 @@ function growto(u::FTField{G}, target_size::NTuple{N, Int}) where {FFT_DIMS_ORDE
     N == length(FFT_DIMS_ORDER) ||
         throw(ArgumentError("target_size has incompatible size: expected a tuple of length $(length(FFT_DIMS_ORDER)), got length $N"))
     out = FTField(growto(grid(u), target_size))
+    #TODO: fix this as it is probably not working. the problem is that indexing 
+    # out and i with the same index is wrong, we should be using the wavenumber indexing
     for Ih in CartesianIndices(homogeneous_axes(u))
         # Build an index tuple with Colon() for each inhomogeneous dimension and
         # the spectral storage index for each homogeneous dimension, then splat it.
