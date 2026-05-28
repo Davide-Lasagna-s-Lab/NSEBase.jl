@@ -5,18 +5,19 @@
 # ±i·n·wavenumber_scale(g, dim), where n is the signed integer wavenumber and
 # the sign is +1 for the forward operator and −1 for its L2 adjoint.
 #
-# The core primitive is `ddx!(out, u, Val{DIM})`, a `@generated` function that
-# emits a fully unrolled loop nest specialised to the grid type.  The generated
-# code splits signed-FFT dimensions into two contiguous blocks (positive and
-# negative wavenumbers) so that the signed wavenumber value can be computed
-# branch-free from the loop variable, and processes dimensions in ascending
-# order so that dimension 1 (the column-major stride-1 axis) is always the
-# innermost loop.
+# The core primitive is `ddx!(out, u, Val{DIM})`, implemented with
+# CartesianIndices loops.  For the rfft dimension all stored wavenumbers are
+# non-negative so a single loop over the full array suffices.  For signed-FFT
+# dimensions the index range is split into a positive block [1:(N÷2)+1] and a
+# negative block [(N÷2)+2:N] so that the signed wavenumber can be computed
+# branch-free from the loop index inside each block.  The two-block
+# specialisation (rfft vs signed FFT) and the ntuple range construction are
+# eliminated at compile time because DIM and FFT_DIMS_ORDER are type parameters.
 #
 # Four named wrappers `ddx_1!`, `ddx_2!`, `ddx_3!`, `ddx_4!` forward to
 # `ddx!` with the array dimension read from `AXES[1]`, `AXES[2]`, `AXES[3]`,
 # `AXES[4]` respectively.  When `AXES[j] === nothing` (e.g. a steady 3D grid
-# has no time dimension), the generated code is a compile-time no-op.
+# has no time dimension), the guard clause turns the call into a no-op.
 #
 # Inhomogeneous (non-FFT) directions are NOT handled here — `ddx!` throws
 # `NotImplementedError` for those, and downstream packages must extend it with
@@ -41,116 +42,64 @@ For `DIM not in FFT_DIMS_ORDER` the method throws `NotImplementedError`. Downstr
 should extend this for each non-homogeneous direction (e.g. matrix multiply
 with a differentiation matrix) and handle the `adjoint` keyword there too.
 
-For `AXES[DIM] === nothing` the function reduces to identity.
+For `AXES[DIM] === nothing` the function reduces to a no-op.
 
-# Generated loop shape
+# Loop structure
 
-The generated code is arranged for memory order, not physical-coordinate order.
-For a 4D spectral array `(a, b, c, d)` with `FFT_DIMS_ORDER = (2, 3, 4)`,
-differentiating in the rfft dimension `b` generates the
-equivalent of:
+For the rfft dimension all stored wavenumbers are non-negative, so a single
+`CartesianIndices` pass over the full parent array is used.  For signed-FFT
+dimensions the index range is split into two contiguous blocks — positive
+wavenumbers `[1:(N÷2)+1]` and negative wavenumbers `[(N÷2)+2:N]` — so the
+signed wavenumber is computed branch-free inside each block.
 
-```julia
-_ddx_scale = wavenumber_scale(grid(u), 2)
-_ddx_sign = adjoint ? -1im : 1im
-for _i4 in 1:size(u, 4), _i3 in 1:size(u, 3), _i2 in 1:size(u, 2)
-    _n2 = _i2 - 1
-    for _i1 in 1:size(u, 1)
-        out[_i1, _i2, _i3, _i4] =
-            _ddx_sign * _n2 * _ddx_scale * u[_i1, _i2, _i3, _i4]
-    end
-end
-```
-
-Differentiating in a signed FFT dimension, e.g. `nz`, splits that dimension
-into two blocks so `_n3` is computed branch-free inside each block:
-
-```julia
-for _i4 in 1:size(u, 4)
-    for _i3 in 1:(size(u, 3) >> 1) + 1
-        _n3 = _i3 - 1
-        for _i2 in 1:size(u, 2), _i1 in 1:size(u, 1)
-            # same scalar assignment
-        end
-    end
-    for _i3 in (size(u, 3) >> 1) + 2:size(u, 3)
-        _n3 = _i3 - size(u, 3) - 1
-        for _i2 in 1:size(u, 2), _i1 in 1:size(u, 1)
-            # same scalar assignment
-        end
-    end
-end
-```
+Both the rfft/signed-FFT branch and the `ntuple` range construction are
+eliminated at compile time because `DIM` and `FFT_DIMS_ORDER` are type
+parameters.
 """
-@generated function ddx!(out::F,
-                           u::F,
-                            ::Val{DIM};
-                     adjoint::Bool=false) where {T, D, AXES, FFT_DIMS_ORDER, G<:AbstractGrid{T, D, AXES, FFT_DIMS_ORDER}, F<:Union{FTField{G}, ProjectedField{G}}, DIM}
+function ddx!(out::F, u::F, ::Val{DIM};
+              adjoint::Bool=false) where {
+        DIM, T, D, AXES, FFT_DIMS_ORDER,
+        G<:AbstractGrid{T, D, AXES, FFT_DIMS_ORDER},
+        F<:Union{FTField{G}, ProjectedField{G}}}
+
     # A missing logical coordinate, e.g. AXES[4] === nothing on a steady grid,
     # is represented by Val(nothing) and should be a no-op.
-    (isnothing(DIM) || isnothing(AXES[DIM])) && return :(return out)
-    DIM ∉ FFT_DIMS_ORDER && return :(throw(NotImplementedError(grid(u), Val($DIM))))
+    (isnothing(DIM) || isnothing(AXES[DIM])) && return out
+    # Inhomogeneous directions are not handled here; downstream packages must
+    # extend ddx! with a grid-specific method (e.g. a matrix–vector multiply).
+    DIM ∉ FFT_DIMS_ORDER && throw(NotImplementedError(grid(u), Val(DIM)))
 
-    syms  = [Symbol("_i", d) for d in 1:D]
-    n_sym = Symbol("_n", DIM)
-
-    # Hot scalar update. The scale and adjoint sign are hoisted outside the
-    # loops; each generated block supplies the signed wavenumber variable.
-    assign = quote
-        @inbounds parent(out)[$(syms...)] = _ddx_sign * $n_sym * _ddx_scale * parent(u)[$(syms...)]
-    end
-
-    # Wrap `body` in loops in increasing dimension order.  Because each wrapper
-    # encloses the previous expression, dimension 1 ends up innermost, which is
-    # the contiguous-memory direction for Julia arrays.
-    function cache_ordered_loop(body, ranges, wavenumbers)
-        for d in 1:D
-            sym = syms[d]
-            rng = ranges[d]
-            body = if d == DIM
-                :(for $sym in $rng
-                      $n_sym = $(wavenumbers[d])
-                      $body
-                  end)
-            else
-                :(for $sym in $rng
-                      $body
-                  end)
-            end
-        end
-        return body
-    end
-
-    ranges = [:(1:Base.size(u, $d)) for d in 1:D]
-    wnums  = Any[:nothing for _ in 1:D]
+    # Hoist the scale and adjoint sign outside the loop so each element update
+    # is a single complex multiply with no repeated division or branching.
+    scale = wavenumber_scale(grid(u), DIM)
+    coeff = adjoint ? -im * T(scale) : im * T(scale)
+    Nd    = size(u, DIM)
+    pu    = parent(u)
+    pout  = parent(out)
 
     if DIM == FFT_DIMS_ORDER[1]
-        # rfft dimension: only non-negative wavenumbers are stored.
-        wnums[DIM] = :($(syms[DIM]) - 1)
-        body = cache_ordered_loop(assign, ranges, wnums)
+        # rfft dimension: only non-negative wavenumbers 0 … Nd-1 are stored,
+        # so the wavenumber is simply the loop index minus one.  A single
+        # CartesianIndices pass over the full array suffices.
+        @inbounds for I in CartesianIndices(pu)
+            pout[I] = (coeff * (I[DIM] - 1)) * pu[I]
+        end
     else
-        # ordinary fft dimension: split into positive and negative storage
-        # blocks so no signed-wavenumber branch appears in the scalar loop.
-        pos_ranges = copy(ranges)
-        neg_ranges = copy(ranges)
-        pos_ranges[DIM] = :(1:(Base.size(u, $DIM) >> 1) + 1)
-        neg_ranges[DIM] = :((Base.size(u, $DIM) >> 1) + 2:Base.size(u, $DIM))
-        wnums[DIM] = :($(syms[DIM]) - 1)
-        pos_body = cache_ordered_loop(assign, pos_ranges, wnums)
-        wnums[DIM] = :($(syms[DIM]) - Base.size(u, $DIM) - 1)
-        neg_body = cache_ordered_loop(assign, neg_ranges, wnums)
-        body = quote
-            $pos_body
-            $neg_body
+        # Signed-FFT dimension: split into a non-negative block [1:(Nd÷2)+1]
+        # and a negative block [(Nd÷2)+2:Nd] so the signed wavenumber can be
+        # computed branch-free as a simple offset inside each block.
+        # DIM and FFT_DIMS_ORDER are type parameters, so the ntuple ranges and
+        # the if-branch are both eliminated at compile time.
+        pos_ranges = ntuple(d -> d == DIM ? (1:(Nd >> 1) + 1)  : Base.OneTo(size(pu, d)), Val(D))
+        neg_ranges = ntuple(d -> d == DIM ? ((Nd >> 1) + 2:Nd) : Base.OneTo(size(pu, d)), Val(D))
+        @inbounds for I in CartesianIndices(pos_ranges)
+            pout[I] = (coeff * (I[DIM] - 1)) * pu[I]
+        end
+        @inbounds for I in CartesianIndices(neg_ranges)
+            pout[I] = (coeff * (I[DIM] - Nd - 1)) * pu[I]
         end
     end
-
-    return quote
-        _ddx_scale = wavenumber_scale(grid(u), $DIM)
-        _ddx_sign  = adjoint ? -1im : 1im
-        $body
-        return out
-    end
+    return out
 end
 ddx!(out::VectorField{N}, u::VectorField{N}, d; kwargs...) where {N} =
     (for n in 1:N; ddx!(out[n], u[n], d; kwargs...); end; return out)
