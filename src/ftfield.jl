@@ -112,10 +112,6 @@ each source coefficient appears at the same signed wavenumber in the output and
 newly introduced wavenumbers are left exactly zero. This requires the target
 grid to represent every copied source wavenumber, so this method is primarily
 intended for increasing homogeneous resolution.
-
-This is optional.  Packages should only implement it if they support
-resolution-changing transforms such as `FFT(u, target_size)` and
-`IFFT(û, target_size)`.
 """
 function growto(u::FTField{G}, target_size::NTuple{N, Int}) where {FFT_DIMS_ORDER, N, G<:AbstractGrid{<:Any, <:Any, <:Any, FFT_DIMS_ORDER}}
     N == length(FFT_DIMS_ORDER) ||
