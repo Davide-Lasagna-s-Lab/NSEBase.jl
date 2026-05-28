@@ -314,3 +314,74 @@ Base.@propagate_inbounds function Base.setindex!(a::ProjectedField{G},
     i0 == 1 && @inbounds parent(a)[m, i0, sym_rest...] = do_conj ? val  : conj(val)
     return val
 end
+
+"""
+    homogeneous_axes(a::ProjectedField) -> Tuple
+
+Return `(axes(parent(a), 2), axes(parent(a), 3), …)` — one axis range per
+homogeneous (FFT) dimension of the grid.
+
+`parent(a)` has shape `(Nm, kH_1_sz, kH_2_sz, …)`: axis 1 is the mode index
+and axes 2..Nhom+1 are the kH axes in `FFT_DIMS_ORDER` order.  This function
+returns those kH axis ranges so callers can iterate over all wavenumber
+combinations without knowing the concrete grid type.
+"""
+@generated function homogeneous_axes(a::ProjectedField{<:AbstractGrid{<:Any,<:Any,<:Any,FFT_DIMS_ORDER}}) where {FFT_DIMS_ORDER}
+    Nhom = length(FFT_DIMS_ORDER)
+    return Expr(:tuple, (:(axes(parent(a), $(k+1))) for k in 1:Nhom)...)
+end
+
+"""
+    apply_symmetry!(a::ProjectedField) -> a
+
+Enforce Hermitian symmetry in-place on the modal coefficient array of `a`.
+
+`parent(a)` has shape `(Nm, kH_1_sz, …, kH_Nhom_sz)`: axis 1 is the mode
+index and axes 2..Nhom+1 are the kH axes in `FFT_DIMS_ORDER` order (rfft
+first, then signed FFTs).  The symmetry condition `a(-k) = conj(a(k))`
+applies at the zero-rfft-wavenumber slice exactly as for `FTField`.
+
+The outer loop is restricted to `rfft_index == 1` (the DC plane of
+`parent(a)` axis 2) and iterates all signed-FFT axes fully.  The conjugate
+partner is computed by flipping each signed-FFT kH axis via FFTW wrap-around.
+Within each `(Ih, Ih_neg)` pair the inner mode loop runs over axis 1 at
+stride-1 for cache efficiency, and `_average_complex` enforces
+`a[m, -k] = conj(a[m, k])` to floating-point precision.
+"""
+function apply_symmetry!(a::ProjectedField{<:AbstractGrid{<:Any,<:Any,<:Any,FFT_DIMS_ORDER}}) where {FFT_DIMS_ORDER}
+    Nhom = length(FFT_DIMS_ORDER)
+    pa   = parent(a)
+    LI   = LinearIndices(pa)
+
+    # Restrict the rfft axis (parent axis 2, kH position k==1) to index 1.
+    # At kx > 0 the negative-kx partner is not stored, so there is nothing
+    # to symmetrize.  All other kH axes (signed-FFT) are iterated fully.
+    dc_range = ntuple(k -> k == 1 ? (1:1) : axes(pa, k + 1), Val(Nhom))
+    for Ih in CartesianIndices(dc_range)
+
+        # Conjugate-symmetric kH partner: k==1 is the rfft axis (self-partner),
+        # k>1 are signed-FFT axes (wrap-around, or self at zero wavenumber).
+        Ih_neg = CartesianIndex(ntuple(Val(Nhom)) do k
+            if k == 1
+                return Ih[k]
+            elseif Ih[k] == 1
+                return Ih[k]
+            else
+                return size(pa, k + 1) - Ih[k] + 2
+            end
+        end)
+
+        # Mode axis is innermost for stride-1 memory access.
+        for Im in axes(pa, 1)
+            I    = CartesianIndex(Im, Ih.I...)
+            Ineg = CartesianIndex(Im, Ih_neg.I...)
+
+            if LI[I] <= LI[Ineg]
+                av = _average_complex(pa[I], pa[Ineg])
+                pa[I]    = av
+                pa[Ineg] = conj(av)
+            end
+        end
+    end
+    return a
+end

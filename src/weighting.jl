@@ -89,15 +89,14 @@ function LinearAlgebra.lmul!(A::FarazmandWeight{N},
                              a::ProjectedField{G}) where {N, G<:AbstractGrid}
     g = grid(a)
 
-    # scale every Galerkin coefficient by the Farazmand weight.
-    for I in CartesianIndices(a)
-        # skip the mode index
-        homogeneous_indices = Base.tail(Tuple(I))
-        
-        # get the signed wavenumber vector for this homogeneous index, to evaluate the weight
-        k = to_wavenumber_vector(g, homogeneous_indices)
-
-        @inbounds a[I] *= A[k]
+    # Scale every Galerkin coefficient by the Farazmand weight.
+    # Outer loop: wavenumber k — one weight value per kH combination.
+    # Inner loop: mode index m — same weight applies to all modes at k.
+    for Ih in CartesianIndices(homogeneous_axes(a))
+        k = to_wavenumber_vector(g, Tuple(Ih))
+        for m in axes(parent(a), 1)
+            @inbounds parent(a)[m, Ih] *= A[k]
+        end
     end
 
     return a
@@ -122,20 +121,18 @@ function LinearAlgebra.dot(a::ProjectedField{G},
     s = zero(real(eltype(a)))
     g = grid(a)
 
-    # accumulate the weighted inner product over all wavenumbers and Galerkin modes.
-    # one_or_two accounts for rfft Hermitian symmetry (+k stored, −k implicit).
-    for I in CartesianIndices(a)
-        # skip the mode index
-        homogeneous_indices = Base.tail(Tuple(I))
-        
-        # rfft zero wavenumber is self-conjugate
-        one_or_two = (I[2] == 1 ? 1 : 2) 
-        
-        # get the signed wavenumber vector for this homogeneous index, to evaluate the weight
-        k = to_wavenumber_vector(g, homogeneous_indices)
-
-        # accumulate the contribution of this coefficient to the weighted inner product
-        @inbounds s += one_or_two * A[k] * real(LinearAlgebra.dot(a[I], b[I]))
+    # Outer loop: wavenumber k — one weight and one rfft multiplicity per kH.
+    # Inner loop: mode m — sum over all modes at each k.
+    for Ih in CartesianIndices(homogeneous_axes(a))
+        k          = to_wavenumber_vector(g, Tuple(Ih))
+        # rfft zero wavenumber is self-conjugate (counted once); all others
+        # have an implicit negative-kx partner (counted twice).
+        one_or_two = Ih[1] == 1 ? 1 : 2
+        w = one_or_two * A[k]
+        for m in axes(parent(a), 1)
+            I = CartesianIndex(m, Ih.I...)
+            @inbounds s += w * real(LinearAlgebra.dot(a[I], b[I]))
+        end
     end
 
     return s / 2

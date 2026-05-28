@@ -27,7 +27,7 @@ function alloc_fixture()
     p = copy(q)
 
     Nm = 4
-    modes = ntuple(_ -> randn(ComplexF64, 3, Nm, (8 >> 1) + 1, 6), 3)
+    modes = ntuple(_ -> randn(ComplexF64, Nm, 3, (8 >> 1) + 1, 6), 3)
     a = ProjectedField(g, randn(ComplexF64, Nm, (8 >> 1) + 1, 6), modes)
     b = copy(a)
 
@@ -48,7 +48,7 @@ end
 function alloc_projected_2d_fixture()
     g = PolynomialGrid([-1.0, -0.3, 0.2, 0.7, 1.0], 8)
     Nm = 3
-    modes = ntuple(_ -> randn(ComplexF64, length(g.y), Nm, (g.Nx >> 1) + 1), 2)
+    modes = ntuple(_ -> randn(ComplexF64, Nm, length(g.y), (g.Nx >> 1) + 1), 2)
     a = ProjectedField(g, randn(ComplexF64, Nm, (g.Nx >> 1) + 1), modes)
     b = copy(a)
     q = VectorField(FTField(g), FTField(g))

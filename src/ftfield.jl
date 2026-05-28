@@ -50,7 +50,7 @@ struct FTField{G<:AbstractGrid, A<:AbstractArray, T, D} <: AbstractArray{Complex
 
     # main constructor which sanitises data
     FTField(grid::G, data::A) where {T, D, G<:AbstractGrid{T, D}, A<:Array{Complex{T}, D}} =
-        new{G, A, T, D}(grid, apply_symmetry!(normalise_mean!(data, fft_dims(grid)), fft_dims(grid)))
+        new{G,A,T,D}(grid, apply_symmetry!(normalise_mean!(data, fft_dims(grid)), fft_dims(grid)))
 end
 FTField(grid::AbstractGrid{T}, data::AbstractArray) where {T} = FTField(grid, Complex{T}.(data))
 
@@ -210,97 +210,87 @@ end
 # --------------- #
 # utility methods #
 # --------------- #
-@inline function _average_complex(z1::T, z2::T) where {T}
-    _re = 0.5 * (real(z1) + real(z2))
-    _im = 0.5 * (imag(z1) - imag(z2))
-    return _re + im * _im
-end
 
 """
-    apply_symmetry!(data::AbstractArray{T, D}, ::Val{H})
+    apply_symmetry!(u::FTField) -> u
 
-Enforce Hermitian symmetry on `data` after a multi-dimensional RFFT along
-the dimensions listed in `H` (in transform order).
+Enforce Hermitian symmetry in-place on the spectral coefficient array of `u`.
 
-For a real-valued physical field, Fourier coefficients must satisfy
-û(-k) = conj(û(k)). After the RFFT along `H[1]`, only non-negative
-frequencies along that axis are stored. Along the remaining axes `H[2:end]`
-both signs are present, but at the zero-frequency plane of `H[1]` (index 1)
-the coefficients must still satisfy the conjugate-symmetry constraint — this
-function enforces it by averaging each conjugate pair in-place.
+The symmetry condition `û(-k) = conj(û(k))` must hold for the signed-FFT
+wavenumbers **at the zero-frequency slice of the rfft axis only** — at
+non-zero rfft wavenumbers the negative-kx partner is not stored, so there is
+nothing to enforce.
 
-Dimensions not in `H` are untransformed and are iterated over in full.
-No-op when only one dimension is transformed (`length(H) == 1`).
+The outer loop is restricted to `rfft_index == 1` (the DC plane) and iterates
+all signed-FFT axes fully.  For each DC-plane kH index `Ih`, the conjugate
+partner `Ih_neg` is computed by flipping the signed-FFT axes:
 
-# Note on cache efficiency
-The DC plane of `H[1]` (the rfft dim) has memory stride `size(data, H[1])`
-rather than 1, because the rfft dim is stored as the leading (stride-1)
-dimension. The loop iterates the remaining dims in ascending stride order,
-which is optimal for the current layout. If this function is a bottleneck,
-storing the rfft dim last would give stride-1 access to the DC plane.
+- rfft axis (k==1 in `FFT_DIMS_ORDER`): `Ih_neg` carries the same index.
+- signed-FFT axis at index 1 (wavenumber 0): self-conjugate, `Ih_neg = Ih`.
+- signed-FFT axis at index `i > 1`: wrap-around `Ih_neg = size(u, dim) - i + 2`.
+
+The inner inhomogeneous loop (over `inhomogeneous_axes`) then maps each
+`(Ih, Ih_neg)` kH pair to a full array index via `combine_indices` and
+averages each `(I, Ineg)` pair exactly once (guarded by `LI[I] <= LI[Ineg]`)
+using `_average_complex`, which enforces `û(-k) = conj(û(k))` to
+floating-point precision.
 """
-@generated function apply_symmetry!(data::AbstractArray{T, D}, ::Val{H}) where {T, D, H}
-    length(H) <= 1 && return :(return data)
+function apply_symmetry!(u::FTField{<:AbstractGrid{<:Any,<:Any,<:Any,FFT_DIMS_ORDER}}) where {FFT_DIMS_ORDER}
+    # we'll use this to avoid doing the same work twice for each conjugate pair
+    LI = LinearIndices(parent(u))
+    g  = grid(u)
 
-    # All subset enumeration happens at code-generation time so the compiled
-    # hot loop contains only literal index expressions — no closures, no dynamic
-    # dispatch, no allocations.
-    secondary = H[2:end]
-    blocks    = Expr[]
+    # Restrict the rfft axis (k==1 in the kH tuple) to index 1 — the DC plane.
+    # At kx > 0 the negative-kx partner is not stored, so there is nothing to
+    # symmetrize.  All other kH axes (signed-FFT) are iterated fully.
+    dc_range = ntuple(Val(length(FFT_DIMS_ORDER))) do k
+        k == 1 ? (1:1) : axes(u, FFT_DIMS_ORDER[k])
+    end
+    
+    for Ih in CartesianIndices(dc_range)
 
-    for mask_int in 1:(1 << length(secondary)) - 1
-
-        # active subset of secondary dims for this pass
-        active_dims = Tuple(secondary[k] for k in eachindex(secondary) if Bool((mask_int >> (k-1)) & 1))
-        half_dim    = active_dims[end]
-
-        # per-dim range literals (e.g. 1:1, 2:Base.size(data,3)>>1+1, ...)
-        range_exprs = ntuple(D) do d
-            if d == H[1]
-                :(1:1)
-            elseif d == half_dim
-                :(2:(Base.size(data, $d) >> 1) + 1)
-            elseif d in active_dims
-                :(2:Base.size(data, $d))
-            elseif d in secondary
-                :(1:1)
+        Ih_neg = CartesianIndex(ntuple(Val(length(FFT_DIMS_ORDER))) do d
+            if FFT_DIMS_ORDER[d] == rfft_dim(g)
+                # rfft axis: partner is the same index, no conjugation.
+                return Ih[d]
             else
-                :(1:Base.size(data, $d))
-            end
-        end
-
-        # per-dim neg-index literals (e.g. I[1], Base.size(data,2)-I[2]+2, ...)
-        neg_exprs = ntuple(d -> d in active_dims ? :(Base.size(data, $d) - I[$d] + 2) : :(I[$d]), D)
-
-        push!(blocks, quote
-            for I in CartesianIndices($(Expr(:tuple, range_exprs...)))
-                neg       = $(Expr(:call, :CartesianIndex, neg_exprs...))
-                _av       = _average_complex(data[I], data[neg])
-                data[I]   = _av
-                data[neg] = conj(_av)
+                if Ih[d] == 1
+                    # zero wavenumber: self-conjugate.
+                    return Ih[d]
+                else
+                    # negative wavenumber partner using FFTW wrap-around order.
+                    return size(u, FFT_DIMS_ORDER[d]) - Ih[d] + 2
+                end
             end
         end)
-    end
 
-    return quote
-        $(blocks...)
-        return data
+        # loop over the inhomogeneous indices and average the conjugate pair
+        for Inh in CartesianIndices(inhomogeneous_axes(u))
+            I    = CartesianIndex(combine_indices(g, Inh, Ih))
+            Ineg = CartesianIndex(combine_indices(g, Inh, Ih_neg))
+
+            if LI[I] <= LI[Ineg]
+                av = _average_complex(parent(u)[I], parent(u)[Ineg])
+                parent(u)[I]    = av
+                parent(u)[Ineg] = conj(av)
+            end
+        end
     end
+    return u
 end
-apply_symmetry!(data, H::Dims) = apply_symmetry!(data, Val(H))
 
 """
-    normalise_mean!(data::Array{<:Any, D}, ::Val{H})
+    normalise_mean!(data::Array{<:Any, D}, ::Val{FFT_DIMS_ORDER})
 
 Enforce purely real values at mean component of Fourier transformed
 data.
 """
-@generated function normalise_mean!(data::Array{<:Any, D}, ::Val{H}) where {D, H}
-    indxs = [d ∈ H ? 1 : :(:) for d in 1:D]
+@generated function normalise_mean!(data::Array{<:Any, D}, ::Val{FFT_DIMS_ORDER}) where {D, FFT_DIMS_ORDER}
+    indxs = [d ∈ FFT_DIMS_ORDER ? 1 : :(:) for d in 1:D]
     slice = Expr(:ref, :data, indxs...)
     return :(@views $slice .= real.($slice); return data)
 end
-normalise_mean!(data, H::Dims) = normalise_mean!(data, Val(H))
+normalise_mean!(data, FFT_DIMS_ORDER::Dims) = normalise_mean!(data, Val(FFT_DIMS_ORDER))
 
 """
     homogeneous_axes(u::FTField) -> Tuple

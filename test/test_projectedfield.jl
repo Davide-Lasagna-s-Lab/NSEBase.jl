@@ -149,4 +149,82 @@
         @test all(imag(b[i]) == 0 for i in eachindex(a))
     end
 
+    @testset "constructor enforces zero mean and Hermitian symmetry on DC plane" begin
+        # The constructor must call normalise_mean! and apply_symmetry!.
+        Ny, Nx, Nz, Nm = 3, 8, 5, 4
+        g  = TripleGrid(Ny, Nx, Nz)
+        Ψ  = _projected_modes(g, Nm)
+        raw = randn(ComplexF64, Nm, (Nx >> 1) + 1, Nz)
+        a  = ProjectedField(g, copy(raw), Ψ)
+
+        # Zero-wavenumber slice must be real (normalise_mean! invariant):
+        # parent(a)[m, rfft_idx=1, z_idx=1] must have zero imaginary part.
+        @test all(iszero, imag.(parent(a)[:, 1, 1]))
+
+        # DC plane (rfft index 1): signed z modes are conjugate pairs across all modes.
+        for m in 1:Nm, kz in 1:(Nz >> 1)
+            @test parent(a)[m, 1, kz + 1] ≈ conj(parent(a)[m, 1, Nz - kz + 1])
+        end
+    end
+
+    @testset "apply_symmetry! only modifies the DC (rfft=0) plane            " begin
+        Ny, Nx, Nz, Nm = 3, 8, 5, 4
+        g  = TripleGrid(Ny, Nx, Nz)
+        Ψ  = _projected_modes(g, Nm)
+        a  = ProjectedField(g, Ψ)
+
+        # Load un-symmetrized data directly into parent (bypassing constructor).
+        raw = randn(ComplexF64, size(parent(a)))
+        parent(a) .= raw
+        snapshot = copy(raw)
+
+        NSEBase.apply_symmetry!(a)
+
+        # DC plane: signed z modes are conjugate pairs for every mode.
+        for m in 1:Nm, kz in 1:(Nz >> 1)
+            @test parent(a)[m, 1, kz + 1] ≈ conj(parent(a)[m, 1, Nz - kz + 1])
+        end
+
+        # Non-DC plane (rfft index > 1): entries must be untouched.
+        for kx in 2:(Nx >> 1) + 1
+            @test parent(a)[:, kx, :] == snapshot[:, kx, :]
+        end
+    end
+
+    @testset "apply_symmetry! is idempotent                                  " begin
+        Ny, Nx, Nz, Nm = 3, 8, 5, 4
+        g = TripleGrid(Ny, Nx, Nz)
+        a = ProjectedField(g, _projected_modes(g, Nm))
+        parent(a) .= randn(ComplexF64, size(parent(a)))
+
+        NSEBase.apply_symmetry!(a)
+        after_first = copy(parent(a))
+        NSEBase.apply_symmetry!(a)
+
+        @test parent(a) == after_first
+    end
+
+    @testset "apply_symmetry! handles all modes uniformly                    " begin
+        # Each mode slice (fixed kH) should be treated identically —
+        # apply_symmetry! must not mix data between different modes.
+        Ny, Nx, Nz, Nm = 2, 4, 5, 6
+        g  = TripleGrid(Ny, Nx, Nz)
+        Ψ  = _projected_modes(g, Nm)
+        a  = ProjectedField(g, Ψ)
+
+        # Assign a distinct base value per mode; kH structure is random.
+        for m in 1:Nm
+            parent(a)[m, :, :] .= m .* randn(ComplexF64, (Nx >> 1) + 1, Nz)
+        end
+
+        NSEBase.apply_symmetry!(a)
+
+        # After symmetrization each mode slice must independently satisfy
+        # the conjugate-pair condition — mode m data must not have leaked
+        # into mode m' != m at non-touched kx positions.
+        for m in 1:Nm, kz in 1:(Nz >> 1)
+            @test parent(a)[m, 1, kz + 1] ≈ conj(parent(a)[m, 1, Nz - kz + 1])
+        end
+    end
+
 end

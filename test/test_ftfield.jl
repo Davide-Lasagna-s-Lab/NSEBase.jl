@@ -16,14 +16,55 @@
         raw = randn(ComplexF64, Ny, (Nx >> 1) + 1, Nz)
         u = FTField(g, copy(raw))
 
-        # The full zero-wavenumber line is real because a real physical field
-        # cannot have an imaginary mean at any inhomogeneous point.
+        # The full zero-wavenumber line is real (normalise_mean! invariant).
         @test all(iszero, imag.(parent(u)[:, 1, 1]))
 
-        # On the rfft zero plane, signed z modes are conjugate pairs.
+        # On the rfft zero plane, signed z modes are conjugate pairs
+        # (apply_symmetry! invariant).
         for j in 1:Ny, kz in 1:(Nz >> 1)
             @test parent(u)[j, 1, kz + 1] ≈ conj(parent(u)[j, 1, Nz - kz + 1])
         end
+    end
+
+    @testset "apply_symmetry! only modifies the DC (rfft=0) plane            " begin
+        Ny, Nx, Nz = 3, 8, 5
+        g   = TripleGrid(Ny, Nx, Nz)
+        raw = randn(ComplexF64, Ny, (Nx >> 1) + 1, Nz)
+        u   = FTField(g, copy(raw))  # constructor already called apply_symmetry!
+
+        # Scramble the data, then call apply_symmetry! explicitly.
+        parent(u) .= randn(ComplexF64, size(parent(u)))
+        NSEBase.apply_symmetry!(u)
+
+        # DC plane (rfft index 1): signed z modes are conjugate pairs.
+        for j in 1:Ny, kz in 1:(Nz >> 1)
+            @test parent(u)[j, 1, kz + 1] ≈ conj(parent(u)[j, 1, Nz - kz + 1])
+        end
+
+        # Non-DC plane (rfft index > 1): entries must be untouched.
+        # Re-run with a copy to compare.
+        raw2 = randn(ComplexF64, Ny, (Nx >> 1) + 1, Nz)
+        u2   = FTField(g, copy(raw2))
+        parent(u2) .= copy(raw2)     # bypass constructor, load un-symmetrized data
+        snapshot = copy(parent(u2))
+        NSEBase.apply_symmetry!(u2)
+        # All non-DC-plane entries are unchanged.
+        for kx in 2:(Nx >> 1) + 1
+            @test parent(u2)[:, kx, :] == snapshot[:, kx, :]
+        end
+    end
+
+    @testset "apply_symmetry! is idempotent                                  " begin
+        Ny, Nx, Nz = 3, 8, 5
+        g = TripleGrid(Ny, Nx, Nz)
+        u = FTField(g)
+        parent(u) .= randn(ComplexF64, size(parent(u)))
+
+        NSEBase.apply_symmetry!(u)
+        after_first = copy(parent(u))
+        NSEBase.apply_symmetry!(u)
+
+        @test parent(u) == after_first
     end
 
     @testset "growto copies source coefficients to the same wavenumbers" begin
