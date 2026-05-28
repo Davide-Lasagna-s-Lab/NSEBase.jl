@@ -110,7 +110,7 @@
         @test parent(seq) ≈ parent(sum_) atol=1e-14
     end
 
-    @testset "ProjectedField: shift! changes only the homogeneous indices" begin
+    @testset "ProjectedField: shift! changes only the homogeneous indices       " begin
         # ProjectedField storage is `(Nm, kH...)`, so shift! acts only on the
         # homogeneous indices; the mode axis is untouched.  We verify this
         # by checking that the m-axis row of magnitudes is preserved

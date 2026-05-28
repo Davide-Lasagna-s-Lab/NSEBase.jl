@@ -1,7 +1,7 @@
 import FFTW
 using FFTW: ESTIMATE
 
-@testset "FFTPlans constructor                " begin
+@testset "FFTPlans constructor                                                " begin
     for T in (Float32, Float64)
         # 1D, no dealiasing: cache is the standard spectral shape, norm = 1/N
         f = FFTPlans((8,), (1,), T, dealias=false, flags=ESTIMATE)
@@ -57,7 +57,7 @@ using FFTW: ESTIMATE
     end
 end
 
-@testset verbose=true "Transform utilities             " begin
+@testset verbose=true "Transform utilities                                                 " begin
     @testset "get_padded_size                " begin
         # single transformed dimension
         @test NSEBase.get_padded_size((4,), (1,)) == (7,)
@@ -209,7 +209,7 @@ end
     end
 end
 
-@testset verbose=true "FFTPlans execution                " begin
+@testset verbose=true "FFTPlans execution                           " begin
     @testset "forward transform, 1D             " begin
         N = 16
         u = randn(Float64, N)
@@ -325,7 +325,7 @@ end
         @test u2 ≈ u
     end
 
-    @testset "backward transform round-trip, 3D " begin
+    @testset "backward transform round-trip, 3D                                 " begin
         L, M, N = 4, 6, 8
         u  = randn(Float64, L, M, N)
         û  = zeros(ComplexF64, L ÷ 2 + 1, M, N)

@@ -9,7 +9,7 @@
 
 @testset verbose=true "FTField contract                    " begin
 
-    @testset "constructor normalises mean and Hermitian mirror pairs" begin
+    @testset "constructor normalises mean and Hermitian mirror pairs            " begin
         Ny, Nx, Nz = 3, 8, 5
         g = TripleGrid(Ny, Nx, Nz)
 
@@ -50,6 +50,7 @@
         @test v[WaveNumberVector(2, 1), 1] ≈ u[WaveNumberVector(2, 1), 1]
 
         # Wavenumbers beyond the source resolution are zero.
+        # TODO: check all new wavenumbers are zero, not just a few representatives.
         @test iszero(v[WaveNumberVector(4, 0), 1])
         @test iszero(v[WaveNumberVector(0, 3), 1])
     end

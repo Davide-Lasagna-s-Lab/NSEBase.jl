@@ -1,4 +1,4 @@
-@testset "Field                               " begin
+@testset "Field                                                               " begin
     # construct grid
     Nx = 16; Ny = 11
     L = 10*rand()
@@ -46,7 +46,7 @@
     @test bar(u) == 0
 end
 
-@testset "Hermitian symmetry                  " begin
+@testset "Hermitian symmetry                                                  " begin
     # 1 dimension
     out = randn(ComplexF64, 11)
     @test NSEBase.apply_symmetry!(copy(out), ()) == out
@@ -97,7 +97,7 @@ end
     end
 end
 
-@testset "FTField                             " begin
+@testset "FTField                                                             " begin
     # construct grid
     Nx = 16; Ny = 11
     L = 10*rand()
@@ -163,7 +163,7 @@ end
     end
 end
 
-@testset "VectorField                         " begin
+@testset "VectorField                                                         " begin
     # construct grid
     Nx = 16; Ny = 11
     L = 10*rand()
@@ -221,7 +221,7 @@ end
     @test bar(u) == 0
 end
 
-@testset "ProjectedField                      " begin
+@testset "ProjectedField                                                      " begin
     # construct grid
     Nx = 16; Ny = 11
     L = 10*rand()

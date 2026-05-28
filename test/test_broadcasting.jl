@@ -7,7 +7,7 @@
 #     vector field as a plain length-N array of field objects.
 #   - Scalar assignment broadcasts into every component of a VectorField.
 
-@testset verbose=true "Broadcasting                        " begin
+@testset verbose=true "Broadcasting                                  " begin
 
     @testset "Field and FTField broadcasts preserve wrappers" begin
         Nx, Ny = 5, 8
@@ -45,7 +45,7 @@
         end
     end
 
-    @testset "scalar broadcast assignment fills every vector component" begin
+    @testset "scalar broadcast assignment fills every vector component          " begin
         Nx, Ny = 4, 6
         g = FakeGrid(range(-1, 1, length=Nx) |> collect, Ny, 2π)
         u = VectorField(g; N=3)

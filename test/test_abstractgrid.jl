@@ -15,7 +15,7 @@
 #   - Required-interface fall-throughs (`points`, `weights`,
 #     `wavenumber_scale`, `growto`, `convert`) throw `NotImplementedError`.
 
-@testset verbose=true "AbstractGrid interface              " begin
+@testset verbose=true "AbstractGrid interface               " begin
 
     # A minimal struct with no concrete implementations.  Used to verify the
     # fall-through methods throw `NotImplementedError`.
@@ -23,7 +23,7 @@
     Base.size(::BareGrid) = (4, 8, 6)
 
 
-    @testset "type-parameter accessors" begin
+    @testset "type-parameter accessors              " begin
         g = BareGrid()
 
         # fft_dims is a thin generated alias for the `FFT_DIMS_ORDER` parameter.
@@ -39,7 +39,7 @@
         end
     end
 
-    @testset "transform_size: rfft halves only ORDER[1]" begin
+    @testset "transform_size: rfft halves only ORDER[1]                         " begin
         # Grid: size (Ny=4, Nx=8, Nz=6); rfft on dim 2, signed FFT on dim 3.
         # Expected transform_size:
         #   dim 1 (inhomogeneous)  : unchanged → 4
