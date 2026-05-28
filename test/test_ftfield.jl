@@ -31,11 +31,17 @@
         g  = TripleGrid(Ny, Nx, Nz)
         u  = FTField(g)
 
-        # Write distinct values at a few representative wavenumbers.
-        u[WaveNumberVector(0, 0), 1] = 1.0 + 0im   # zero mode (real)
-        u[WaveNumberVector(1, 0), 2] = 2.0 + 3im   # positive rfft, kz=0
-        u[WaveNumberVector(0, 1), 3] = 4.0 + 5im   # kx=0, kz=1
-        u[WaveNumberVector(2, 1), 1] = 6.0 + 7im   # positive rfft, kz=1
+        # Deterministic coefficients for the whole stored source spectrum.  On
+        # the rfft-zero plane this formula respects Hermitian symmetry:
+        # coeff(0, -kz, j) == conj(coeff(0, kz, j)).
+        coeff(k, j) = complex(100j + 10k[1] + abs(k[2]),
+                              k[1] == 0 ? 3k[2] : 7k[1] + 3k[2])
+
+        # Populate every stored source wavenumber and every inhomogeneous point.
+        for Ih in CartesianIndices(NSEBase.homogeneous_axes(u)), j in 1:Ny
+            k = NSEBase.to_wavenumber_vector(g, Ih)
+            u[k, j] = coeff(k, j)
+        end
 
         # Grow to a larger grid: (Nx, Nz) → (16, 11)
         v = NSEBase.growto(u, (16, 11))
@@ -43,16 +49,22 @@
         @test size(grid(v)) == (Ny, 16, 11)
         @test size(parent(v)) == (Ny, 9, 11)   # rfft: (16>>1)+1=9, Nz stays 11
 
-        # All source wavenumbers must be preserved exactly.
-        @test v[WaveNumberVector(0, 0), 1] ≈ u[WaveNumberVector(0, 0), 1]
-        @test v[WaveNumberVector(1, 0), 2] ≈ u[WaveNumberVector(1, 0), 2]
-        @test v[WaveNumberVector(0, 1), 3] ≈ u[WaveNumberVector(0, 1), 3]
-        @test v[WaveNumberVector(2, 1), 1] ≈ u[WaveNumberVector(2, 1), 1]
+        # Exactness: every source wavenumber is copied to the same signed
+        # wavenumber in the target, including the negative signed-FFT block.
+        for Ih in CartesianIndices(NSEBase.homogeneous_axes(u)), j in 1:Ny
+            k = NSEBase.to_wavenumber_vector(g, Ih)
+            @test u[k, j] == coeff(k, j)
+            @test v[k, j] == u[k, j]
+        end
 
-        # Wavenumbers beyond the source resolution are zero.
-        # TODO: check all new wavenumbers are zero, not just a few representatives.
-        @test iszero(v[WaveNumberVector(4, 0), 1])
-        @test iszero(v[WaveNumberVector(0, 3), 1])
+        # Every target wavenumber outside the source resolution stays exactly
+        # zero.  This also catches the old bug where source k=(1,-1) was copied
+        # to target k=(1,4) by reusing storage indices instead of wavenumbers.
+        for Ih in CartesianIndices(NSEBase.homogeneous_axes(v)), j in 1:Ny
+            k = NSEBase.to_wavenumber_vector(grid(v), Ih)
+            in_source = 0 <= k[1] <= (Nx >> 1) && abs(k[2]) <= (Nz >> 1)
+            @test in_source ? v[k, j] == u[k, j] : iszero(v[k, j])
+        end
     end
 
     @testset "WaveNumberVector getindex and setindex preserve symmetry" begin
