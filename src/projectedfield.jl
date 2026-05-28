@@ -357,7 +357,7 @@ function apply_symmetry!(a::ProjectedField{<:AbstractGrid{<:Any,<:Any,<:Any,FFT_
     # At kx > 0 the negative-kx partner is not stored, so there is nothing
     # to symmetrize.  All other kH axes (signed-FFT) are iterated fully.
     dc_range = ntuple(k -> k == 1 ? (1:1) : axes(pa, k + 1), Val(Nhom))
-    for Ih in CartesianIndices(dc_range)
+    @inbounds for Ih in CartesianIndices(dc_range)
 
         # Conjugate-symmetric kH partner: k==1 is the rfft axis (self-partner),
         # k>1 are signed-FFT axes (wrap-around, or self at zero wavenumber).

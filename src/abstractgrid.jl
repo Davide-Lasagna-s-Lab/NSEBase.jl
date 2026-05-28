@@ -403,7 +403,7 @@ function apply_symmetry!(data::AbstractArray{<:Any, D}, ::Val{FFT_DIMS_ORDER}) w
     # without storing a visited-set: we process the pair only when LI[I] <= LI[Ineg].
     LI = LinearIndices(data)
 
-    for I in CartesianIndices(ranges)
+    @inbounds for I in CartesianIndices(ranges)
 
         # Find the index of the conjugate partner: flip only the secondary_fft_dims Fourier dimensions.
         Ineg = CartesianIndex(ntuple(Val(D)) do d

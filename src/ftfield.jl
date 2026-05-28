@@ -247,7 +247,7 @@ function apply_symmetry!(u::FTField{<:AbstractGrid{<:Any,<:Any,<:Any,FFT_DIMS_OR
         k == 1 ? (1:1) : axes(u, FFT_DIMS_ORDER[k])
     end
     
-    for Ih in CartesianIndices(dc_range)
+    @inbounds for Ih in CartesianIndices(dc_range)
 
         Ih_neg = CartesianIndex(ntuple(Val(length(FFT_DIMS_ORDER))) do d
             if FFT_DIMS_ORDER[d] == rfft_dim(g)
