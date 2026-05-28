@@ -227,16 +227,16 @@ end
     L = 10*rand()
     g = FakeGrid(rand(Float64, Nx), Ny, L)
 
-    # generate modes
+    # generate modes — shape (Nm, inh_sz..., kH_sz...) = (M, Nx, Nk)
     M = 10
-    Ψ = [zeros(ComplexF64, Nx, M, (Ny >> 1) + 1),
-         zeros(ComplexF64, Nx, M, (Ny >> 1) + 1),
-         zeros(ComplexF64, Nx, M, (Ny >> 1) + 1)]
+    Ψ = [zeros(ComplexF64, M, Nx, (Ny >> 1) + 1),
+         zeros(ComplexF64, M, Nx, (Ny >> 1) + 1),
+         zeros(ComplexF64, M, Nx, (Ny >> 1) + 1)]
     for ny in 1:(Ny >> 1) + 1
         tmp = qr(randn(ComplexF64, 3*Nx, M)).Q[:, 1:M]
-        Ψ[1][:, :, ny] .= tmp[     1:1*Nx, :]
-        Ψ[2][:, :, ny] .= tmp[  Nx+1:2*Nx, :]
-        Ψ[3][:, :, ny] .= tmp[2*Nx+1:3*Nx, :]
+        Ψ[1][:, :, ny] .= transpose(tmp[     1:1*Nx, :])
+        Ψ[2][:, :, ny] .= transpose(tmp[  Nx+1:2*Nx, :])
+        Ψ[3][:, :, ny] .= transpose(tmp[2*Nx+1:3*Nx, :])
     end
 
     # construct projected field from grid

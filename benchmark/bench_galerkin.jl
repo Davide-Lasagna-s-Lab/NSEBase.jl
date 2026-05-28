@@ -33,7 +33,8 @@ include("../test/test_grids.jl")
     pu_ref = Expr(:ref, :pu,      (syms[d] for d in 1:D)...)
     w_ref  = Expr(:ref, :w,       (syms[d] for d in inh_dims)...)
     mn_ref = Expr(:ref, :modes_n,
-                  (syms[d] for d in inh_dims)..., :m,
+                  :m,
+                  (syms[d] for d in inh_dims)...,
                   (syms[d] for d in FFT_DIMS_ORDER)...)
 
     body = Expr(:for, Expr(:(=), :m, :(1:Nm)),
@@ -67,7 +68,8 @@ end
     pa_ref = Expr(:ref, :pa,      :m, (syms[d] for d in FFT_DIMS_ORDER)...)
     pu_ref = Expr(:ref, :pu,      (syms[d] for d in 1:D)...)
     mn_ref = Expr(:ref, :modes_n,
-                  (syms[d] for d in inh_dims)..., :m,
+                  :m,
+                  (syms[d] for d in inh_dims)...,
                   (syms[d] for d in FFT_DIMS_ORDER)...)
 
     body = Expr(:for, Expr(:(=), :m, :(1:Nm)), :(acc += $mn_ref * $pa_ref))
@@ -122,8 +124,8 @@ const Nv = 3       # velocity components (u, v, w)
 
 g = TripleGrid(Ny, Nx, Nz)
 
-# Random complex modes array: size (Ny, Nm, Nx÷2+1, Nz)
-make_modes() = [randn(ComplexF64, Ny, Nm, (Nx >> 1) + 1, Nz) for _ in 1:Nv]
+# Random complex modes array: size (Nm, Ny, Nx÷2+1, Nz)
+make_modes() = [randn(ComplexF64, Nm, Ny, (Nx >> 1) + 1, Nz) for _ in 1:Nv]
 
 # Allocate fields
 a  = ProjectedField(g, make_modes())
@@ -214,8 +216,8 @@ NSEBase.wavenumber_scale(::FlippedChannelGrid, ::Int) = 1.0
 
 gf = FlippedChannelGrid(Nx, Nz, Ny)
 
-# modes: (Ny, Nm, (Nx>>1)+1, Nz) = (inh_sz..., Nm, kH_sz...)
-make_modes_f() = [randn(ComplexF64, Ny, Nm, (Nx >> 1) + 1, Nz) for _ in 1:Nv]
+# modes: (Nm, Ny, (Nx>>1)+1, Nz) = (Nm, inh_sz..., kH_sz...)
+make_modes_f() = [randn(ComplexF64, Nm, Ny, (Nx >> 1) + 1, Nz) for _ in 1:Nv]
 
 af = ProjectedField(gf, make_modes_f())
 uf = VectorField(gf, FTField)
@@ -236,13 +238,13 @@ println()
 println("=== Correctness check (FFT dims first) ===")
 
 # Reference: compute pa[1, 1, 1] manually from the definition
-#   pa[1, k1, k2] = sum_n sum_j w[j] * conj(modes_n[j, 1, k1, k2]) * pu[k1, k2, j]
+#   pa[1, k1, k2] = sum_n sum_j w[j] * conj(modes_n[1, j, k1, k2]) * pu[k1, k2, j]
 ref_val = let s = zero(ComplexF64)
     for n in 1:Nv
-        mn = modes(af)[n]          # shape (Ny, Nm, (Nx>>1)+1, Nz)
+        mn = modes(af)[n]          # shape (Nm, Ny, (Nx>>1)+1, Nz)
         pu_f = parent(uf[n])       # shape ((Nx>>1)+1, Nz, Ny)
         for j in 1:Ny
-            s += conj(mn[j, 1, 1, 1]) * pu_f[1, 1, j]
+            s += conj(mn[1, j, 1, 1]) * pu_f[1, 1, j]
         end
     end
     s

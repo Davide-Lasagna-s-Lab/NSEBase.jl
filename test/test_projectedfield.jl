@@ -12,7 +12,7 @@
 
     function _projected_modes(g, Nm, Ncomp=2)
         Ny, Nx, Nz = size(g)
-        ntuple(_ -> randn(ComplexF64, Ny, Nm, (Nx >> 1) + 1, Nz), Ncomp)
+        ntuple(_ -> randn(ComplexF64, Nm, Ny, (Nx >> 1) + 1, Nz), Ncomp)
     end
 
     @testset "constructor uses mode axis followed by FFT axes" begin
