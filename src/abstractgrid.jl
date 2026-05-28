@@ -77,6 +77,20 @@ stored); the remaining entries are full-spectrum complex FFT dimensions.
 fft_dims(::AbstractGrid{<:Any, <:Any, <:Any, FFT_DIMS_ORDER}) where {FFT_DIMS_ORDER} = FFT_DIMS_ORDER
 
 """
+    spatial_fft_dims(grid::AbstractGrid) -> Tuple{Int, …}
+
+Return the FFT-transformed array dimensions that correspond to spatial
+coordinates.
+
+For a steady grid this is the same tuple as [`fft_dims`](@ref).  For a
+space-time grid whose logical time coordinate is also transformed, the time
+dimension is omitted.
+"""
+@generated function spatial_fft_dims(::AbstractGrid{<:Any, <:Any, AXES, FFT_DIMS_ORDER}) where {AXES, FFT_DIMS_ORDER}
+    :($(Tuple(d for d in FFT_DIMS_ORDER if d != AXES[4])))
+end
+
+"""
     inhomogeneous_dims(grid::AbstractGrid) -> Tuple
 
 Return the array dimensions that are NOT transformed by FFTs, i.e. the

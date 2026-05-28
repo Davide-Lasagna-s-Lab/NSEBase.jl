@@ -4,6 +4,8 @@
 #
 #   - `size(grid)` and `size(grid, dim)` agree.
 #   - `fft_dims(grid)` returns the `FFT_DIMS_ORDER` type parameter verbatim.
+#   - `spatial_fft_dims(grid)` returns transformed spatial dimensions, omitting
+#     a transformed logical time dimension.
 #   - `inhomogeneous_dims(grid)` returns the complement of `fft_dims` within
 #     `1:D`, in ascending order.
 #   - `transform_size(grid)` halves the rfft axis to `(N÷2)+1` and leaves all
@@ -28,6 +30,16 @@
 
         # fft_dims is a thin generated alias for the `FFT_DIMS_ORDER` parameter.
         @test fft_dims(g) === (2, 3)
+
+        # A steady grid has no logical time coordinate, so every transformed
+        # direction is spatial.
+        @test spatial_fft_dims(g) === (2, 3)
+
+        # If logical time is transformed, spatial_fft_dims omits that array
+        # dimension while preserving the remaining transform order.
+        struct TimeSpectralGrid <: AbstractGrid{Float64, 4, (2, 1, 3, 4), (2, 3, 4)} end
+        Base.size(::TimeSpectralGrid) = (4, 8, 6, 10)
+        @test spatial_fft_dims(TimeSpectralGrid()) === (2, 3)
 
         # inhomogeneous_dims is the complement of fft_dims within 1:D.
         # For our BareGrid with D=3, ORDER=(2,3), only dim 1 remains.
