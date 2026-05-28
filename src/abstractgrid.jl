@@ -263,6 +263,10 @@ weights(grid::AbstractGrid) = throw(NotImplementedError(grid))
 
 Return an equivalent grid with a new homogeneous resolution.
 
+`target_size` contains one physical-space size per homogeneous direction, in
+`fft_dims(grid)` order. Implementations should preserve inhomogeneous
+directions and return a grid whose transformed dimensions match those sizes.
+
 This is optional.  Packages should only implement it if they support
 resolution-changing transforms such as `FFT(u, target_size)` and
 `IFFT(û, target_size)`.

@@ -105,11 +105,13 @@ have length `length(FFT_DIMS_ORDER)`, not the full dimension `D` of `grid(u)`.
 Inhomogeneous directions are preserved by the grid-specific
 `growto(grid(u), target_size)` method.
 
-The spectral coefficients are copied by wavenumber vector: each stored
-wavenumber of `u` is converted to a [`WaveNumberVector`](@ref), then copied to
-the same wavenumber in the output field. This requires the target grid to
-represent every copied source wavenumber, so this method is primarily intended
-for increasing homogeneous resolution.
+The spectral coefficients are embedded using FFTW storage conventions: the
+rfft block remains a prefix, while negative modes in each signed FFT dimension
+are copied to the high end of the corresponding target dimension. Equivalently,
+each source coefficient appears at the same signed wavenumber in the output and
+newly introduced wavenumbers are left exactly zero. This requires the target
+grid to represent every copied source wavenumber, so this method is primarily
+intended for increasing homogeneous resolution.
 
 This is optional.  Packages should only implement it if they support
 resolution-changing transforms such as `FFT(u, target_size)` and
