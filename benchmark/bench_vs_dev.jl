@@ -426,7 +426,7 @@ const SHIFTS = (0.15, 0.30, 0.45)
 # Benchmark helper                                                    #
 # ------------------------------------------------------------------ #
 
-function bench_ratio(f_cart, f_gen; samples=150)
+function bench_ratio(f_cart, f_gen; samples=500)
     f_cart(); f_gen()   # warm-up
     bc = @benchmark $f_cart() samples=samples evals=1
     bg = @benchmark $f_gen()  samples=samples evals=1
@@ -437,7 +437,7 @@ end
 # Main benchmark loop                                                 #
 # ------------------------------------------------------------------ #
 
-const NFN = 13
+const NFN = 15
 ratios = [[Float64[] for _ in LAYOUTS] for _ in 1:NFN]
 nelems = [[Int[]     for _ in LAYOUTS] for _ in 1:NFN]
 
@@ -503,25 +503,36 @@ for (li, LT) in enumerate(LAYOUTS)
             () -> expand!(out_q, a, LoopGalerkin()),
             () -> _expand_gen!(out_q, a))
 
-        # 9. dot(ProjectedField)
-        push_ratio!(9, () -> dot(a, b), () -> _dot_pf_gen(a, b))
+        # 9. project! GemmGalerkin (CartesianIndices vs LoopGalerkin)
+        push_ratio!(9,
+            () -> project!(a, q, GemmGalerkin()),
+            () -> project!(copy(a), q, LoopGalerkin()))
 
-        # 10. normdiff(ProjectedField)
-        push_ratio!(10, () -> normdiff(a, b), () -> _normdiff_pf_gen(a, b))
+        # 10. expand! GemmGalerkin (CartesianIndices vs LoopGalerkin)
+        out_q_loop = copy(out_q)
+        push_ratio!(10,
+            () -> expand!(out_q, a, GemmGalerkin()),
+            () -> expand!(out_q_loop, a, LoopGalerkin()))
 
-        # 11. shift!(ProjectedField)
+        # 11. dot(ProjectedField)
+        push_ratio!(11, () -> dot(a, b), () -> _dot_pf_gen(a, b))
+
+        # 12. normdiff(ProjectedField)
+        push_ratio!(12, () -> normdiff(a, b), () -> _normdiff_pf_gen(a, b))
+
+        # 13. shift!(ProjectedField)
         ac .= a
-        push_ratio!(11, () -> shift!(ac, SHIFTS), () -> _shift_pf_gen!(ac, SHIFTS))
+        push_ratio!(13, () -> shift!(ac, SHIFTS), () -> _shift_pf_gen!(ac, SHIFTS))
 
-        # 12. apply_symmetry! FTField  (cart = DC-plane only; gen = @generated all kH)
+        # 14. apply_symmetry! FTField  (cart = DC-plane only; gen = @generated all kH)
         parent(uc) .= randn(ComplexF64, size(parent(u)))
-        push_ratio!(12,
+        push_ratio!(14,
             () -> NSEBase.apply_symmetry!(uc),
             () -> _apply_symmetry_gen!(parent(uc), Val(NSEBase.fft_dims(NSEBase.grid(uc)))))
 
-        # 13. apply_symmetry! ProjectedField (cart = DC-plane only; gen = CartesianIndices all kH)
+        # 15. apply_symmetry! ProjectedField (cart = DC-plane only; gen = CartesianIndices all kH)
         parent(ac) .= randn(ComplexF64, size(parent(a)))
-        push_ratio!(13,
+        push_ratio!(15,
             () -> NSEBase.apply_symmetry!(ac),
             () -> _apply_sym_pf_gen!(ac))
     end
@@ -542,6 +553,8 @@ fn_labels = [
     "shift!(FTField)",
     "project!  LoopGalerkin",
     "expand!   LoopGalerkin",
+    "project!  GemmGalerkin",
+    "expand!   GemmGalerkin",
     "dot(ProjectedField, ProjectedField)",
     "normdiff(ProjectedField)",
     "shift!(ProjectedField)",
@@ -566,7 +579,7 @@ for (fi, ax) in enumerate(axs)
     ax.set_title(fn_labels[fi], fontsize=10, loc="left", pad=4)
     ax.set_xlabel("FTField elements  (Ny × ⌈Nx/2⌉ × Nz × Nt)", fontsize=9)
     ax.set_ylabel("t_cart / t_gen", fontsize=9)
-    ax.set_ylim(bottom=0.0)
+    ax.set_ylim(bottom=0.0, top=2.0)
     ax.grid(true, which="both", linestyle=":", alpha=0.4)
     ax.tick_params(labelsize=8)
     fi == 1 && ax.legend(fontsize=8, loc="upper right")

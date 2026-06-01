@@ -56,9 +56,6 @@ sizes = [
     (Ny=16, Nx=32,  Nz=24,  Nt=16),   # ~104.4k
     (Ny=20, Nx=48,  Nz=36,  Nt=24),   # ~432.0k
     (Ny=24, Nx=64,  Nz=48,  Nt=32),   #   ~1.2M
-    (Ny=28, Nx=80,  Nz=60,  Nt=40),   #   ~3.0M
-    (Ny=32, Nx=96,  Nz=72,  Nt=48),   #   ~5.4M
-    (Ny=36, Nx=112, Nz=84,  Nt=56),   #  ~10.0M
 ]
 
 n_elements(Ny, Nx, Nz, Nt) = Ny * ((Nx >> 1) + 1) * Nz * Nt
