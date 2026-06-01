@@ -65,11 +65,8 @@ function plot_comparison(dev_file::String, cart_file::String, output_file::Strin
                transform=ax.transAxes, ha="left", va="top", fontsize=8, style="italic")
         ax.grid(true, alpha=0.3)
         ax.legend(loc="best", fontsize=9)
-        # For expand!/project!, lower the y-minimum to show data below 1.0
-        ymin = (contains(fname, "expand") || contains(fname, "project")) ? 0.75 : 0.9
-        ax.set_ylim([ymin, maximum(ax.get_ylim()) * 1.1])
 
-        # Annotate with average speedup
+        # Annotate with average speedup and compute tight y-limits
         all_speedups = Float64[]
         for (li, layout) in enumerate(layouts)
             for size_str in sizes
@@ -91,6 +88,12 @@ function plot_comparison(dev_file::String, cart_file::String, output_file::Strin
                    transform=ax.transAxes, ha="right", va="top",
                    bbox=Dict("boxstyle" => "round", "facecolor" => "wheat", "alpha" => 0.8),
                    fontsize=10, fontweight="bold")
+
+            # Compute tight y-limits based on actual data
+            y_min, y_max = minimum(all_speedups), maximum(all_speedups)
+            y_range = y_max - y_min
+            padding = max(0.1 * y_range, 0.05)
+            ax.set_ylim([max(0.0, y_min - padding), y_max + padding])
         end
     end
 
