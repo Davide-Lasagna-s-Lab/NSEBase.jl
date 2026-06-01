@@ -7,7 +7,7 @@ using LinearAlgebra, FFTW, JLD2
 export FFTW
 
 export AbstractGrid
-export points, growto, weights, fft_dims, spatial_fft_dims, inhomogeneous_dims, to_storage_order
+export points, growto, weights, fft_dims, spatial_fft_dims, inhomogeneous_dims, spatial_inhomogeneous_dims, to_storage_order
 export transform_size, fft_norm, wavenumber_scale
 export WaveNumberVector, to_homogeneous_indices, to_wavenumber_vector
 export FTField, Field, VectorField, grid

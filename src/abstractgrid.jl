@@ -102,6 +102,18 @@ which quadrature weights are needed for inner products.
 end
 
 """
+    spatial_inhomogeneous_dims(grid::AbstractGrid) -> Tuple
+
+Return the inhomogeneous array dimensions that correspond to spatial (not
+temporal) coordinates — i.e. dimensions in `inhomogeneous_dims(grid)` that
+are not the time axis `AXES[4]`.  These are the dimensions for which a
+finite-difference or collocation derivative must be applied.
+"""
+@generated function spatial_inhomogeneous_dims(::AbstractGrid{<:Any, D, AXES, FFT_DIMS_ORDER}) where {D, AXES, FFT_DIMS_ORDER}
+    :($(Tuple(d for d in 1:D if d ∉ FFT_DIMS_ORDER && d != AXES[4])))
+end
+
+"""
     rfft_dim(grid::AbstractGrid) -> Int
 
 Return the array dimension that is transformed by the real-to-complex FFT,
