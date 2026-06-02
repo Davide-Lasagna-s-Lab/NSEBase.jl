@@ -6,7 +6,7 @@ using NSEBase
 include("test/test_grids.jl")
 
 # Simple 3D grid for testing
-struct TestGrid <: AbstractGrid{Float64, 4, (2, 1, 3, 4), (2, 3, 4)}
+struct TestGrid <: AbstractGrid{Float64, 4, (2, 1, 3, 4), (2, 3, 4), Undecomposed}
     Ny::Int; Nx::Int; Nz::Int; Nt::Int; ws::Vector{Float64}
 end
 Base.size(g::TestGrid) = (g.Ny, g.Nx, g.Nz, g.Nt)

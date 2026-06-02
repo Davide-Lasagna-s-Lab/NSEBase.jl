@@ -16,16 +16,16 @@ include("../test/test_grids.jl")
 # ------------------------------------------------------------------ #
 # Grid layouts (inhomogeneous dimension at every possible position)  #
 # ------------------------------------------------------------------ #
-struct Layout1 <: AbstractGrid{Float64, 4, (2, 1, 3, 4), (2, 3, 4)}
+struct Layout1 <: AbstractGrid{Float64, 4, (2, 1, 3, 4), (2, 3, 4), Undecomposed}
     Ny::Int; Nx::Int; Nz::Int; Nt::Int; ws::Vector{Float64}
 end
-struct Layout2 <: AbstractGrid{Float64, 4, (1, 2, 3, 4), (1, 3, 4)}
+struct Layout2 <: AbstractGrid{Float64, 4, (1, 2, 3, 4), (1, 3, 4), Undecomposed}
     Nx::Int; Ny::Int; Nz::Int; Nt::Int; ws::Vector{Float64}
 end
-struct Layout3 <: AbstractGrid{Float64, 4, (1, 3, 2, 4), (1, 2, 4)}
+struct Layout3 <: AbstractGrid{Float64, 4, (1, 3, 2, 4), (1, 2, 4), Undecomposed}
     Nx::Int; Nz::Int; Ny::Int; Nt::Int; ws::Vector{Float64}
 end
-struct Layout4 <: AbstractGrid{Float64, 4, (1, 4, 2, 3), (1, 2, 3)}
+struct Layout4 <: AbstractGrid{Float64, 4, (1, 4, 2, 3), (1, 2, 3), Undecomposed}
     Nx::Int; Nz::Int; Nt::Int; Ny::Int; ws::Vector{Float64}
 end
 

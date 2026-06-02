@@ -37,7 +37,7 @@ include("../test/test_grids.jl")
 # 4-D grid                                                           #
 # ------------------------------------------------------------------ #
 
-struct QuadGrid <: AbstractGrid{Float64, 4, (2, 1, 3, 4), (2, 3, 4)}
+struct QuadGrid <: AbstractGrid{Float64, 4, (2, 1, 3, 4), (2, 3, 4), Undecomposed}
     Ny :: Int
     Nx :: Int
     Nz :: Int
