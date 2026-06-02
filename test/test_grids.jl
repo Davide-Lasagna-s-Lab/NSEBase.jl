@@ -21,7 +21,7 @@
 #
 # `points(g)` still returns only `D == 3` arrays, in storage order:
 # `(y, x, z)`.
-struct TripleGrid <: AbstractGrid{Float64, 3, (2, 1, 3, nothing), (2, 3)}
+struct TripleGrid <: AbstractGrid{Float64, 3, (2, 1, 3, nothing), (2, 3), Undecomposed}
     Ny :: Int
     Nx :: Int
     Nz :: Int
@@ -64,7 +64,7 @@ end
 # They differentiate polynomials of degree < Ny exactly at the grid points,
 # which lets tests compare `ddx_2!` and `laplacian!` against analytic
 # derivatives without depending on ChannelFlow's Chebyshev grid.
-struct PolynomialGrid <: AbstractGrid{Float64, 2, (2, 1, nothing, nothing), (2,)}
+struct PolynomialGrid <: AbstractGrid{Float64, 2, (2, 1, nothing, nothing), (2,), Undecomposed}
     y  :: Vector{Float64}
     Nx :: Int
     Lx :: Float64
@@ -128,10 +128,10 @@ end
 # Minimal grids used by several generic tests.  They intentionally implement
 # only `size`; tests that use them exercise code paths that need no concrete
 # coordinate arrays, weights, or derivative extensions.
-struct SpectralTestGrid{S, D, AXES, FFT_DIMS_ORDER} <: AbstractGrid{Float64, D, AXES, FFT_DIMS_ORDER} end
+struct SpectralTestGrid{S, D, AXES, FFT_DIMS_ORDER} <: AbstractGrid{Float64, D, AXES, FFT_DIMS_ORDER, Undecomposed} end
 Base.size(::SpectralTestGrid{S}) where {S} = S
 
-struct GalerkinGrid{S} <: AbstractGrid{Float64, 2, (1, 2, nothing, nothing), (2,)}
+struct GalerkinGrid{S} <: AbstractGrid{Float64, 2, (1, 2, nothing, nothing), (2,), Undecomposed}
     ws::Vector{Float64}
 end
 
