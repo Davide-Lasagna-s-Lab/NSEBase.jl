@@ -91,8 +91,8 @@ function (eq::CartesianPrimitive2DNSE)(::Real,
     laplacian!(out, u)
     out .*= 1/eq.Re
 
-    ddx_1!(dudx, u)
-    ddx_2!(dudy, u)
+    ddx!(dudx, u)
+    ddy!(dudy, u)
 
     eq.plans(U, u); eq.plans(dUdx, dudx); eq.plans(dUdy, dudy)
     for n in 1:2
@@ -116,7 +116,7 @@ function (eq::CartesianPrimitive2DLNSE)(::Real,
     dudx = eq.scache[1]; dudy = eq.scache[2]
     U    = eq.pcache[1]; dUdy = eq.pcache[3]
 
-    ddx_1!(dudx, u); ddx_2!(dudy, u)
+    ddx!(dudx, u); ddy!(dudy, u)
     eq.plans(U, u); eq.plans(dUdy, dudy)
 
     eq(0, v, out)
@@ -134,7 +134,7 @@ function (eq::CartesianPrimitive2DLNSE{Forward})(::Real,
     laplacian!(out, v)
     out .*= 1/eq.Re
 
-    ddx_1!(dvdx, v); ddx_2!(dvdy, v)
+    ddx!(dvdx, v); ddy!(dvdy, v)
 
     eq.plans(V, v); eq.plans(dUdx, dudx)
     eq.plans(dVdx, dvdx); eq.plans(dVdy, dvdy)
@@ -159,7 +159,7 @@ function (eq::CartesianPrimitive2DLNSE{AdjointContinuous})(::Real,
     laplacian!(out, v)
     out .*= 1/eq.Re
 
-    ddx_1!(dvdx, v); ddx_2!(dvdy, v)
+    ddx!(dvdx, v); ddy!(dvdy, v)
 
     eq.plans(V, v); eq.plans(dUdx, dudx)
     eq.plans(dVdx, dvdx); eq.plans(dVdy, dvdy)
@@ -197,8 +197,8 @@ function (eq::CartesianPrimitive2DLNSE{AdjointDiscrete})(::Real,
 
     eq.plans(dUdx, dudx)
     for n in 1:2
-        out[n] .-= ddx_1!(dudx[1], u1v[n], adjoint=true) .+
-                   ddx_2!(dudx[2], u2v[n], adjoint=true)
+        out[n] .-= ddx!(dudx[1], u1v[n], adjoint=true) .+
+                   ddy!(dudx[2], u2v[n], adjoint=true)
     end
     U1V .= 0
     for n in 1:2

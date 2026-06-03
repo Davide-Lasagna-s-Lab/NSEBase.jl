@@ -7,8 +7,14 @@ using LinearAlgebra, FFTW, JLD2
 export FFTW
 
 export GridDecomposition, Undecomposed, Decomposed
-export AbstractGrid, decomposition_dims, ndecomposed_dims
-export points, growto, weights, fft_dims, spatial_fft_dims, inhomogeneous_dims, spatial_inhomogeneous_dims, to_storage_order
+export AbstractGrid, decomposition_storage_dims, decomposition_physical_dims, ndecomposed_dims
+export storage_dim, physical_dim, physical_to_storage_dim, to_storage_order
+export rfft_storage_dim, rfft_physical_dim
+export points, growto, weights
+export fft_storage_dims, fft_physical_dims
+export spatial_fft_storage_dims, spatial_fft_physical_dims
+export inhomogeneous_storage_dims, inhomogeneous_physical_dims
+export spatial_inhomogeneous_storage_dims, spatial_inhomogeneous_physical_dims
 export transform_size, fft_norm, wavenumber_scale
 export WaveNumberVector, to_homogeneous_indices, to_wavenumber_vector
 export FTField, Field, VectorField, grid
@@ -16,7 +22,7 @@ export add_base_flow!
 export FFTPlans, FFT, IFFT
 export ProjectedField, modes, project!, project, expand!, expand
 export LoopGalerkin, GemmGalerkin
-export ddx!, ddx_1!, ddx_2!, ddx_3!, ddx_4!
+export dd!, ddx!, ddy!, ddz!, ddt!, ddx_1!, ddx_2!, ddx_3!, ddx_4!
 export inhomogeneous_laplacian!, add_homogeneous_laplacian!, laplacian!
 export shift!, shift, normdiff, minnormdiff
 export save_grid, load_grid, save_field, load_field
