@@ -338,11 +338,11 @@ that span all inhomogeneous indices at a particular homogeneous index.
 end
 
 """
-    storage_dim(grid, dim) -> Int | nothing
+    storage_dim(grid, physical_dim) -> Int | nothing
 
-Return the storage-array dimension used for physical direction `dim`.
+Return the storage-array dimension used for physical direction `physical_dim`.
 
-`dim` may be one of `:x`, `:y`, `:z`, or `:t`, or `Val` of one of those
+`physical_dim` may be one of `:x`, `:y`, `:z`, or `:t`, or `Val` of one of those
 symbols. A missing physical direction returns `nothing`, which lets derivative
 wrappers for absent coordinates become no-ops.
 
@@ -351,21 +351,25 @@ wrappers for absent coordinates become no-ops.
 For `AXES = (2, 1, 3, nothing)`, `storage_dim(grid, :x) == 2`,
 `storage_dim(grid, :y) == 1`, and `storage_dim(grid, :t) === nothing`.
 """
-storage_dim(::AbstractGrid{<:Any, <:Any, AXES}, ::Val{:x}) where {AXES} = AXES[1]
-storage_dim(::AbstractGrid{<:Any, <:Any, AXES}, ::Val{:y}) where {AXES} = AXES[2]
-storage_dim(::AbstractGrid{<:Any, <:Any, AXES}, ::Val{:z}) where {AXES} = AXES[3]
-storage_dim(::AbstractGrid{<:Any, <:Any, AXES}, ::Val{:t}) where {AXES} = AXES[4]
-storage_dim(grid::AbstractGrid, dim::Symbol) = storage_dim(grid, Val(dim))
+# `where {T<:Real, D}` matches the constraint on the abstract type's
+# first parameter explicitly; without it Julia (1.12+) sees the literal
+# `Val{:x}` methods as ambiguous with the catch-all `Val{DIM}` fallback
+# below when the input grid passes through an indirect type hierarchy.
+storage_dim(::AbstractGrid{T, D, AXES} where {T<:Real, D}, ::Val{:x}) where {AXES} = AXES[1]
+storage_dim(::AbstractGrid{T, D, AXES} where {T<:Real, D}, ::Val{:y}) where {AXES} = AXES[2]
+storage_dim(::AbstractGrid{T, D, AXES} where {T<:Real, D}, ::Val{:z}) where {AXES} = AXES[3]
+storage_dim(::AbstractGrid{T, D, AXES} where {T<:Real, D}, ::Val{:t}) where {AXES} = AXES[4]
+storage_dim(grid::AbstractGrid, physical_dim::Symbol) = storage_dim(grid, Val(physical_dim))
 function storage_dim(::AbstractGrid, ::Val{DIM}) where {DIM}
     throw(ArgumentError("physical direction must be one of :x, :y, :z, or :t; got $(repr(DIM))"))
 end
 
 """
-    physical_dim(grid, dim) -> Symbol | nothing
+    physical_dim(grid, storage_dim) -> Symbol | nothing
 
-Return the physical direction represented by storage-array dimension `dim`.
+Return the physical direction represented by storage-array dimension `storage_dim`.
 
-`dim` may be an integer storage dimension or `Val` of one. `nothing` is
+`storage_dim` may be an integer storage dimension or `Val` of one. `nothing` is
 propagated so callers can normalize optional directions.
 
 # Examples
@@ -375,6 +379,7 @@ For `AXES = (2, 1, 3, nothing)`, `physical_dim(grid, 1) == :y`,
 """
 physical_dim(::AbstractGrid, ::Nothing) = nothing
 physical_dim(::AbstractGrid, ::Val{nothing}) = nothing
+physical_dim(grid::AbstractGrid, storage_dim::Integer) = physical_dim(grid, Val(storage_dim))
 
 @generated function physical_dim(::AbstractGrid{<:Any, D, AXES}, ::Val{DIM}) where {D, AXES, DIM}
     isnothing(DIM) && return :(nothing)
@@ -398,9 +403,6 @@ physical_dim(::AbstractGrid, ::Val{nothing}) = nothing
     isnothing(i) && return :(nothing)
     return QuoteNode(directions[i])
 end
-
-physical_dim(grid::AbstractGrid, dim::Integer) = physical_dim(grid, Val(dim))
-physical_dim(grid::AbstractGrid, dim::Symbol) = (storage_dim(grid, dim); dim)
 
 """
     physical_to_storage_dim(grid, physical_dim) -> Val{N} | Val{nothing}
