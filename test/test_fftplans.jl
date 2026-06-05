@@ -1,6 +1,17 @@
 import FFTW
 using FFTW: ESTIMATE
 
+struct FFTDataWrapper{T, N, A<:AbstractArray{T, N}} <: AbstractArray{T, N}
+    data::A
+end
+
+Base.IndexStyle(::Type{<:FFTDataWrapper}) = IndexLinear()
+Base.size(a::FFTDataWrapper) = size(a.data)
+Base.getindex(a::FFTDataWrapper, i::Int) = a.data[i]
+Base.setindex!(a::FFTDataWrapper, v, i::Int) = (a.data[i] = v)
+
+NSEBase._fft_data(a::FFTDataWrapper) = a.data
+
 @testset "FFTPlans constructor                                                " begin
     for T in (Float32, Float64)
         # 1D, no dealiasing: cache is the standard spectral shape, norm = 1/N
@@ -479,5 +490,26 @@ end
         @test IFFT(U) == plans(similar(u), U)
         @test FFT(plans(similar(uv), Uv)) ≈ Uv
         @test IFFT(Uv) == plans(similar(uv), Uv)
+    end
+
+    @testset "field transforms use _fft_data " begin
+        Nx = 5
+        Ny = 8
+        g = FakeGrid(rand(Float64, Nx), Ny, 2π)
+        raw = randn(Float64, size(g))
+
+        u = Field(g, FFTDataWrapper(copy(raw)))
+        U = FTField(g, FFTDataWrapper(zeros(ComplexF64, transform_size(g))))
+        v = Field(g, FFTDataWrapper(zeros(Float64, size(g))))
+        plans = FFTPlans(g, dealias=false, flags=FFTW.ESTIMATE)
+
+        plans(U, u)
+        @test NSEBase._fft_data(U) ≈ FFTW.rfft(raw, NSEBase.fft_storage_dims(g)) ./ prod(NSEBase.fft_norm(g))
+
+        plans(v, U)
+        @test NSEBase._fft_data(v) ≈ raw
+
+        @test parent(FFT(u)) ≈ NSEBase._fft_data(U)
+        @test parent(IFFT(U)) ≈ raw
     end
 end
