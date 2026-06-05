@@ -127,6 +127,19 @@ FFTPlans(g::AbstractGrid{T, <:Any, <:Any, FFT_DIMS_ORDER}; kwargs...) where {T, 
 FFTPlans(u::FTField;                              kwargs...)                  = FFTPlans(grid(u); kwargs...)
 FFTPlans(u::Field;                                kwargs...)                  = FFTPlans(grid(u); kwargs...)
 
+"""
+    _fft_data(x)
+
+Return the concrete array storage that FFTW should transform.
+
+The default is the object itself. Downstream packages that wrap array storage
+can extend this hook so `FFTPlans`, [`FFT`](@ref), and [`IFFT`](@ref) all use
+the same FFTW-compatible buffer.
+"""
+_fft_data(x) = x
+
+_fft_data(u::Union{Field, FTField}) = _fft_data(parent(u))
+
 
 # ------------------------ #
 # in-place transformations #
@@ -169,7 +182,7 @@ whose memory layout matches the array used during planning; `parent` extracts
 that storage while this method preserves the `FTField` return type for the caller.
 """
 (f::FFTPlans)(û::FTField, u::Field; add::Bool=false, use_cache::Bool=false) =
-    (f(parent(û), parent(u), add, use_cache); return û)
+    (f(_fft_data(û), _fft_data(u), add, use_cache); return û)
 
 """
     (f::FFTPlans)(û::AbstractArray{Complex{T}}, u::AbstractArray{T}, add::Bool, use_cache::Bool)
@@ -256,7 +269,7 @@ is required for the same reason: `unsafe_execute!` needs a plain contiguous arra
 matching the planning layout.
 """
 (f::FFTPlans)(u::Field, û::FTField; preserve_input::Bool=true, use_cache::Bool=false) =
-    (f(parent(u), parent(û), preserve_input, use_cache); return u)
+    (f(_fft_data(u), _fft_data(û), preserve_input, use_cache); return u)
 
 """
     (f::FFTPlans)(u::AbstractArray{T}, û::AbstractArray{Complex{T}}, preserve_input::Bool, use_cache::Bool)
@@ -322,7 +335,7 @@ to be implemented.
 function FFT(u::Field)
     g = grid(u)
     û = FTField(g)
-    parent(û) .= rfft(parent(u), fft_dims(g))
+    _fft_data(û) .= rfft(_fft_data(u), fft_dims(g))
     û .*= 1 / prod(fft_norm(g))
     return û
 end
@@ -342,9 +355,9 @@ transformed directions (`fft_dims(grid(u))=FFT_DIMS_ORDER`). Requires [`growto(g
 to be implemented.
 """
 function IFFT(û::FTField)
-    g = grid(û)
+    g = grid(û)
     u = Field(g)
-    parent(u) .= brfft(parent(û), size(g)[fft_dims(g)[1]], fft_dims(g))
+    _fft_data(u) .= brfft(_fft_data(û), size(g)[fft_dims(g)[1]], fft_dims(g))
     return u
 end
 IFFT(û::FTField, target_size) = IFFT(growto(û, target_size))
