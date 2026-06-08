@@ -116,31 +116,50 @@ a_{m,\\mathbf{k}} = \\sum_n \\sum_{\\mathbf{j}} w_{\\mathbf{j}}\\,
 where `φ_{n,m,j,k} = modes(a)[n][m, j..., k...]` and `w` is
 [`weights`](@ref)`(grid(u))`.
 
+The input argument `a` is zero-ed before computations begin.
+
 Pass [`LoopGalerkin`](@ref) (default) or [`GemmGalerkin`](@ref) to select the
 implementation.  See also [`project`](@ref) for the allocating form.
 """
 function project!(a::ProjectedField{G},
                   u::VectorField{N, <:FTField{G}},
-                  ::LoopGalerkin=LoopGalerkin()
-                  ) where {N, G<:AbstractGrid{T}} where {T}
-    a .= zero(Complex{T})
-    pa = parent(a)
-    g  = grid(u)
-    w  = weights(g)
-    Nm = size(pa, 1)
-    @inbounds for n in 1:N
-        pu      = parent(u[n])
-        modes_n = modes(a)[n]
-        for Ih in CartesianIndices(homogeneous_axes(u[n]))
-            for Iinh in CartesianIndices(inhomogeneous_axes(u[n]))
-                wuj = w[Iinh] * pu[combine_indices(g, Iinh, Ih)...]
-                for m in 1:Nm
-                    pa[m, Ih] += conj(modes_n[m, Iinh, Ih]) * wuj
-                end
+                   ::LoopGalerkin=LoopGalerkin()) where {N, G<:AbstractGrid{T}} where {T}
+    #  sanitize the input
+    fill!(parent(a),zero(eltype(a)))
+    @inbounds for i in 1:N
+        _project_component!(parent(a), parent(u[i]), modes(a)[i], weights(grid(u)), Val(fft_dims(grid(u))))
+    end
+    return a
+end
+
+"""
+    _project_component!(a, u, modes, ws, ::Val{FFT_DIMS_ORDER})
+
+Accumulate the weighted L2 inner product of `u` against each basis mode into
+`a` for a single velocity component.  Called once per component by `project!`.
+
+Arguments:
+- `a`: modal coefficient array of shape `(Nm, kH...)`, updated in-place with `+=`
+- `u`: spectral component array with the full grid layout
+- `modes`: basis array of shape `(Nm, inh..., kH...)`
+- `ws`: quadrature-weight array indexed by the inhomogeneous `CartesianIndex`
+- `Val{FFT_DIMS_ORDER}`: compile-time tuple of FFT-transformed array dimensions
+"""
+function _project_component!(    a::AbstractArray,
+                                 u::AbstractArray,
+                             modes::AbstractArray,
+                                ws::AbstractArray,
+                                  ::Val{FFT_DIMS_ORDER}) where {FFT_DIMS_ORDER}
+    Nm = size(a, 1)
+    for Ih in CartesianIndices(homogeneous_axes(u, Val(FFT_DIMS_ORDER)))
+        for Iinh in CartesianIndices(inhomogeneous_axes(u, Val(FFT_DIMS_ORDER)))
+            wuj = ws[Iinh] * u[combine_indices(Val(FFT_DIMS_ORDER), Iinh, Ih)...]
+            for m in 1:Nm
+                a[m, Ih] += conj(modes[m, Iinh, Ih]) * wuj
             end
         end
     end
-    return a
+    return nothing
 end
 
 """

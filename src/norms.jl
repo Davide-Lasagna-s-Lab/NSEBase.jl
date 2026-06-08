@@ -39,14 +39,17 @@ symmetry of the rfft), `w(j)` are the quadrature weights returned by
 [`weights`](@ref), and the overall factor of `1/2` removes the double-counting
 of conjugate-symmetric mode pairs in the signed FFT dimensions.
 """
-function LinearAlgebra.dot(u::FTField{G}, v::FTField{G}) where {G<:AbstractGrid}
+function LinearAlgebra.dot(u::FTField{G}, v::FTField{G}) where {FFT_DIMS_ORDER, G<:AbstractGrid{<:Any,<:Any,<:Any,FFT_DIMS_ORDER}}
+    return _dot(parent(u), parent(v), weights(grid(u)), Val(FFT_DIMS_ORDER))
+end
+
+# Helper function for the dot product. This is used by downstream packages (e.g. NSEBaseMpiExt)
+function _dot(u::AbstractArray, v::AbstractArray, ws::AbstractArray, ::Val{FFT_DIMS_ORDER}) where {FFT_DIMS_ORDER}
     s = zero(real(eltype(u)))
-    g = grid(u)
-    ws = weights(g)
     @inbounds for I in CartesianIndices(u)
         # apply a different weight to the zero rfft wavenumber, extract the 
         # inhomogeneous indices for the weights lookup and accumulate
-        s += one_or_two(I, g) * ws[inhomogeneous_indices(I, g)...] * real(conj(u[I]) * v[I])
+        s += one_or_two(I, Val(FFT_DIMS_ORDER)) * ws[inhomogeneous_indices(I, Val(FFT_DIMS_ORDER))...] * real(conj(u[I]) * v[I])
     end
     return s / 2
 end
