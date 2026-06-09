@@ -1,6 +1,7 @@
 using Test
 
 using FFTW
+using HCubature
 using LinearAlgebra
 using NSEBase
 
