@@ -14,7 +14,7 @@
 # Together these two layouts verify that the functions read the correct
 # storage positions regardless of which dimensions come first.
 
-@testset verbose=true "homogeneous_axes / inhomogeneous_axes (FTField)" begin
+@testset verbose=true "homogeneous_axes / inhomogeneous_axes (FTField)                     " begin
 
     # ---------------------------------------------------------------- #
     # TripleGrid: inh first, FFT last                                  #

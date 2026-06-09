@@ -149,7 +149,7 @@
         @test all(imag(b[i]) == 0 for i in eachindex(a))
     end
 
-    @testset "constructor enforces zero mean and Hermitian symmetry on DC plane" begin
+    @testset "constructor enforces zero mean and Hermitian symmetry on DC plane " begin
         # The constructor must call normalise_mean! and apply_symmetry!.
         Ny, Nx, Nz, Nm = 3, 8, 5, 4
         g  = TripleGrid(Ny, Nx, Nz)
