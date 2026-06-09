@@ -24,26 +24,26 @@ function _mode_arrays(Nc, Ny, Nm, Nk)
     ntuple(Nc) do n
         [complex(0.1n + 0.2j - 0.3m + 0.05k,
                  0.2n - 0.1j + 0.4m - 0.07k)
-         for j in 1:Ny, m in 1:Nm, k in 1:Nk]
+         for m in 1:Nm, j in 1:Ny, k in 1:Nk]
     end
 end
 
 function _expected_project(u::VectorField, modes, ws)
     Nc = length(modes)
-    Ny, Nm, Nk = size(modes[1])
+    Nm, Ny, Nk = size(modes[1])
     out = zeros(ComplexF64, Nm, Nk)
     for n in 1:Nc, k in 1:Nk, m in 1:Nm, j in 1:Ny
-        out[m, k] += ws[j] * conj(modes[n][j, m, k]) * parent(u[n])[j, k]
+        out[m, k] += ws[j] * conj(modes[n][m, j, k]) * parent(u[n])[j, k]
     end
     return out
 end
 
 function _expected_expand(a::ProjectedField, modes)
     Nc = length(modes)
-    Ny, Nm, Nk = size(modes[1])
+    Nm, Ny, Nk = size(modes[1])
     out = ntuple(_ -> zeros(ComplexF64, Ny, Nk), Nc)
     for n in 1:Nc, k in 1:Nk, j in 1:Ny, m in 1:Nm
-        out[n][j, k] += modes[n][j, m, k] * parent(a)[m, k]
+        out[n][j, k] += modes[n][m, j, k] * parent(a)[m, k]
     end
     return out
 end
@@ -113,9 +113,9 @@ end
         # at every wavenumber.
         Nm = Nc * Ny
         eye_modes = ntuple(Nc) do n
-            data = zeros(ComplexF64, Ny, Nm, Nk)
+            data = zeros(ComplexF64, Nm, Ny, Nk)
             for k in 1:Nk, j in 1:Ny
-                data[j, (n - 1) * Ny + j, k] = 1
+                data[(n - 1) * Ny + j, j, k] = 1
             end
             data
         end

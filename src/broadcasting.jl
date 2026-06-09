@@ -24,7 +24,7 @@ Union of all concrete field types that share a common BroadcastStyle override:
 Used internally by the broadcasting hooks so that a single `BroadcastStyle`
 registration covers all field types.
 """
-const FieldType = Union{FTField, Field, VectorField, ProjectedField}
+const FieldType = Union{FTField,Field,VectorField,ProjectedField}
 
 # Register a distinct BroadcastStyle for every FieldType subtype.  This is
 # necessary so that Julia's broadcast fusion knows to call our custom `copy` and

@@ -16,13 +16,95 @@
         raw = randn(ComplexF64, Ny, (Nx >> 1) + 1, Nz)
         u = FTField(g, copy(raw))
 
-        # The full zero-wavenumber line is real because a real physical field
-        # cannot have an imaginary mean at any inhomogeneous point.
+        # The full zero-wavenumber line is real (normalise_mean! invariant).
         @test all(iszero, imag.(parent(u)[:, 1, 1]))
 
-        # On the rfft zero plane, signed z modes are conjugate pairs.
+        # On the rfft zero plane, signed z modes are conjugate pairs
+        # (apply_symmetry! invariant).
         for j in 1:Ny, kz in 1:(Nz >> 1)
             @test parent(u)[j, 1, kz + 1] ≈ conj(parent(u)[j, 1, Nz - kz + 1])
+        end
+    end
+
+    @testset "apply_symmetry! only modifies the DC (rfft=0) plane            " begin
+        Ny, Nx, Nz = 3, 8, 5
+        g   = TripleGrid(Ny, Nx, Nz)
+        raw = randn(ComplexF64, Ny, (Nx >> 1) + 1, Nz)
+        u   = FTField(g, copy(raw))  # constructor already called apply_symmetry!
+
+        # Scramble the data, then call apply_symmetry! explicitly.
+        parent(u) .= randn(ComplexF64, size(parent(u)))
+        NSEBase.apply_symmetry!(u)
+
+        # DC plane (rfft index 1): signed z modes are conjugate pairs.
+        for j in 1:Ny, kz in 1:(Nz >> 1)
+            @test parent(u)[j, 1, kz + 1] ≈ conj(parent(u)[j, 1, Nz - kz + 1])
+        end
+
+        # Non-DC plane (rfft index > 1): entries must be untouched.
+        # Re-run with a copy to compare.
+        raw2 = randn(ComplexF64, Ny, (Nx >> 1) + 1, Nz)
+        u2   = FTField(g, copy(raw2))
+        parent(u2) .= copy(raw2)     # bypass constructor, load un-symmetrized data
+        snapshot = copy(parent(u2))
+        NSEBase.apply_symmetry!(u2)
+        # All non-DC-plane entries are unchanged.
+        for kx in 2:(Nx >> 1) + 1
+            @test parent(u2)[:, kx, :] == snapshot[:, kx, :]
+        end
+    end
+
+    @testset "apply_symmetry! is idempotent                                  " begin
+        Ny, Nx, Nz = 3, 8, 5
+        g = TripleGrid(Ny, Nx, Nz)
+        u = FTField(g)
+        parent(u) .= randn(ComplexF64, size(parent(u)))
+
+        NSEBase.apply_symmetry!(u)
+        after_first = copy(parent(u))
+        NSEBase.apply_symmetry!(u)
+
+        @test parent(u) == after_first
+    end
+
+    @testset "growto copies source coefficients to the same wavenumbers" begin
+        Ny, Nx, Nz = 3, 8, 5
+        g  = TripleGrid(Ny, Nx, Nz)
+        u  = FTField(g)
+
+        # Deterministic coefficients for the whole stored source spectrum.  On
+        # the rfft-zero plane this formula respects Hermitian symmetry:
+        # coeff(0, -kz, j) == conj(coeff(0, kz, j)).
+        coeff(k, j) = complex(100j + 10k[1] + abs(k[2]),
+                              k[1] == 0 ? 3k[2] : 7k[1] + 3k[2])
+
+        # Populate every stored source wavenumber and every inhomogeneous point.
+        for Ih in CartesianIndices(NSEBase.homogeneous_axes(u)), j in 1:Ny
+            k = NSEBase.to_wavenumber_vector(g, Ih)
+            u[k, j] = coeff(k, j)
+        end
+
+        # Grow to a larger grid: (Nx, Nz) → (16, 11)
+        v = NSEBase.growto(u, (16, 11))
+
+        @test size(grid(v)) == (Ny, 16, 11)
+        @test size(parent(v)) == (Ny, 9, 11)   # rfft: (16>>1)+1=9, Nz stays 11
+
+        # Exactness: every source wavenumber is copied to the same signed
+        # wavenumber in the target, including the negative signed-FFT block.
+        for Ih in CartesianIndices(NSEBase.homogeneous_axes(u)), j in 1:Ny
+            k = NSEBase.to_wavenumber_vector(g, Ih)
+            @test u[k, j] == coeff(k, j)
+            @test v[k, j] == u[k, j]
+        end
+
+        # Every target wavenumber outside the source resolution stays exactly
+        # zero.  This also catches the old bug where source k=(1,-1) was copied
+        # to target k=(1,4) by reusing storage indices instead of wavenumbers.
+        for Ih in CartesianIndices(NSEBase.homogeneous_axes(v)), j in 1:Ny
+            k = NSEBase.to_wavenumber_vector(grid(v), Ih)
+            in_source = 0 <= k[1] <= (Nx >> 1) && abs(k[2]) <= (Nz >> 1)
+            @test in_source ? v[k, j] == u[k, j] : iszero(v[k, j])
         end
     end
 

@@ -88,14 +88,17 @@ each `a[m, k]` by `A[k]`, and return `a`.
 function LinearAlgebra.lmul!(A::FarazmandWeight{N},
                              a::ProjectedField{G}) where {N, G<:AbstractGrid}
     g = grid(a)
-    # Scale every Galerkin coefficient at this wavenumber by the Farazmand weight.
-    for_each_homogeneous_index(g) do _, homogeneous_indices
-        k = to_wavenumber_vector(g, homogeneous_indices)
-        w = A[k]
-        for m in axes(a, 1)
-            @inbounds a[m, homogeneous_indices...] *= w
+
+    # Scale every Galerkin coefficient by the Farazmand weight.
+    # Outer loop: wavenumber k — one weight value per kH combination.
+    # Inner loop: mode index m — same weight applies to all modes at k.
+    for Ih in CartesianIndices(homogeneous_axes(a))
+        k = to_wavenumber_vector(g, Tuple(Ih))
+        for m in axes(parent(a), 1)
+            @inbounds parent(a)[m, Ih] *= A[k]
         end
     end
+
     return a
 end
 
@@ -115,19 +118,22 @@ where `c_{k_1}` is `1` for the zero rfft wavenumber and `2` otherwise.
 function LinearAlgebra.dot(a::ProjectedField{G},
                            A::FarazmandWeight{N},
                            b::ProjectedField{G}) where {N, G<:AbstractGrid}
-    T = real(eltype(a))
-    # Ref accumulator: a plain scalar mutated inside a closure is heap-boxed on
-    # every iteration by Julia's escape analysis.  A Ref is allocated once.
-    s = Ref(zero(T))
+    s = zero(real(eltype(a)))
     g = grid(a)
-    # Accumulate the weighted inner product over all wavenumbers and Galerkin modes.
-    # one_or_two accounts for rfft Hermitian symmetry (+k stored, −k implicit).
-    for_each_homogeneous_index(g) do one_or_two, homogeneous_indices
-        k = to_wavenumber_vector(g, homogeneous_indices)
-        w = A[k]
-        for m in axes(a, 1)
-            @inbounds s[] += one_or_two * w * real(LinearAlgebra.dot(a[m, homogeneous_indices...], b[m, homogeneous_indices...]))
+
+    # Outer loop: wavenumber k — one weight and one rfft multiplicity per kH.
+    # Inner loop: mode m — sum over all modes at each k.
+    for Ih in CartesianIndices(homogeneous_axes(a))
+        k          = to_wavenumber_vector(g, Tuple(Ih))
+        # rfft zero wavenumber is self-conjugate (counted once); all others
+        # have an implicit negative-kx partner (counted twice).
+        one_or_two = Ih[1] == 1 ? 1 : 2
+        w = one_or_two * A[k]
+        for m in axes(parent(a), 1)
+            I = CartesianIndex(m, Ih.I...)
+            @inbounds s += w * real(LinearAlgebra.dot(a[I], b[I]))
         end
     end
-    return s[] / 2
+
+    return s / 2
 end

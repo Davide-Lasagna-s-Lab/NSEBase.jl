@@ -5,6 +5,7 @@
 ```@docs
 AbstractGrid
 fft_dims
+spatial_fft_dims
 inhomogeneous_dims
 to_storage_order
 transform_size

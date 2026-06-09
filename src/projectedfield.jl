@@ -22,30 +22,49 @@
 #   a[m::Int, k::WaveNumberVector] — wavenumber, public API with symmetry logic
 
 """
-    ProjectedField{G<:AbstractGrid, M}
+    ProjectedField{G, M, A, T, D}
 
 A representation of a vector field derived from the projection
 of an `FTField` onto a set of basis `modes`.
 
+# Type parameters
+- `G`: concrete grid type, a subtype of `AbstractGrid{T, _, _, FFT_DIMS_ORDER}`
+- `M`: type of the `modes` collection (tuple or vector of arrays)
+- `A`: type of the underlying coefficient array (`AbstractArray{Complex{T}, D}`)
+- `T`: real floating-point type (e.g. `Float64`); elements are stored as `Complex{T}`
+- `D`: dimensionality of the coefficient array — one mode axis plus one axis per
+  homogeneous dimension: `D = length(fft_dims(grid)) + 1`
+
 # Fields
 - `grid`: concrete instance of `AbstractGrid`
-- `data`: modal coefficients stored as a multi-dimensional array
+- `data`: modal coefficients stored as a multi-dimensional array of shape
+  `(Nm, rfft_size, fft2_size, …)`, where axis 1 is the mode index
 - `modes`: set of basis modes
 
 # Constructors
-- `ProjectedField(grid::AbstractGrid, M, modes)`
+- `ProjectedField(grid::AbstractGrid, modes)` — zero-initialised
+- `ProjectedField(grid::AbstractGrid, data, modes)` — wrap existing array
 - `ProjectedField(u::Union{FTField, Field, VectorField}, modes)`
-- `project(u::VectorField, modes)`
 
 # Storage layout
 
 The parent array has axis 1 reserved for the mode index and the spectral
 dimensions (from `fft_dims(grid) = FFT_DIMS_ORDER`) occupying the subsequent axes in
-FFT_DIMS_ORDER order.  Concretely, `parent(a)[m, i_H1, i_H2, …]` gives the coefficient
+`FFT_DIMS_ORDER` order.  Concretely, `parent(a)[m, i_H1, i_H2, …]` gives the coefficient
 of mode `m` at the spectral storage index `(i_H1, i_H2, …)`, where `i_H1`
 indexes the rfft dimension (`FFT_DIMS_ORDER[1]`) and each subsequent index steps over a
 full signed-FFT dimension.  This layout differs from the physical grid layout:
 non-FFT (inhomogeneous) dimensions are not present.
+
+# Indexing
+
+Three indexing APIs are available, ordered from lowest to highest level:
+
+- `a[i::Int]` / `a[i] = val` — linear, for broadcasting / `copyto!`; no symmetry logic
+- `a[I::CartesianIndex]` / `a[I] = val` — full storage index; no symmetry logic
+- `a[m, i1, i2, …]` / `a[m, i1, i2, …] = val` — storage index per axis; no symmetry logic
+- `a[m, k::WaveNumberVector]` / `a[m, k] = val` — public API; enforces Hermitian symmetry
+  and zero-wavenumber reality (see [`WaveNumberVector`](@ref))
 """
 struct ProjectedField{G<:AbstractGrid, M, A<:AbstractArray, T, D} <: AbstractArray{Complex{T}, D}
      grid :: G
@@ -74,16 +93,14 @@ ProjectedField(grid::AbstractGrid{T}, data::AbstractArray, modes) where {T} =
 Allocate a zero-initialised `ProjectedField` over `grid` with basis `modes`.
 
 `modes` must be an indexable collection (tuple or `Vector`) of arrays, one per
-velocity component, where each `modes[n]` has shape `(inh_size..., Nm, kH...)`.
-The number of modes `Nm` is taken from `modes[1]` at array dimension
-`Ninh + 1`.
+velocity component, where each `modes[n]` has shape `(Nm, inh_size..., kH...)`.
+The number of modes `Nm` is taken from `modes[1]` at array dimension 1.
 
 As a convenience for single-component projections, a bare `AbstractArray` whose
 element type is a `Number` is automatically wrapped in a one-element tuple.
 """
 function ProjectedField(grid::AbstractGrid{T, D}, modes) where {T, D}
-    Ninh = D - length(fft_dims(grid))
-    Nm   = size(modes[1], Ninh + 1)
+    Nm   = size(modes[1], 1)
     return ProjectedField(grid,
                           zeros(Complex{T}, Nm,
                                 transform_size(grid)[collect(fft_dims(grid))]...),
@@ -175,8 +192,6 @@ grid(a::ProjectedField)  = a.grid
 #   3. a[m::Int, k::WaveNumberVector] — wavenumber (public API, enforces symmetry)
 #
 # Only the WaveNumberVector API maintains Hermitian-symmetry invariants.
-# Use the storage-index API inside for_each_homogeneous_index loops where the
-# caller already holds FFTW 1-based storage indices and must not double-write.
 
 """
     a[i::Int]
@@ -200,26 +215,50 @@ end
     a[m::Int, i1::Int, i2::Int, …]
     a[m::Int, i1::Int, i2::Int, …] = val
 
-Read or write the coefficient for mode `m` at FFTW 1-based storage indices
-`i1, i2, …` (one per homogeneous dimension in `FFT_DIMS_ORDER` order).
+Read or write the coefficient for mode `m` at 1-based storage indices
+`i1, i2, …` (one index per homogeneous dimension in `FFT_DIMS_ORDER` order;
+`M = length(fft_dims(grid(a)))`, one less than the parent array rank `D = M+1`).
 
-The `Vararg{Int, N}` signature forces specialisation on the number of
-homogeneous dimensions `N` at compile time, so the body can index
-`parent(a)` directly without runtime overhead.
+`Vararg{Int, M}` forces compile-time specialisation on the number of homogeneous
+dimensions so the body can index `parent(a)` with a known-length tuple and
+generate no runtime overhead.
 
-No symmetry invariants are checked or maintained — use this form only inside
-[`for_each_homogeneous_index`](@ref) loops where storage indices are already
-known and the caller controls every storage location explicitly.
+No symmetry invariants are checked or maintained.  Use the `WaveNumberVector`
+API for writes that must preserve Hermitian symmetry.
 """
-Base.@propagate_inbounds function Base.getindex(a::ProjectedField, m::Int, indices::Vararg{Int, N}) where {N}
+Base.@propagate_inbounds function Base.getindex(a::ProjectedField, m::Int, indices::Vararg{Int, M}) where {M}
     @boundscheck checkbounds(parent(a), m, indices...)
     @inbounds parent(a)[m, indices...]
 end
-Base.@propagate_inbounds function Base.setindex!(a::ProjectedField, val, m::Int, indices::Vararg{Int, N}) where {N}
+Base.@propagate_inbounds function Base.setindex!(a::ProjectedField, val, m::Int, indices::Vararg{Int, M}) where {M}
     @boundscheck checkbounds(parent(a), m, indices...)
     @inbounds parent(a)[m, indices...] = val
 end
 
+"""
+    a[I::CartesianIndex]
+    a[I::CartesianIndex] = val
+
+Read or write the coefficient at the full `D`-dimensional storage index
+`I = CartesianIndex(m, i1, i2, …)`, where `m` is the mode index and
+`i1, i2, …` are the 1-based storage indices for each homogeneous dimension
+in `FFT_DIMS_ORDER` order.
+
+The `CartesianIndex{D}` type parameter ensures this method only dispatches when
+the index rank matches the parent array rank (`D = length(fft_dims(grid)) + 1`).
+No symmetry logic is applied.  Used internally by loops over `CartesianIndices(a)`,
+e.g. in [`shift!`](@ref) for `ProjectedField`.
+"""
+Base.@propagate_inbounds function Base.getindex(a::ProjectedField{<:Any, <:Any, <:Any, <:Any, D}, I::CartesianIndex{D}) where {D}
+    @boundscheck checkbounds(parent(a), I)
+    @inbounds parent(a)[I]
+end
+Base.@propagate_inbounds function Base.setindex!(a::ProjectedField{<:Any, <:Any, <:Any, <:Any, D}, val, I::CartesianIndex{D}) where {D}
+    @boundscheck checkbounds(parent(a), I)
+    @inbounds parent(a)[I] = val
+end
+
+#TODO: can the two functions below be made easier to understand?
 """
     a[m::Int, k::WaveNumberVector]
     a[m::Int, k::WaveNumberVector] = val
@@ -274,4 +313,75 @@ Base.@propagate_inbounds function Base.setindex!(a::ProjectedField{G},
     # the Hermitian-symmetry invariant is preserved across all signed dims.
     i0 == 1 && @inbounds parent(a)[m, i0, sym_rest...] = do_conj ? val  : conj(val)
     return val
+end
+
+"""
+    homogeneous_axes(a::ProjectedField) -> Tuple
+
+Return `(axes(parent(a), 2), axes(parent(a), 3), …)` — one axis range per
+homogeneous (FFT) dimension of the grid.
+
+`parent(a)` has shape `(Nm, kH_1_sz, kH_2_sz, …)`: axis 1 is the mode index
+and axes 2..Nhom+1 are the kH axes in `FFT_DIMS_ORDER` order.  This function
+returns those kH axis ranges so callers can iterate over all wavenumber
+combinations without knowing the concrete grid type.
+"""
+@generated function homogeneous_axes(a::ProjectedField{<:AbstractGrid{<:Any,<:Any,<:Any,FFT_DIMS_ORDER}}) where {FFT_DIMS_ORDER}
+    Nhom = length(FFT_DIMS_ORDER)
+    return Expr(:tuple, (:(axes(parent(a), $(k+1))) for k in 1:Nhom)...)
+end
+
+"""
+    apply_symmetry!(a::ProjectedField) -> a
+
+Enforce Hermitian symmetry in-place on the modal coefficient array of `a`.
+
+`parent(a)` has shape `(Nm, kH_1_sz, …, kH_Nhom_sz)`: axis 1 is the mode
+index and axes 2..Nhom+1 are the kH axes in `FFT_DIMS_ORDER` order (rfft
+first, then signed FFTs).  The symmetry condition `a(-k) = conj(a(k))`
+applies at the zero-rfft-wavenumber slice exactly as for `FTField`.
+
+The outer loop is restricted to `rfft_index == 1` (the DC plane of
+`parent(a)` axis 2) and iterates all signed-FFT axes fully.  The conjugate
+partner is computed by flipping each signed-FFT kH axis via FFTW wrap-around.
+Within each `(Ih, Ih_neg)` pair the inner mode loop runs over axis 1 at
+stride-1 for cache efficiency, and `_average_complex` enforces
+`a[m, -k] = conj(a[m, k])` to floating-point precision.
+"""
+function apply_symmetry!(a::ProjectedField{<:AbstractGrid{<:Any,<:Any,<:Any,FFT_DIMS_ORDER}}) where {FFT_DIMS_ORDER}
+    Nhom = length(FFT_DIMS_ORDER)
+    pa   = parent(a)
+    LI   = LinearIndices(pa)
+
+    # Restrict the rfft axis (parent axis 2, kH position k==1) to index 1.
+    # At kx > 0 the negative-kx partner is not stored, so there is nothing
+    # to symmetrize.  All other kH axes (signed-FFT) are iterated fully.
+    dc_range = ntuple(k -> k == 1 ? (1:1) : axes(pa, k + 1), Val(Nhom))
+    @inbounds for Ih in CartesianIndices(dc_range)
+
+        # Conjugate-symmetric kH partner: k==1 is the rfft axis (self-partner),
+        # k>1 are signed-FFT axes (wrap-around, or self at zero wavenumber).
+        Ih_neg = CartesianIndex(ntuple(Val(Nhom)) do k
+            if k == 1
+                return Ih[k]
+            elseif Ih[k] == 1
+                return Ih[k]
+            else
+                return size(pa, k + 1) - Ih[k] + 2
+            end
+        end)
+
+        # Mode axis is innermost for stride-1 memory access.
+        for Im in axes(pa, 1)
+            I    = CartesianIndex(Im, Ih.I...)
+            Ineg = CartesianIndex(Im, Ih_neg.I...)
+
+            if LI[I] <= LI[Ineg]
+                av = _average_complex(pa[I], pa[Ineg])
+                pa[I]    = av
+                pa[Ineg] = conj(av)
+            end
+        end
+    end
+    return a
 end

@@ -24,6 +24,11 @@
 #
 # `apply_symmetry!` and `normalise_mean!` are `@generated` utilities defined at
 # the bottom of this file and are also used by `ProjectedField` on construction.
+#
+# `homogeneous_axes(u)` and `inhomogeneous_axes(u)` are @generated helpers that
+# return the axis ranges for the FFT and non-FFT storage dimensions of `u`.
+# They are resolved at compile time from the grid type embedded in `FTField{G}`
+# so no grid argument is needed.  Both are used by `shift!` and `growto`.
 
 """
     FTField{G} where {G<:AbstractGrid}
@@ -45,7 +50,7 @@ struct FTField{G<:AbstractGrid, A<:AbstractArray, T, D} <: AbstractArray{Complex
 
     # main constructor which sanitises data
     FTField(grid::G, data::A) where {T, D, G<:AbstractGrid{T, D}, A<:Array{Complex{T}, D}} =
-        new{G, A, T, D}(grid, apply_symmetry!(normalise_mean!(data, fft_dims(grid)), fft_dims(grid)))
+        new{G,A,T,D}(grid, apply_symmetry!(normalise_mean!(data, fft_dims(grid)), fft_dims(grid)))
 end
 FTField(grid::AbstractGrid{T}, data::AbstractArray) where {T} = FTField(grid, Complex{T}.(data))
 
@@ -74,6 +79,19 @@ Base.@propagate_inbounds function Base.setindex!(u::FTField, v, i::Int)
     return v
 end
 
+# indexing with a cartesianindex
+Base.@propagate_inbounds function Base.getindex(u::FTField, I::CartesianIndex)
+    @boundscheck checkbounds(parent(u), I)
+    @inbounds v = parent(u)[I]
+    return v
+end
+
+Base.@propagate_inbounds function Base.setindex!(u::FTField, v, I::CartesianIndex)
+    @boundscheck checkbounds(parent(u), I)
+    @inbounds parent(u)[I] = v
+    return v
+end
+
 grid(u::FTField) = u.grid
 
 """
@@ -87,33 +105,19 @@ have length `length(FFT_DIMS_ORDER)`, not the full dimension `D` of `grid(u)`.
 Inhomogeneous directions are preserved by the grid-specific
 `growto(grid(u), target_size)` method.
 
-The spectral coefficients are copied by wavenumber vector: each stored
-wavenumber of `u` is converted to a [`WaveNumberVector`](@ref), then copied to
-the same wavenumber in the output field. This requires the target grid to
-represent every copied source wavenumber, so this method is primarily intended
-for increasing homogeneous resolution.
-
-This is optional.  Packages should only implement it if they support
-resolution-changing transforms such as `FFT(u, target_size)` and
-`IFFT(û, target_size)`.
+The spectral coefficients are embedded using FFTW storage conventions: the
+rfft block remains a prefix, while negative modes in each signed FFT dimension
+are copied to the high end of the corresponding target dimension. Equivalently,
+each source coefficient appears at the same signed wavenumber in the output and
+newly introduced wavenumbers are left exactly zero. This requires the target
+grid to represent every copied source wavenumber, so this method is primarily
+intended for increasing homogeneous resolution.
 """
-function growto(u::FTField{G}, target_size::NTuple{N, Int}) where {T, D, AXES, FFT_DIMS_ORDER, N, G<:AbstractGrid{T, D, AXES, FFT_DIMS_ORDER}}
+function growto(u::FTField{G}, target_size::NTuple{N, Int}) where {FFT_DIMS_ORDER, N, G<:AbstractGrid{<:Any, <:Any, <:Any, FFT_DIMS_ORDER}}
     N == length(FFT_DIMS_ORDER) ||
         throw(ArgumentError("target_size has incompatible size: expected a tuple of length $(length(FFT_DIMS_ORDER)), got length $N"))
-
     out = FTField(growto(grid(u), target_size))
-    # Iterate source storage indices, convert them to signed wavenumbers,
-    # and copy the matching wavenumber slice in the target grid.
-    for_each_homogeneous_index(grid(u)) do _, homogeneous_indices
-        k = to_wavenumber_vector(grid(u), homogeneous_indices)
-
-        # Bind the views explicitly.  `out[k] .= u[k]` can route through
-        # broadcast's dotview machinery, which expects ordinary array indices;
-        # these temporaries force our WaveNumberVector getindex method first.
-        dst = out[k]
-        src = u[k]
-        dst .= src
-    end
+    _copy_to_padded!(parent(out), parent(u), FFT_DIMS_ORDER)
     return out
 end
 
@@ -132,12 +136,12 @@ The returned view has one dimension for each axis of `u` not in `FFT_DIMS_ORDER`
 in their original order.
 """
 Base.@propagate_inbounds function Base.getindex(u::FTField{G},
-                                                k::WaveNumberVector) where {T, D, AXES, FFT_DIMS_ORDER, G<:AbstractGrid{T, D, AXES, FFT_DIMS_ORDER}}
+                                                k::WaveNumberVector) where {FFT_DIMS_ORDER, G<:AbstractGrid{<:Any, <:Any, <:Any, FFT_DIMS_ORDER}}
     tpl     = to_homogeneous_indices(grid(u), k)
     indices = Base.front(tpl)
     colons  = ntuple(_ -> Colon(), ndims(u) - length(FFT_DIMS_ORDER))
-    @boundscheck checkbounds(u, _combine_indices(grid(u), colons, indices)...)
-    @inbounds return view(parent(u), _combine_indices(grid(u), colons, indices)...)
+    @boundscheck checkbounds(u, combine_indices(grid(u), colons, indices)...)
+    @inbounds return view(parent(u), combine_indices(grid(u), colons, indices)...)
 end
 
 """
@@ -157,8 +161,8 @@ Base.@propagate_inbounds function Base.getindex(u::FTField,
     tpl     = to_homogeneous_indices(grid(u), k)
     do_conj = last(tpl)
     indices = Base.front(tpl)
-    @boundscheck checkbounds(u, _combine_indices(grid(u), (i1, I...), indices)...)
-    @inbounds val = parent(u)[_combine_indices(grid(u), (i1, I...), indices)...]
+    @boundscheck checkbounds(u, combine_indices(grid(u), (i1, I...), indices)...)
+    @inbounds val = parent(u)[combine_indices(grid(u), (i1, I...), indices)...]
     return do_conj ? conj(val) : val
 end
 
@@ -178,10 +182,10 @@ Two symmetry invariants are maintained automatically:
 If `k[1] < 0` the write targets the conjugate-symmetric storage location
 and `conj(val)` is stored, keeping the representation consistent with reads.
 """
-Base.@propagate_inbounds function Base.setindex!(u::FTField{G},
+Base.@propagate_inbounds function Base.setindex!(u::FTField{<:AbstractGrid{T}},
                                                val,
                                                  k::WaveNumberVector{N},
-                                                 I::Vararg{Int}) where {T, N, G<:AbstractGrid{T}}
+                                                 I::Vararg{Int}) where {T, N}
     CT      = Complex{T}
     tpl     = to_homogeneous_indices(grid(u), k)
     do_conj = last(tpl)
@@ -195,127 +199,131 @@ Base.@propagate_inbounds function Base.setindex!(u::FTField{G},
     # Conjugate-symmetric indices for each signed-fft axis.
     sym_rest = ntuple(j -> _fftw_sym_index(rest[j], size(u, j + 2)), Val(N-1))
 
-    @boundscheck checkbounds(u, _combine_indices(grid(u), I, (i0, rest...))...)
-    @inbounds parent(u)[_combine_indices(grid(u), I, (i0, rest...))...] = do_conj ? conj(val) : val
+    @boundscheck checkbounds(u, combine_indices(grid(u), I, (i0, rest...))...)
+    @inbounds parent(u)[combine_indices(grid(u), I, (i0, rest...))...] = do_conj ? conj(val) : val
     # When the rfft wavenumber is zero, also write the mirror entry so that
     # the Hermitian-symmetry invariant is preserved across all signed dims.
-    i0 == 1 && @inbounds parent(u)[_combine_indices(grid(u), I, (i0, sym_rest...))...] = do_conj ? val  : conj(val)
+    i0 == 1 && @inbounds parent(u)[combine_indices(grid(u), I, (i0, sym_rest...))...] = do_conj ? val  : conj(val)
     return val
 end
-
-"""
-    _combine_indices(grid, I, K) -> Tuple
-
-Combine free indices `I` and constrained indices `K` into a single index tuple
-of length `D`, interleaving them according to the constrained dimensions `FFT_DIMS_ORDER`
-defined by `grid`. Dimensions in `FFT_DIMS_ORDER` draw from `K`; all others draw from `I`.
-
-The index layout is fully resolved at compile time via a generated function.
-"""
-@generated function _combine_indices(::AbstractGrid{T, D, AXES, FFT_DIMS_ORDER}, I, K) where {T, D, AXES, FFT_DIMS_ORDER}
-    inds = []; k = 1; i = 1
-    for d in 1:D
-        if d ∈ FFT_DIMS_ORDER
-            push!(inds, :(K[$k])); k += 1
-        else
-            push!(inds, :(I[$i])); i += 1
-        end
-    end
-    return :(($(inds...),))
-end
-
 
 # --------------- #
 # utility methods #
 # --------------- #
-@inline function _average_complex(z1::T, z2::T) where {T}
-    _re = 0.5 * (real(z1) + real(z2))
-    _im = 0.5 * (imag(z1) - imag(z2))
-    return _re + im * _im
-end
 
 """
-    apply_symmetry!(data::AbstractArray{T, D}, ::Val{H})
+    apply_symmetry!(u::FTField) -> u
 
-Enforce Hermitian symmetry on `data` after a multi-dimensional RFFT along
-the dimensions listed in `H` (in transform order).
+Enforce Hermitian symmetry in-place on the spectral coefficient array of `u`.
 
-For a real-valued physical field, Fourier coefficients must satisfy
-û(-k) = conj(û(k)). After the RFFT along `H[1]`, only non-negative
-frequencies along that axis are stored. Along the remaining axes `H[2:end]`
-both signs are present, but at the zero-frequency plane of `H[1]` (index 1)
-the coefficients must still satisfy the conjugate-symmetry constraint — this
-function enforces it by averaging each conjugate pair in-place.
+The symmetry condition `û(-k) = conj(û(k))` must hold for the signed-FFT
+wavenumbers **at the zero-frequency slice of the rfft axis only** — at
+non-zero rfft wavenumbers the negative-kx partner is not stored, so there is
+nothing to enforce.
 
-Dimensions not in `H` are untransformed and are iterated over in full.
-No-op when only one dimension is transformed (`length(H) == 1`).
+The outer loop is restricted to `rfft_index == 1` (the DC plane) and iterates
+all signed-FFT axes fully.  For each DC-plane kH index `Ih`, the conjugate
+partner `Ih_neg` is computed by flipping the signed-FFT axes:
 
-# Note on cache efficiency
-The DC plane of `H[1]` (the rfft dim) has memory stride `size(data, H[1])`
-rather than 1, because the rfft dim is stored as the leading (stride-1)
-dimension. The loop iterates the remaining dims in ascending stride order,
-which is optimal for the current layout. If this function is a bottleneck,
-storing the rfft dim last would give stride-1 access to the DC plane.
+- rfft axis (k==1 in `FFT_DIMS_ORDER`): `Ih_neg` carries the same index.
+- signed-FFT axis at index 1 (wavenumber 0): self-conjugate, `Ih_neg = Ih`.
+- signed-FFT axis at index `i > 1`: wrap-around `Ih_neg = size(u, dim) - i + 2`.
+
+The inner inhomogeneous loop (over `inhomogeneous_axes`) then maps each
+`(Ih, Ih_neg)` kH pair to a full array index via `combine_indices` and
+averages each `(I, Ineg)` pair exactly once (guarded by `LI[I] <= LI[Ineg]`)
+using `_average_complex`, which enforces `û(-k) = conj(û(k))` to
+floating-point precision.
 """
-@generated function apply_symmetry!(data::AbstractArray{T, D}, ::Val{H}) where {T, D, H}
-    length(H) <= 1 && return :(return data)
+function apply_symmetry!(u::FTField{<:AbstractGrid{<:Any,<:Any,<:Any,FFT_DIMS_ORDER}}) where {FFT_DIMS_ORDER}
+    # we'll use this to avoid doing the same work twice for each conjugate pair
+    LI = LinearIndices(parent(u))
+    g  = grid(u)
 
-    # All subset enumeration happens at code-generation time so the compiled
-    # hot loop contains only literal index expressions — no closures, no dynamic
-    # dispatch, no allocations.
-    secondary = H[2:end]
-    blocks    = Expr[]
+    # Restrict the rfft axis (k==1 in the kH tuple) to index 1 — the DC plane.
+    # At kx > 0 the negative-kx partner is not stored, so there is nothing to
+    # symmetrize.  All other kH axes (signed-FFT) are iterated fully.
+    dc_range = ntuple(Val(length(FFT_DIMS_ORDER))) do k
+        k == 1 ? (1:1) : axes(u, FFT_DIMS_ORDER[k])
+    end
+    
+    @inbounds for Ih in CartesianIndices(dc_range)
 
-    for mask_int in 1:(1 << length(secondary)) - 1
-
-        # active subset of secondary dims for this pass
-        active_dims = Tuple(secondary[k] for k in eachindex(secondary) if Bool((mask_int >> (k-1)) & 1))
-        half_dim    = active_dims[end]
-
-        # per-dim range literals (e.g. 1:1, 2:Base.size(data,3)>>1+1, ...)
-        range_exprs = ntuple(D) do d
-            if d == H[1]
-                :(1:1)
-            elseif d == half_dim
-                :(2:(Base.size(data, $d) >> 1) + 1)
-            elseif d in active_dims
-                :(2:Base.size(data, $d))
-            elseif d in secondary
-                :(1:1)
+        Ih_neg = CartesianIndex(ntuple(Val(length(FFT_DIMS_ORDER))) do d
+            if FFT_DIMS_ORDER[d] == rfft_dim(g)
+                # rfft axis: partner is the same index, no conjugation.
+                return Ih[d]
             else
-                :(1:Base.size(data, $d))
-            end
-        end
-
-        # per-dim neg-index literals (e.g. I[1], Base.size(data,2)-I[2]+2, ...)
-        neg_exprs = ntuple(d -> d in active_dims ? :(Base.size(data, $d) - I[$d] + 2) : :(I[$d]), D)
-
-        push!(blocks, quote
-            for I in CartesianIndices($(Expr(:tuple, range_exprs...)))
-                neg       = $(Expr(:call, :CartesianIndex, neg_exprs...))
-                _av       = _average_complex(data[I], data[neg])
-                data[I]   = _av
-                data[neg] = conj(_av)
+                if Ih[d] == 1
+                    # zero wavenumber: self-conjugate.
+                    return Ih[d]
+                else
+                    # negative wavenumber partner using FFTW wrap-around order.
+                    return size(u, FFT_DIMS_ORDER[d]) - Ih[d] + 2
+                end
             end
         end)
-    end
 
-    return quote
-        $(blocks...)
-        return data
+        # loop over the inhomogeneous indices and average the conjugate pair
+        for Inh in CartesianIndices(inhomogeneous_axes(u))
+            I    = CartesianIndex(combine_indices(g, Inh, Ih))
+            Ineg = CartesianIndex(combine_indices(g, Inh, Ih_neg))
+
+            if LI[I] <= LI[Ineg]
+                av = _average_complex(parent(u)[I], parent(u)[Ineg])
+                parent(u)[I]    = av
+                parent(u)[Ineg] = conj(av)
+            end
+        end
     end
+    return u
 end
-apply_symmetry!(data, H::Dims) = apply_symmetry!(data, Val(H))
 
 """
-    normalise_mean!(data::Array{<:Any, D}, ::Val{H})
+    normalise_mean!(data::Array{<:Any, D}, ::Val{FFT_DIMS_ORDER})
 
 Enforce purely real values at mean component of Fourier transformed
 data.
 """
-@generated function normalise_mean!(data::Array{<:Any, D}, ::Val{H}) where {D, H}
-    indxs = [d ∈ H ? 1 : :(:) for d in 1:D]
+@generated function normalise_mean!(data::Array{<:Any, D}, ::Val{FFT_DIMS_ORDER}) where {D, FFT_DIMS_ORDER}
+    indxs = [d ∈ FFT_DIMS_ORDER ? 1 : :(:) for d in 1:D]
     slice = Expr(:ref, :data, indxs...)
     return :(@views $slice .= real.($slice); return data)
 end
-normalise_mean!(data, H::Dims) = normalise_mean!(data, Val(H))
+normalise_mean!(data, FFT_DIMS_ORDER::Dims) = normalise_mean!(data, Val(FFT_DIMS_ORDER))
+
+"""
+    homogeneous_axes(u::FTField) -> Tuple
+
+Return a tuple of `axes(u, d)` for each storage dimension `d` in
+`FFT_DIMS_ORDER` — the homogeneous (FFT) dimensions of the grid.
+
+The result is suitable for `CartesianIndices(homogeneous_axes(u))` to
+iterate over all spectral wavenumber indices of `u` without touching the
+inhomogeneous (quadrature) dimension(s).
+
+The grid type is extracted from `u` at compile time, so this call
+produces zero allocations at runtime.
+"""
+@generated function homogeneous_axes(u::FTField{<:AbstractGrid{<:Any, D, <:Any, FFT_DIMS_ORDER}}) where {D, FFT_DIMS_ORDER}
+    return Expr(:tuple, (:(axes(u, $d)) for d in FFT_DIMS_ORDER)...)
+end
+
+"""
+    inhomogeneous_axes(u::FTField) -> Tuple
+
+Return a tuple of `axes(u, d)` for each storage dimension `d` that is
+**not** in `FFT_DIMS_ORDER` — the inhomogeneous (non-FFT, e.g. Chebyshev)
+dimensions of the grid.  Complementary to [`homogeneous_axes`](@ref).
+
+Used as the inner loop range in [`shift!`](@ref) so that each inhomogeneous
+index is updated via a scalar `parent[I...] *= phase` with no temporary
+slice allocation.
+
+The grid type is extracted from `u` at compile time, so this call
+produces zero allocations at runtime.
+"""
+@generated function inhomogeneous_axes(u::FTField{<:AbstractGrid{<:Any, D, <:Any, FFT_DIMS_ORDER}}) where {D, FFT_DIMS_ORDER}
+    inh_dims = [d for d in 1:D if d ∉ FFT_DIMS_ORDER]
+    return Expr(:tuple, (:(axes(u, $d)) for d in inh_dims)...)
+end

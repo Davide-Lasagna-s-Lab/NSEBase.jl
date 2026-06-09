@@ -24,16 +24,18 @@ per homogeneous dimension in `FFT_DIMS_ORDER` order) at signed wavenumber vector
 The factor is `∏_j exp(i · k[j] · shifts[j] · wavenumber_scale(g, FFT_DIMS_ORDER[j]))`.
 Zero wavenumbers contribute a factor of `1` (exact, no floating-point error).
 """
-function _shift_phase(g::AbstractGrid{T, D, AXES, FFT_DIMS_ORDER},
+function _shift_phase(     g::AbstractGrid{T, <:Any, <:Any, FFT_DIMS_ORDER},
                       shifts::NTuple{N, Real},
-                      k::WaveNumberVector{N}) where {T, D, AXES, FFT_DIMS_ORDER, N}
+                           k::WaveNumberVector{N}) where {T, FFT_DIMS_ORDER, N}
     N == length(FFT_DIMS_ORDER) ||
         throw(DimensionMismatch("shifts must have one entry per homogeneous dimension; got $(N), expected $(length(FFT_DIMS_ORDER))"))
-    return prod(1:N) do i
-        n = k[i]
-        iszero(n) ? one(Complex{T}) :
-                    cis(n * shifts[i] * wavenumber_scale(g, FFT_DIMS_ORDER[i]))
+    # Sum all phase angles first, then call cis once — cheaper than N separate
+    # cis calls.  N is a compile-time constant so the loop is fully unrolled.
+    angle = zero(T)
+    for i in 1:N
+        angle += k[i] * shifts[i] * wavenumber_scale(g, FFT_DIMS_ORDER[i])
     end
+    return cis(angle)
 end
 
 """
@@ -51,27 +53,21 @@ The phase factor applied to spectral coefficient at signed wavenumber vector `k`
 
 Returns `u` unchanged when all shifts are zero.
 """
-function shift!(u::FTField{G}, shifts) where {G<:AbstractGrid{T, D, AXES, FFT_DIMS_ORDER}} where {T, D, AXES, FFT_DIMS_ORDER}
+function shift!(u::FTField, shifts)
     any(!iszero, shifts) || return u
-    g         = grid(u)
-    pu        = parent(u)
-    inh_dims  = inhomogeneous_dims(g)
-    inh_sizes = map(d -> size(g, d), inh_dims)
-
-    for_each_homogeneous_index(g) do _, homogeneous_indices
-        # Convert storage indices to signed wavenumbers, then accumulate the
-        # total phase as a product over all homogeneous directions.
-        k     = to_wavenumber_vector(g, homogeneous_indices)
+    g  = grid(u)
+    pu = parent(u)
+    # Outer loop: homogeneous wavenumber — compute phase factor once per k.
+    # Inner loop: inhomogeneous indices — scalar indexing (plain integer tuple)
+    # so no temporary slice is allocated on each iteration.
+    # This loop ordering is cache-friendly when the inhomogeneous dimensions are
+    # the first (lowest-stride) storage axes, as in the channel-flow layout.
+    for Ih in CartesianIndices(homogeneous_axes(u))
+        k     = to_wavenumber_vector(g, Ih)
         phase = _shift_phase(g, shifts, k)
-
-        # Apply phase to every inhomogeneous index combination for this wavenumber.
-        # CartesianIndices loop is the innermost, matching the column-major
-        # layout of dim 1 in the parent array.
-        # Merge the current inhomogeneous CartesianIndex with the homogeneous
-        # storage indices to get the full D-dimensional parent-array index.
-        for I in CartesianIndices(inh_sizes)
-            indices = _combine_indices(g, Tuple(I), homogeneous_indices)
-            @inbounds pu[indices...] *= phase
+        for Iinh in CartesianIndices(inhomogeneous_axes(u))
+            I = combine_indices(g, Iinh, Ih)
+            @inbounds pu[I...] *= phase
         end
     end
     return u
@@ -82,7 +78,12 @@ end
 
 Shift each component of `u` in-place. See [`shift!`](@ref).
 """
-shift!(u::VectorField{N}, shifts) where {N} = (for n in 1:N; shift!(u[n], shifts); end; return u)
+function shift!(u::VectorField{N}, shifts) where {N}
+    for n in 1:N
+        shift!(u[n], shifts)
+    end
+    return u
+end
 
 """
     shift!(a::ProjectedField, shifts) -> a
@@ -95,17 +96,15 @@ the underlying physical-space field.
 
 Returns `a` unchanged when all shifts are zero.
 """
-function shift!(a::ProjectedField{G}, shifts) where {G<:AbstractGrid{T, D, AXES, FFT_DIMS_ORDER}} where {T, D, AXES, FFT_DIMS_ORDER}
+function shift!(a::ProjectedField{G}, shifts) where {G<:AbstractGrid}
     any(!iszero, shifts) || return a
     g = grid(a)
-    for_each_homogeneous_index(g) do _, homogeneous_indices
-        # Same phase computation as FTField shift; applied uniformly across
-        # all mode indices m at this spectral location.
-        k     = to_wavenumber_vector(g, homogeneous_indices)
+    for I in CartesianIndices(a)
+        # drop the mode index to get the homogeneous indices for this spectral coefficient
+        homogeneous_indices = Base.tail(Tuple(I))
+        k = to_wavenumber_vector(g, homogeneous_indices)
         phase = _shift_phase(g, shifts, k)
-        for m in axes(a, 1)
-            @inbounds a[m, homogeneous_indices...] *= phase
-        end
+        @inbounds a[I] *= phase
     end
     return a
 end

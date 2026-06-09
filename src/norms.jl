@@ -9,14 +9,12 @@
 #   normdiff(u, v)   — norm of the difference ‖u − v‖, optionally after shifting
 #                      v along the homogeneous directions by a continuous phase shift.
 #
-# All implementations share two private accumulators:
-#   _accumulate_dot!       — adds the weighted dot product into a Ref{Real}
-#   _accumulate_normdiff2! — adds the weighted squared difference into a Ref{Real}
+# Each operation accumulates directly into a plain scalar `s`; no Ref boxing or
+# closures are needed because the loops are written as explicit for-loops.
 #
-# Accumulating into a `Ref` rather than a plain scalar avoids the heap boxing
-# that Julia's escape analysis applies when a scalar captured by a closure is
-# mutated — each `s[] +=` is a single dereferenced-pointer update with no
-# allocation.
+# All three inner products are consistent: dot(VectorField) = sum_n dot(u_n, v_n),
+# norm(VectorField) = sqrt(dot(u,u)) = sqrt(sum_n norm(u_n)^2), and
+# normdiff(VectorField) = sqrt(sum_n normdiff(u_n, v_n)^2) matches the induced norm.
 #
 # `minnormdiff` searches over a grid of candidate continuous shifts and returns
 # the minimum ‖u − shift(v, s)‖ together with the minimising shift tuple `s`.
@@ -42,21 +40,15 @@ symmetry of the rfft), `w(j)` are the quadrature weights returned by
 of conjugate-symmetric mode pairs in the signed FFT dimensions.
 """
 function LinearAlgebra.dot(u::FTField{G}, v::FTField{G}) where {G<:AbstractGrid}
-    s = Ref(zero(real(eltype(u))))
-    _accumulate_dot!(s, u, v)
-    return s[] / 2
-end
-
-function _accumulate_dot!(s, u::FTField{G}, v::FTField{G}) where {G<:AbstractGrid}
-    g  = grid(u)
-    pu = parent(u)
-    pv = parent(v)
+    s = zero(real(eltype(u)))
+    g = grid(u)
     ws = weights(g)
-    for_each_index(g) do one_or_two, inhomogeneous_indices, indices
-        @inbounds s[] += one_or_two * ws[inhomogeneous_indices...] *
-                         real(conj(pu[indices...]) * pv[indices...])
+    @inbounds for I in CartesianIndices(u)
+        # apply a different weight to the zero rfft wavenumber, extract the 
+        # inhomogeneous indices for the weights lookup and accumulate
+        s += one_or_two(I, g) * ws[inhomogeneous_indices(I, g)...] * real(conj(u[I]) * v[I])
     end
-    return nothing
+    return s / 2
 end
 
 """
@@ -95,25 +87,14 @@ passed without `tmp`, a temporary is allocated only when a non-zero shift is
 requested.
 """
 function normdiff(u::FTField{G}, v::FTField{G}) where {G<:AbstractGrid}
-    s = Ref(zero(real(eltype(u))))
-    _accumulate_normdiff2!(s, u, v)
-    return _normdiff_from_accumulator(s)
-end
-
-function _accumulate_normdiff2!(s, u::FTField{G}, v::FTField{G}) where {G<:AbstractGrid}
-    g  = grid(u)
-    pu = parent(u)
-    pv = parent(v)
+    s = zero(real(eltype(u)))
+    g = grid(u)
     ws = weights(g)
-    # Same weighting as dot: rfft Hermitian factor and quadrature weight.
-    for_each_index(g) do one_or_two, inhomogeneous_indices, indices
-        @inbounds s[] += one_or_two * ws[inhomogeneous_indices...] *
-                         abs2(pu[indices...] - pv[indices...])
+    @inbounds for I in CartesianIndices(u)
+        s += one_or_two(I, g) * ws[inhomogeneous_indices(I, g)...] * abs2(u[I] - v[I])
     end
-    return nothing
+    return sqrt(s / 2)
 end
-
-_normdiff_from_accumulator(s) = sqrt(s[] / 2)
 
 function normdiff(u::FTField{G}, v::FTField{G},
                   shifts::NTuple{M, Real}) where {M, G<:AbstractGrid{T, D, AXES, FFT_DIMS_ORDER}} where {T, D, AXES, FFT_DIMS_ORDER}
@@ -145,11 +126,11 @@ Inner product of two vector fields: sum of [`dot`](@ref) over components.
 """
 function LinearAlgebra.dot(q::VectorField{N, <:FTField{G}},
                            p::VectorField{N, <:FTField{G}}) where {N, G<:AbstractGrid}
-    s = Ref(zero(real(eltype(q[1]))))
+    s = zero(real(eltype(q[1])))
     for n in 1:N
-        _accumulate_dot!(s, q[n], p[n])
+        s += dot(q[n], p[n])
     end
-    return s[] / 2
+    return s
 end
 
 LinearAlgebra.dot(q::VectorField{N}, p::VectorField{N}) where {N} = sum(dot(q[n], p[n]) for n in 1:N)
@@ -175,11 +156,12 @@ workspace is not required.
 """
 function normdiff(u::VectorField{N, <:FTField{G}},
                   v::VectorField{N, <:FTField{G}}) where {N, G<:AbstractGrid}
-    s = Ref(zero(real(eltype(u[1]))))
+    s = zero(real(eltype(u[1])))
     for n in 1:N
-        _accumulate_normdiff2!(s, u[n], v[n])
+        d = normdiff(u[n], v[n])
+        s += d * d
     end
-    return _normdiff_from_accumulator(s)
+    return sqrt(s)
 end
 
 function normdiff(u::VectorField{N, <:FTField{G}},
@@ -195,13 +177,14 @@ function normdiff(u::VectorField{N, <:FTField{G}},
                   shifts::NTuple{M, Real},
                   tmp::FTField{G}) where {N, M, G<:AbstractGrid{T, D, AXES, FFT_DIMS_ORDER}} where {T, D, AXES, FFT_DIMS_ORDER}
     _check_shift_length(M, FFT_DIMS_ORDER)
-    s = Ref(zero(real(eltype(u[1]))))
+    s = zero(real(eltype(u[1])))
     for n in 1:N
         tmp .= v[n]
         any(!iszero, shifts) && shift!(tmp, shifts)
-        _accumulate_normdiff2!(s, u[n], tmp)
+        d = normdiff(u[n], tmp)
+        s += d * d
     end
-    return _normdiff_from_accumulator(s)
+    return sqrt(s)
 end
 
 normdiff(u::VectorField, v::VectorField, shifts::NTuple{M, Real}, ::Nothing) where {M} =
@@ -236,7 +219,7 @@ function minnormdiff(u::F,
     g        = grid(u)
     min_diff = typemax(real(eltype(u isa VectorField ? u[1] : u)))
     s_min    = ntuple(k -> zero(T), Val(M))
-    s         = Ref(zero(min_diff))
+    s         = zero(min_diff)
 
     # The shift increment in each transform dimension is one physical period
     # divided by the number of samples requested in that dimension.
@@ -246,16 +229,14 @@ function minnormdiff(u::F,
     # same order as `fft_dims(g)`.
     ranges = ntuple(k -> 0:(N[k] - 1), Val(M))
     for shift_counts in Iterators.product(ranges...)
-        shifts       = ntuple(k -> steps[k] * shift_counts[k], Val(M))
+        shifts = ntuple(k -> steps[k] * shift_counts[k], Val(M))
 
         tmp .= v
         shift!(tmp, shifts)
-        s[] = zero(s[])
-        _accumulate_normdiff2!(s, u, tmp)
-        diff = _normdiff_from_accumulator(s)
+        s = normdiff(u, tmp)
 
-        if diff < min_diff
-            min_diff = diff
+        if s < min_diff
+            min_diff = s
             s_min    = shifts
         end
     end
@@ -263,20 +244,11 @@ function minnormdiff(u::F,
     return min_diff, s_min
 end
 
-function _accumulate_normdiff2!(s, u::VectorField{N, <:FTField{G}},
-                                v::VectorField{N, <:FTField{G}}) where {N, G<:AbstractGrid}
-    for n in 1:N
-        _accumulate_normdiff2!(s, u[n], v[n])
-    end
-    return nothing
-end
-
 function minnormdiff(u::F,
                      v::F,
                      tmp::F=zero(v)) where {G<:AbstractGrid{T, D, AXES, FFT_DIMS_ORDER},
                                             F<:Union{FTField{G}, VectorField{<:Any, <:FTField{G}}}} where {T, D, AXES, FFT_DIMS_ORDER}
-    # Use the historical default resolution, but now size the tuple from the
-    # grid's number of transform dimensions instead of assuming a fixed value.
+    # Use the default resolution of 32 shifts for each transform dimension
     M = length(FFT_DIMS_ORDER)
     return minnormdiff(u, v, ntuple(Returns(32), Val(M)), tmp)
 end
@@ -293,24 +265,22 @@ Wavenumbers with rfft index `> 1` (wavenumber `nx > 0`) are stored once but repr
 both `+nx` and `-nx`, so they contribute with weight 2; the `nx = 0` plane has
 weight 1.  The result is divided by 2 to account for the double-counting of
 signed-FFT pairs `(nz, nt)` and `(-nz, -nt)` that both appear in storage.
-
-The loop uses axis 1 as the mode index `m` (see Storage layout in
-[`ProjectedField`](@ref)) and the spectral indices `args...` from
-`for_each_homogeneous_index`, which correspond to axes 2 onward in FFT_DIMS_ORDER order.
 """
-function LinearAlgebra.dot(a::ProjectedField{G}, b::ProjectedField{G}) where {G<:AbstractGrid}
-    # Use a Ref accumulator: a plain scalar mutated inside a closure gets boxed
-    # by Julia's closure-capture analysis, causing heap allocations on every
-    # inner-loop iteration.  Wrapping it in a Ref keeps the value on the heap
-    # once and eliminates repeated boxing.
-    s = Ref(zero(real(eltype(a))))
-    for_each_homogeneous_index(grid(a)) do one_or_two, homogeneous_indices
-        for m in axes(a, 1)
-            @inbounds s[] += one_or_two * real(LinearAlgebra.dot(a[m, homogeneous_indices...],
-                                                                 b[m, homogeneous_indices...]))
-        end
+function LinearAlgebra.dot(a::ProjectedField{G}, b::ProjectedField{G}) where {G<:AbstractGrid{T, D}} where {T, D}
+    s = zero(real(eltype(a)))
+    # ProjectedField parent has D+1 dimensions: 1 mode dim + D grid dims.
+    # rfft dimension is always dim 2 (first grid dim after the mode index).
+    # Split into two branch-free loops so the compiler can vectorise the
+    # inner loop over dim 1 (mode index, stride-1 in storage).
+    ix1 = ntuple(d -> d == 2 ? (1:1)          : axes(parent(a), d), Val(D+1))
+    ix2 = ntuple(d -> d == 2 ? (2:size(a, 2)) : axes(parent(a), d), Val(D+1))
+    @inbounds for I in CartesianIndices(ix1)
+        s += real(conj(a[I]) * b[I])
     end
-    return s[] / 2
+    @inbounds for I in CartesianIndices(ix2)
+        s += 2 * real(conj(a[I]) * b[I])
+    end
+    return s / 2
 end
 
 """
@@ -329,16 +299,18 @@ Follows the same rfft/signed-FFT weighting as [`dot`](@ref): rfft wavenumbers
 with `nx > 0` contribute with weight 2 (they represent both `±nx`), and the
 result is divided by 2 to remove signed-FFT double-counting.
 """
-function normdiff(a::ProjectedField{G}, b::ProjectedField{G}) where {G<:AbstractGrid}
-    # Ref accumulator: a plain scalar mutated inside a closure is heap-boxed on
-    # every iteration by Julia's escape analysis.  A Ref is allocated once.
-    s = Ref(zero(real(eltype(a))))
-    for_each_homogeneous_index(grid(a)) do one_or_two, homogeneous_indices
-        for m in axes(a, 1)
-            @inbounds s[] += one_or_two * abs2(a[m, homogeneous_indices...] - b[m, homogeneous_indices...])
-        end
+function normdiff(a::ProjectedField{G}, b::ProjectedField{G}) where {G<:AbstractGrid{T, D}} where {T, D}
+    s = zero(real(eltype(a)))
+    # D+1: one mode dim + D grid dims; rfft on dim 2 (first grid dim).
+    ix1 = ntuple(d -> d == 2 ? (1:1)          : axes(parent(a), d), Val(D+1))
+    ix2 = ntuple(d -> d == 2 ? (2:size(a, 2)) : axes(parent(a), d), Val(D+1))
+    @inbounds for I in CartesianIndices(ix1)
+        s += abs2(a[I] - b[I])
     end
-    return sqrt(s[] / 2)
+    @inbounds for I in CartesianIndices(ix2)
+        s += 2 * abs2(a[I] - b[I])
+    end
+    return sqrt(s / 2)
 end
 
 """

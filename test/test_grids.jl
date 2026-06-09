@@ -43,6 +43,13 @@ NSEBase.wavenumber_scale(g::TripleGrid, dim::Int)         = dim == 2 ? g.α :
                                                             one(g.α)
 Base.convert(::Type{Float64}, g::TripleGrid)              = g
 
+# `growto` increases the homogeneous resolution while keeping the inhomogeneous
+# size (Ny) and the wavenumber scales (α, β) fixed.
+function NSEBase.growto(g::TripleGrid, target_size::NTuple{2, Int})
+    Nx_new, Nz_new = target_size
+    return TripleGrid(g.Ny, Nx_new, Nz_new, g.α, g.β, g.ws)
+end
+
 # Broadcastable coordinate arrays in storage order.  The inhomogeneous
 # direction is exposed as a custom non-uniform `g.y` vector; the two
 # homogeneous directions cover their full periods with equally-spaced points.
@@ -138,3 +145,32 @@ end
 Base.size(::GalerkinGrid{S}) where {S} = S
 NSEBase.weights(g::GalerkinGrid) = g.ws
 NSEBase.wavenumber_scale(::GalerkinGrid, ::Int) = 1.0
+
+
+# "Flipped" 3-D grid: FFT dimensions come FIRST in storage, inhomogeneous LAST.
+#
+#   array dim 1: rfft           (x), length Nx  — FFT_DIMS_ORDER[1]
+#   array dim 2: signed FFT     (z), length Nz  — FFT_DIMS_ORDER[2]
+#   array dim 3: inhomogeneous  (y), length Ny
+#
+# AXES = (1, 3, 2, nothing): coord x → dim 1, coord y → dim 3, coord z → dim 2.
+# FFT_DIMS_ORDER = (1, 2).
+#
+# The `transform_size` of this grid is ((Nx>>1)+1, Nz, Ny), so FTField storage
+# is (rfft, z, y) — opposite of TripleGrid.  Used to test that `homogeneous_axes`
+# and `inhomogeneous_axes` work correctly regardless of which dimensions come first.
+struct FlippedGrid <: AbstractGrid{Float64, 3, (1, 3, 2, nothing), (1, 2)}
+    Nx :: Int
+    Nz :: Int
+    Ny :: Int
+    ws :: Vector{Float64}
+end
+
+function FlippedGrid(Nx, Nz, Ny)
+    FlippedGrid(Nx, Nz, Ny, ones(Ny))
+end
+
+# size(g) returns (Nx, Nz, Ny) — storage-order sizes.
+Base.size(g::FlippedGrid) = (g.Nx, g.Nz, g.Ny)
+NSEBase.weights(g::FlippedGrid)              = g.ws
+NSEBase.wavenumber_scale(::FlippedGrid, ::Int) = 1.0
