@@ -4,9 +4,15 @@
 
 ```@docs
 AbstractGrid
+GridDecomposition
+Undecomposed
+Decomposed
+decomposition_dims
+ndecomposed_dims
 fft_dims
 spatial_fft_dims
 inhomogeneous_dims
+spatial_inhomogeneous_dims
 to_storage_order
 transform_size
 fft_norm

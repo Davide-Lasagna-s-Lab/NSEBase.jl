@@ -1,4 +1,5 @@
-# Tests for the generic `AbstractGrid{T, D, AXES, FFT_DIMS_ORDER}` interface.
+# Tests for the generic
+# `AbstractGrid{T, D, AXES, FFT_DIMS_ORDER, DECOMPOSITION}` interface.
 #
 # These tests pin the contract documented in `src/abstractgrid.jl`:
 #
@@ -6,8 +7,10 @@
 #   - `fft_dims(grid)` returns the `FFT_DIMS_ORDER` type parameter verbatim.
 #   - `spatial_fft_dims(grid)` returns transformed spatial dimensions, omitting
 #     a transformed logical time dimension.
+#   - `decomposition_dims(grid)` reports partitioned storage dimensions.
 #   - `inhomogeneous_dims(grid)` returns the complement of `fft_dims` within
 #     `1:D`, in ascending order.
+#   - `spatial_inhomogeneous_dims(grid)` omits the logical time axis.
 #   - `transform_size(grid)` halves the rfft axis to `(N÷2)+1` and leaves all
 #     other axes unchanged.
 #   - `fft_norm(grid)` is the product of the FFT-dim sizes, used to normalise
@@ -21,7 +24,7 @@
 
     # A minimal struct with no concrete implementations.  Used to verify the
     # fall-through methods throw `NotImplementedError`.
-    struct BareGrid <: AbstractGrid{Float64, 3, (2, 1, 3, nothing), (2, 3)} end
+    struct BareGrid <: AbstractGrid{Float64, 3, (2, 1, 3, nothing), (2, 3), Undecomposed} end
     Base.size(::BareGrid) = (4, 8, 6)
 
 
@@ -37,13 +40,28 @@
 
         # If logical time is transformed, spatial_fft_dims omits that array
         # dimension while preserving the remaining transform order.
-        struct TimeSpectralGrid <: AbstractGrid{Float64, 4, (2, 1, 3, 4), (2, 3, 4)} end
+        struct TimeSpectralGrid <: AbstractGrid{Float64, 4, (2, 1, 3, 4), (2, 3, 4), Undecomposed} end
         Base.size(::TimeSpectralGrid) = (4, 8, 6, 10)
         @test spatial_fft_dims(TimeSpectralGrid()) === (2, 3)
 
         # inhomogeneous_dims is the complement of fft_dims within 1:D.
         # For our BareGrid with D=3, ORDER=(2,3), only dim 1 remains.
         @test inhomogeneous_dims(g) === (1,)
+        @test spatial_inhomogeneous_dims(g) === (1,)
+
+        # Serial grids report no partitioned dimensions. Decomposed grids
+        # expose their partitioned storage dimensions directly from the type.
+        struct SlabMetadataGrid <: AbstractGrid{Float64, 3, (2, 1, 3, nothing), (2, 3), Decomposed{(1,)}} end
+        @test decomposition_dims(g) === ()
+        @test ndecomposed_dims(g) === 0
+        @test decomposition_dims(SlabMetadataGrid()) === (1,)
+        @test ndecomposed_dims(SlabMetadataGrid()) === 1
+
+        # Logical time can be inhomogeneous. It is omitted from the spatial
+        # subset used by finite-difference or collocation operators.
+        struct SpaceTimeInhomogeneousGrid <: AbstractGrid{Float64, 4, (1, 2, 3, 4), (1, 2), Undecomposed} end
+        @test inhomogeneous_dims(SpaceTimeInhomogeneousGrid()) === (3, 4)
+        @test spatial_inhomogeneous_dims(SpaceTimeInhomogeneousGrid()) === (3,)
 
         # size(g, dim) must index size(g) — verify on every dimension.
         for d in 1:3
@@ -74,7 +92,7 @@
         # array dim 2, coordinate 2 at array dim 1, coordinate 3 at array dim 3,
         # coordinate 4 at array dim 4.  Then `to_storage_order((A,B,C,D), g)`
         # should return `(B, A, C, D)`.
-        struct PermGrid <: AbstractGrid{Float64, 4, (2, 1, 3, 4), (2, 3, 4)} end
+        struct PermGrid <: AbstractGrid{Float64, 4, (2, 1, 3, 4), (2, 3, 4), Undecomposed} end
         Base.size(::PermGrid) = (4, 8, 6, 10)
 
         @test NSEBase.to_storage_order((:A, :B, :C, :D), PermGrid()) ===
@@ -88,7 +106,7 @@
         # Missing coordinates may appear before the end of AXES.  This grid has
         # no z coordinate, but does have time stored in array dim 3, so the
         # storage-order tuple is (y, x, t).
-        struct SpaceTimeGrid <: AbstractGrid{Float64, 3, (2, 1, nothing, 3), (2, 3)} end
+        struct SpaceTimeGrid <: AbstractGrid{Float64, 3, (2, 1, nothing, 3), (2, 3), Undecomposed} end
         @test NSEBase.to_storage_order((:X, :Y, :Z, :T), SpaceTimeGrid()) ===
               (:Y, :X, :T)
 

@@ -38,7 +38,7 @@ import PyPlot
 # ─────────────────────────────────────────────────────────────── #
 # Minimal concrete grid — same layout as ChannelFlow             #
 # ─────────────────────────────────────────────────────────────── #
-struct BenchGrid <: NSEBase.AbstractGrid{Float64, 4, (2, 1, 3, 4), (2, 3, 4)}
+struct BenchGrid <: NSEBase.AbstractGrid{Float64, 4, (2, 1, 3, 4), (2, 3, 4), NSEBase.Undecomposed}
     dims :: NTuple{4, Int}
     ws :: Vector{Float64}
 end
