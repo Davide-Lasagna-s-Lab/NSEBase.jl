@@ -158,9 +158,9 @@ function run_benchmark()
 
             fns = [
                 # 1-3: spectral derivatives
-                (() -> ddx_1!(out, u)),
-                (() -> ddx_3!(out, u)),
-                (() -> ddx_4!(out, u)),
+                (() -> ddx!(out, u)),
+                (() -> ddz!(out, u)),
+                (() -> ddt!(out, u)),
                 # 4-6: FTField inner products and shift
                 (() -> dot(u, v)),
                 (() -> normdiff(u, v)),

@@ -1,15 +1,14 @@
-# Tests for the spectral-derivative wrappers `ddx_1!`, `ddx_2!`, `ddx_3!`,
-# `ddx_4!`, `add_homogeneous_laplacian!`, and `laplacian!`.
+# Tests for the spectral-derivative wrappers `ddx!`, `ddy!`, `ddz!`, `ddt!`,
+# `add_homogeneous_laplacian!`, and `laplacian!`.
 #
 # Contract (from src/derivatives.jl):
 #
-#   - `ddx_n!(out, u)` dispatches to `ddx!(out, u, Val(AXES[n]))` and is the
-#     spectral derivative along the n-th physical coordinate.  For
-#     homogeneous (FFT) directions, the derivative is multiplication by
+#   - `ddx!(out, u)` / `ddy!` / `ddz!` / `ddt!` resolve to `Val{STORAGE_DIM}` and
+#     compute the spectral derivative along the named physical direction.
+#     For homogeneous (FFT) directions the derivative is multiplication by
 #     `i · k · wavenumber_scale`.
 #
-#   - `ddx_n!` on a coordinate whose `AXES[n] === nothing` is a compile-time
-#     no-op (returns out unchanged).
+#   - `dd!` on an absent direction (`:z` on a 2D grid) is a compile-time no-op.
 #
 #   - `add_homogeneous_laplacian!(out, u)`  adds `-Σ_{d∈ORDER} (k_d · σ_d)² · u`
 #     into `out` (note the `+=`, not `=`).
@@ -43,12 +42,11 @@
 
         u = FFT(Field(g, u_fun))
 
-        # Physical x is logical coordinate 1, so `ddx_1!` should be the
-        # spectral derivative.  Physical y is logical coordinate 2, so
-        # `ddx_2!` should dispatch to PolynomialGrid's inhomogeneous extension.
-        @test parent(NSEBase.ddx_1!(FTField(g), u)) ≈
+        # Physical x is logical coordinate 1 (spectral).  Physical y is logical
+        # coordinate 2 (inhomogeneous, dispatches to PolynomialGrid extension).
+        @test parent(NSEBase.ddx!(FTField(g), u)) ≈
               parent(FFT(Field(g, dudx_fun))) atol=1e-12
-        @test parent(NSEBase.ddx_2!(FTField(g), u)) ≈
+        @test parent(NSEBase.ddy!(FTField(g), u)) ≈
               parent(FFT(Field(g, dudy_fun))) atol=1e-12
 
         # The Laplacian contract is the sum of the inhomogeneous second
@@ -57,23 +55,23 @@
               parent(FFT(Field(g, lapl_fun))) atol=1e-11
     end
 
-    @testset "ddx_n! is multiplication by i·k·σ on the homogeneous axis" begin
+    @testset "ddy! is multiplication by i·k·σ on the homogeneous axis" begin
         # FakeGrid is 2-D: AXES = (1, 2, nothing, nothing), ORDER = (2,).
         # Therefore:
-        #   ddx_1!: AXES[1] = 1 → inhomogeneous (custom, defined in fake.jl)
-        #   ddx_2!: AXES[2] = 2 → rfft direction; multiplies by i·k·σ.
-        #   ddx_3!, ddx_4!: AXES[3] = AXES[4] = nothing → compile-time no-ops.
+        #   ddx! (AXES[1] = 1): inhomogeneous (custom, defined in fake.jl)
+        #   ddy! (AXES[2] = 2): rfft direction; multiplies by i·k·σ.
+        #   ddz!, ddt!: absent coordinates → compile-time no-ops.
         Nx, Ny = 8, 12
         L = 2π
         g = FakeGrid(rand(Float64, Nx), Ny, L)
         σ = NSEBase.wavenumber_scale(g, 2)            # 2π / L = 1.0 here
 
         # Build u with random coefficients so we can probe individual
-        # wavenumbers after applying ddx_2!.
+        # wavenumbers after applying ddy!.
         data = randn(ComplexF64, Nx, (Ny >> 1) + 1)
         u = FTField(g, data)
         out = FTField(g)
-        NSEBase.ddx_2!(out, u)
+        NSEBase.ddy!(out, u)
 
         # Each storage column k (1-based) corresponds to signed wavenumber
         # k-1 on the rfft axis.  Expected: out[:, k] == i · (k-1) · σ · u[:, k].
@@ -84,11 +82,11 @@
             @test po[:, k] ≈ expected atol=1e-13
         end
 
-        # ddx_3!, ddx_4! are no-ops on FakeGrid (AXES[3:4] === nothing).
+        # ddz!, ddt! are no-ops on FakeGrid (absent coordinates).
         out2 = FTField(g, copy(data))
-        @test parent(NSEBase.ddx_3!(out2, u)) == data
+        @test parent(NSEBase.ddz!(out2, u)) == data
         out2 .= data
-        @test parent(NSEBase.ddx_4!(out2, u)) == data
+        @test parent(NSEBase.ddt!(out2, u)) == data
     end
 
     @testset "add_homogeneous_laplacian! adds −(k σ)² u (not =, +=)" begin
@@ -148,11 +146,11 @@
 
         u = VectorField([FTField(g, randn(ComplexF64, Nx, (Ny>>1)+1)) for _ in 1:3]...)
         out_vec = VectorField(g; N=3)
-        NSEBase.ddx_2!(out_vec, u)
+        NSEBase.ddy!(out_vec, u)
 
         for n in 1:3
             expected = FTField(g)
-            NSEBase.ddx_2!(expected, u[n])
+            NSEBase.ddy!(expected, u[n])
             @test parent(out_vec[n]) ≈ parent(expected) atol=1e-14
         end
     end

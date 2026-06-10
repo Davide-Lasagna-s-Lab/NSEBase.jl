@@ -321,14 +321,14 @@ end
         out = zero(u)
         qout = zero(q)
 
-        @test allocs_after_warmup(() -> ddx_1!(out, u)) == 0
-        # ddx_2!/ddx on dim 1 dispatches to PolynomialGrid's LinearAlgebra.mul! extension.
+        @test allocs_after_warmup(() -> ddx!(out, u)) == 0
+        # ddy!/dd! on dim 1 dispatches to PolynomialGrid's LinearAlgebra.mul! extension.
         # On Julia < 1.11 mul! allocates when --check-bounds=yes is active; skip there.
         if VERSION >= v"1.11"
-            @test allocs_after_warmup(() -> ddx_2!(out, u)) == 0
+            @test allocs_after_warmup(() -> ddy!(out, u)) == 0
         end
-        @test allocs_after_warmup(() -> ddx_3!(out, u)) == 0
-        @test allocs_after_warmup(() -> ddx_4!(out, u)) == 0
+        @test allocs_after_warmup(() -> ddz!(out, u)) == 0
+        @test allocs_after_warmup(() -> ddt!(out, u)) == 0
         @test allocs_after_warmup(() -> NSEBase.ddx!(out, u, Val(2))) == 0
         @test allocs_after_warmup(() -> NSEBase.ddx!(qout, q, Val(2))) == 0
         # inhomogeneous_laplacian! and laplacian! also go through mul! on PolynomialGrid.

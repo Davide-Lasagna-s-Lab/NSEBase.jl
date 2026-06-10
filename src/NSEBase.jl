@@ -22,7 +22,7 @@ export add_base_flow!
 export FFTPlans, FFT, IFFT
 export ProjectedField, modes, project!, project, expand!, expand
 export LoopGalerkin, GemmGalerkin
-export dd!, ddx!, ddy!, ddz!, ddt!, ddx_1!, ddx_2!, ddx_3!, ddx_4!
+export dd!, ddx!, ddy!, ddz!, ddt!
 export inhomogeneous_laplacian!, add_homogeneous_laplacian!, laplacian!
 export shift!, shift, normdiff, minnormdiff
 export save_grid, load_grid, save_field, load_field

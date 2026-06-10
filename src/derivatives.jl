@@ -1,56 +1,63 @@
 # Spectral differentiation operators for FTField, ProjectedField, and VectorField.
 #
-# Differentiation in a homogeneous (FFT-transformed) direction is exact in
-# spectral space: the derivative of mode k is simply multiplied by
-# ±i·n·wavenumber_scale(g, storage_dim), where n is the signed integer
-# wavenumber and the sign is +1 for the forward operator and −1 for its L2
-# adjoint.
+# Entry points are `ddx!`, `ddy!`, `ddz!`, `ddt!` — one per physical coordinate.
+# Each resolves its direction to a compile-time `Val{STORAGE_DIM}` via
+# `physical_to_storage_dim` and delegates to `dd!(out, u, ::Val{STORAGE_DIM})`.
 #
-# The core primitive is `dd!(out, u, Val(storage_dim))`, implemented with
+# `dd!(out, u, ::Val{STORAGE_DIM})` is the core primitive, implemented with
 # CartesianIndices loops.  For the rfft dimension all stored wavenumbers are
 # non-negative so a single loop over the full array suffices.  For signed-FFT
 # dimensions the index range is split into a positive block [1:(N÷2)+1] and a
 # negative block [(N÷2)+2:N] so that the signed wavenumber can be computed
-# branch-free from the loop index inside each block.  The two-block
-# specialisation (rfft vs signed FFT) and the ntuple range construction are
-# eliminated at compile time because the storage-dim type parameter and
-# FFT_DIMS_ORDER are type parameters.
+# branch-free from the loop index inside each block.
 #
-# `dd!(out, u, physical_dim::Symbol)` is the user-facing generic form;
-# `dd!` reads as "directional derivative". The per-direction wrappers
-# `ddx!`, `ddy!`, `ddz!`, and `ddt!` are reserved for their literal
-# coordinate and never take a `physical_dim` argument.
-#
-# Both forms translate to storage dimensions with [`storage_dim`](@ref)
-# at the low-level kernel boundary. When a physical direction is absent
-# from the grid, its storage dimension is `nothing` and the kernel is a
-# no-op.
+# When a physical direction is absent from the grid its storage dimension is
+# `nothing` and the kernel is a no-op.
 #
 # Inhomogeneous (non-FFT) directions are NOT handled here — `dd!` throws
-# `NotImplementedError` for those, and downstream packages must extend
-# it with a grid-specific method (typically a matrix–vector multiply).
+# `NotImplementedError` for those, and downstream packages must extend it
+# with a grid-specific method (typically a matrix–vector multiply).
 #
 # The full Laplacian combines `inhomogeneous_laplacian!` (provided by
 # downstream) with `add_homogeneous_laplacian!` (provided here), which
 # subtracts the spatial ‖k‖² · u contribution from each spectral coefficient.
 
 """
+    ddx!(out, u; adjoint=false) -> out
+    ddy!(out, u; adjoint=false) -> out
+    ddz!(out, u; adjoint=false) -> out
+    ddt!(out, u; adjoint=false) -> out
+
+Differentiate `u` along the named physical direction, storing the result in
+`out`. Each wrapper resolves its direction to a `Val{STORAGE_DIM}` at the
+call site and delegates to the low-level [`dd!`](@ref)`(out, u, ::Val)` primitive.
+
+For an absent direction (e.g. `:z` on a 2D grid) the call is a compile-time no-op.
+"""
+ddx!(out, u; kwargs...) = dd!(out, u, physical_to_storage_dim(grid(u), Val(:x)); kwargs...)
+ddy!(out, u; kwargs...) = dd!(out, u, physical_to_storage_dim(grid(u), Val(:y)); kwargs...)
+ddz!(out, u; kwargs...) = dd!(out, u, physical_to_storage_dim(grid(u), Val(:z)); kwargs...)
+ddt!(out, u; kwargs...) = dd!(out, u, physical_to_storage_dim(grid(u), Val(:t)); kwargs...)
+
+dd!(out::VectorField{N}, u::VectorField{N}, sd::Val; kwargs...) where {N} =
+    (for n in 1:N; dd!(out[n], u[n], sd; kwargs...); end; return out)
+
+"""
     dd!(out, u, ::Val{STORAGE_DIM}; adjoint=false)
 
-Low-level in-place derivative of `u` along the storage dimension
-encoded by `Val(STORAGE_DIM)`.
+In-place derivative of `u` along the storage dimension encoded by
+`Val(STORAGE_DIM)`.
 
 For `STORAGE_DIM in FFT_DIMS_ORDER` the derivative is multiplication by
 `±im * n * wavenumber_scale(grid, STORAGE_DIM)` where `n` is the signed
 wavenumber. `adjoint=false` (default) gives `+im·n·scale·u`;
-`adjoint=true` gives `-im·n·scale·u` (the L2 adjoint of the spectral
-derivative for homogeneous directions).
+`adjoint=true` gives `-im·n·scale·u`.
 
 For an inhomogeneous storage dimension the method throws
 `NotImplementedError`. Downstream packages should extend this for each
-non-homogeneous direction and handle the `adjoint` keyword there too.
+non-homogeneous direction.
 
-For `Val(nothing)` the function reduces to identity.
+For `Val(nothing)` the function is a no-op.
 """
 function dd!(out::F, u::F, ::Val{STORAGE_DIM};
              adjoint::Bool=false) where {
@@ -58,16 +65,10 @@ function dd!(out::F, u::F, ::Val{STORAGE_DIM};
         G<:AbstractGrid{T, D, AXES, FFT_DIMS_ORDER},
         F<:Union{FTField{G}, ProjectedField{G}}}
 
-    # Missing physical coordinates translate to Val(nothing), e.g. `:t` on a
-    # steady grid. There is no storage axis to process in that case.
     isnothing(STORAGE_DIM) && return out
-    # Inhomogeneous directions are not handled here; downstream packages must
-    # extend `dd!` with a grid-specific method (e.g. a matrix-vector multiply).
     STORAGE_DIM ∉ FFT_DIMS_ORDER &&
         throw(NotImplementedError(grid(u), Val(STORAGE_DIM)))
 
-    # Hoist the scale and adjoint sign outside the loop so each element update
-    # is a single complex multiply with no repeated division or branching.
     scale = wavenumber_scale(grid(u), STORAGE_DIM)
     coeff = adjoint ? -im * T(scale) : im * T(scale)
     Nd    = size(u, STORAGE_DIM)
@@ -75,18 +76,10 @@ function dd!(out::F, u::F, ::Val{STORAGE_DIM};
     pout  = parent(out)
 
     if STORAGE_DIM == FFT_DIMS_ORDER[1]
-        # rfft dimension: only non-negative wavenumbers 0 … Nd-1 are stored,
-        # so the wavenumber is simply the loop index minus one.  A single
-        # CartesianIndices pass over the full array suffices.
         @inbounds for I in CartesianIndices(pu)
             pout[I] = (coeff * (I[STORAGE_DIM] - 1)) * pu[I]
         end
     else
-        # Signed-FFT dimension: split into a non-negative block [1:(Nd÷2)+1]
-        # and a negative block [(Nd÷2)+2:Nd] so the signed wavenumber can be
-        # computed branch-free as a simple offset inside each block.
-        # STORAGE_DIM and FFT_DIMS_ORDER are type parameters, so the ntuple
-        # ranges and the if-branch are both eliminated at compile time.
         pos_ranges = ntuple(d -> d == STORAGE_DIM ? (1:(Nd >> 1) + 1)  : Base.OneTo(size(pu, d)), Val(D))
         neg_ranges = ntuple(d -> d == STORAGE_DIM ? ((Nd >> 1) + 2:Nd) : Base.OneTo(size(pu, d)), Val(D))
         @inbounds for I in CartesianIndices(pos_ranges)
@@ -98,62 +91,6 @@ function dd!(out::F, u::F, ::Val{STORAGE_DIM};
     end
     return out
 end
-
-"""
-    dd!(out, u, physical_dim::Symbol; adjoint=false) -> out
-
-User-facing generic derivative: differentiate `u` along
-`physical_dim` (`:x`, `:y`, `:z`, or `:t`).
-
-The symbol is translated to a `Val` of the matching storage dimension
-through [`physical_to_storage_dim`](@ref) — fully resolved at compile
-time when `physical_dim` is a literal at the call site — and dispatched
-to the low-level `Val{STORAGE_DIM}` primitive above.
-
-If the grid does not expose `physical_dim` (e.g. `:t` on a steady grid),
-the call is a no-op.
-"""
-dd!(out, u, physical_dim::Symbol; kwargs...) =
-    dd!(out, u, physical_to_storage_dim(grid(u), Val(physical_dim)); kwargs...)
-
-dd!(out::VectorField{N}, u::VectorField{N}, d; kwargs...) where {N} =
-    (for n in 1:N; dd!(out[n], u[n], d; kwargs...); end; return out)
-
-"""
-    ddx!(out, u; adjoint=false) -> out
-    ddy!(out, u; adjoint=false) -> out
-    ddz!(out, u; adjoint=false) -> out
-    ddt!(out, u; adjoint=false) -> out
-
-Differentiate `u` along the literal physical direction in the function
-name, storing the result in `out`. These are thin wrappers around
-[`dd!`](@ref) that fix the direction at the call site — `ddx!` is `d/dx`,
-`ddy!` is `d/dy`, and so on. They never take a `physical_dim` argument;
-use `dd!(out, u, :x)` if the direction is chosen at runtime.
-
-For an absent direction, such as `:z` on a 2D grid, the operation is a no-op.
-
-For inhomogeneous (non-FFT) directions the derivative is the grid-specific
-physical derivative along that coordinate.
-"""
-ddx!(out, u; kwargs...) = dd!(out, u, :x; kwargs...)
-ddy!(out, u; kwargs...) = dd!(out, u, :y; kwargs...)
-ddz!(out, u; kwargs...) = dd!(out, u, :z; kwargs...)
-ddt!(out, u; kwargs...) = dd!(out, u, :t; kwargs...)
-
-"""
-    ddx_1!(out, u; adjoint=false) -> out
-    ddx_2!(out, u; adjoint=false) -> out
-    ddx_3!(out, u; adjoint=false) -> out
-    ddx_4!(out, u; adjoint=false) -> out
-
-Compatibility aliases for [`ddx!`](@ref), [`ddy!`](@ref), [`ddz!`](@ref), and
-[`ddt!`](@ref), respectively.
-"""
-ddx_1!(out, u; kwargs...) = ddx!(out, u; kwargs...)
-ddx_2!(out, u; kwargs...) = ddy!(out, u; kwargs...)
-ddx_3!(out, u; kwargs...) = ddz!(out, u; kwargs...)
-ddx_4!(out, u; kwargs...) = ddt!(out, u; kwargs...)
 
 """
     add_homogeneous_laplacian!(out::FTField, u::FTField)
@@ -170,18 +107,11 @@ not part of the spatial Laplacian.
 function add_homogeneous_laplacian!(out::FTField{G}, u::FTField{G}) where {T, D, AXES, FFT_DIMS_ORDER, G<:AbstractGrid{T, D, AXES, FFT_DIMS_ORDER}}
     g = grid(u)
 
-    # `to_wavenumber_vector(g, Ih)` returns k in full FFT_DIMS_ORDER order.
-    # Keep `scales` in that same order.  A transformed logical time coordinate
-    # is homogeneous, but it is not in `spatial_fft_storage_dims(g)`, so give it zero
-    # scale rather than building a second filtered index mapping.
     H = spatial_fft_storage_dims(g)
     scales = map(dim -> dim in H ? T(wavenumber_scale(g, dim)) : zero(T), FFT_DIMS_ORDER)
     pu = parent(u)
     pout = parent(out)
 
-    # The multiplier k² depends only on the homogeneous wavenumber.  Loop over
-    # homogeneous modes outside, compute k² once, then apply it to every
-    # inhomogeneous/collocation index for that same mode.
     @inbounds for Ih in CartesianIndices(homogeneous_axes(u))
         k² = zero(T)
         k = to_wavenumber_vector(g, Ih)
@@ -189,9 +119,6 @@ function add_homogeneous_laplacian!(out::FTField{G}, u::FTField{G}) where {T, D,
             k² += (scales[j] * k[j])^2
         end
 
-        # `combine_indices` interleaves inhomogeneous and homogeneous indices
-        # according to the grid storage layout, so this works for both
-        # `(y, x, z)` and FFT-first layouts.
         for Iinh in CartesianIndices(inhomogeneous_axes(u))
             I = combine_indices(g, Iinh, Ih)
             pout[I...] -= k² * pu[I...]
@@ -225,9 +152,6 @@ Compute the full Laplacian of `u` in-place, storing the result in `out`:
 
 Only spatial transformed directions enter the homogeneous sum; a transformed
 logical time coordinate is excluded through [`spatial_fft_storage_dims`](@ref).
-`kwargs` may be used by grid-specific inhomogeneous directions (e.g. boundary
-condition parameters).  The `VectorField` method applies the same scalar
-operation independently to each component.
 """
 function laplacian!(out::FTField{G}, u::FTField{G}; kwargs...) where {G}
     inhomogeneous_laplacian!(out, u; kwargs...)
