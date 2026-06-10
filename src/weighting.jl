@@ -108,7 +108,7 @@ end
 Compute the `A`-weighted inner product
 
 ```math
-\\langle a, b \\rangle_A = \\frac{1}{2} \\sum_{\\mathbf{k}} c_{k_1}\\,
+\\langle a, b \\rangle_A = \\sum_{\\mathbf{k}} c_{k_1}\\,
     w(\\mathbf{k})\\, \\sum_m \\operatorname{Re}\\!\\bigl(
     \\bar{a}_{m,\\mathbf{k}}\\, b_{m,\\mathbf{k}}\\bigr)
 ```
@@ -135,5 +135,5 @@ function LinearAlgebra.dot(a::ProjectedField{G},
         end
     end
 
-    return s / 2
+    return s
 end

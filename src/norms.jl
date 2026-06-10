@@ -26,29 +26,42 @@
 """
     dot(u::FTField, v::FTField) -> Real
 
-Inner product of two spectral fields on the same grid, defined as
+Inner product of two spectral fields on the same grid.
+
+In terms of the physical field `u(j, z, t)`, this computes the quadrature-weighted
+domain average over the full 4D domain:
 
 ```math
-\\langle u, v \\rangle = \\frac{1}{2} \\sum_{\\mathbf{k}} c_{k_1}\\, w(\\mathbf{j})\\,
-\\operatorname{Re}\\bigl(\\bar{u}_{\\mathbf{k},\\mathbf{j}}\\, v_{\\mathbf{k},\\mathbf{j}}\\bigr),
+\\langle u, v \\rangle =
+  \\frac{1}{V} \\int w(\\mathbf{j})\\, u(\\mathbf{j}, \\mathbf{z})\\,
+  v(\\mathbf{j}, \\mathbf{z})\\, d\\mathbf{j}\\, d\\mathbf{z}
 ```
 
-where the sum is over all stored spectral wavenumbers `k` and inhomogeneous indices
-`j`, `c_{k_1}` is `1` for the zero rfft wavenumber and `2` otherwise (Hermitian
-symmetry of the rfft), `w(j)` are the quadrature weights returned by
-[`weights`](@ref), and the overall factor of `1/2` removes the double-counting
-of conjugate-symmetric mode pairs in the signed FFT dimensions.
+where `j` are the inhomogeneous coordinates, `z` are the periodic coordinates,
+`w(j)` are the quadrature weights returned by [`weights`](@ref), and `V` is the
+product of the periods in the homogeneous directions.
+
+In spectral space this is:
+
+```math
+\\langle u, v \\rangle =
+  \\sum_{\\mathbf{k}} c_{k_1}\\, w(\\mathbf{j})\\,
+  \\operatorname{Re}\\bigl(\\bar{u}_{\\mathbf{k},\\mathbf{j}}\\, v_{\\mathbf{k},\\mathbf{j}}\\bigr)
+```
+
+where `c_{k_1}` is `1` for the zero rfft wavenumber and `2` otherwise (rfft
+Hermitian symmetry: each stored non-DC mode represents both the `+k` and `-k`
+contributions).  The forward FFT normalization by `1/V` combined with Parseval
+gives the domain-averaged inner product.
 """
 function LinearAlgebra.dot(u::FTField{G}, v::FTField{G}) where {G<:AbstractGrid}
     s = zero(real(eltype(u)))
     g = grid(u)
     ws = weights(g)
     @inbounds for I in CartesianIndices(u)
-        # apply a different weight to the zero rfft wavenumber, extract the 
-        # inhomogeneous indices for the weights lookup and accumulate
         s += one_or_two(I, g) * ws[inhomogeneous_indices(I, g)...] * real(conj(u[I]) * v[I])
     end
-    return s / 2
+    return s
 end
 
 """
@@ -93,7 +106,7 @@ function normdiff(u::FTField{G}, v::FTField{G}) where {G<:AbstractGrid}
     @inbounds for I in CartesianIndices(u)
         s += one_or_two(I, g) * ws[inhomogeneous_indices(I, g)...] * abs2(u[I] - v[I])
     end
-    return sqrt(s / 2)
+    return sqrt(s)
 end
 
 function normdiff(u::FTField{G}, v::FTField{G},
@@ -263,8 +276,7 @@ end
 Inner product of two projected fields, exploiting the rfft Hermitian symmetry.
 Wavenumbers with rfft index `> 1` (wavenumber `nx > 0`) are stored once but represent
 both `+nx` and `-nx`, so they contribute with weight 2; the `nx = 0` plane has
-weight 1.  The result is divided by 2 to account for the double-counting of
-signed-FFT pairs `(nz, nt)` and `(-nz, -nt)` that both appear in storage.
+weight 1.
 """
 function LinearAlgebra.dot(a::ProjectedField{G}, b::ProjectedField{G}) where {G<:AbstractGrid{T, D}} where {T, D}
     s = zero(real(eltype(a)))
@@ -280,7 +292,7 @@ function LinearAlgebra.dot(a::ProjectedField{G}, b::ProjectedField{G}) where {G<
     @inbounds for I in CartesianIndices(ix2)
         s += 2 * real(conj(a[I]) * b[I])
     end
-    return s / 2
+    return s
 end
 
 """
@@ -295,9 +307,8 @@ LinearAlgebra.norm(a::ProjectedField) = sqrt(dot(a, a))
 
 Return `‖a − b‖`.
 
-Follows the same rfft/signed-FFT weighting as [`dot`](@ref): rfft wavenumbers
-with `nx > 0` contribute with weight 2 (they represent both `±nx`), and the
-result is divided by 2 to remove signed-FFT double-counting.
+Follows the same rfft Hermitian weighting as [`dot`](@ref): rfft wavenumbers
+with `nx > 0` contribute with weight 2 (they represent both `±nx`).
 """
 function normdiff(a::ProjectedField{G}, b::ProjectedField{G}) where {G<:AbstractGrid{T, D}} where {T, D}
     s = zero(real(eltype(a)))
@@ -310,7 +321,7 @@ function normdiff(a::ProjectedField{G}, b::ProjectedField{G}) where {G<:Abstract
     @inbounds for I in CartesianIndices(ix2)
         s += 2 * abs2(a[I] - b[I])
     end
-    return sqrt(s / 2)
+    return sqrt(s)
 end
 
 """

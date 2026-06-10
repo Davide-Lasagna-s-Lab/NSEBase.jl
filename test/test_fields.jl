@@ -202,7 +202,7 @@ end
     u = VectorField(FTField(g, 0.5*ones(ComplexF64, Nx, (Ny >> 1) + 1)),
                     FTField(g, 0.5*ones(ComplexF64, Nx, (Ny >> 1) + 1)),
                     FTField(g, 0.5*ones(ComplexF64, Nx, (Ny >> 1) + 1)))
-    @test dot(u, u) == 66
+    @test dot(u, u) == 132
 
     # test broadcasting
     foo(u, v, w) = (@allocated u .= v.*2 .+ w./3)
@@ -252,7 +252,7 @@ end
     # test inner-product
     a = ProjectedField(g, ones(ComplexF64, M, (Ny >> 1) + 1), Ψ)
     b = ProjectedField(g, ones(ComplexF64, M, (Ny >> 1) + 1), Ψ)
-    @test dot(a, b) == 55
+    @test dot(a, b) == 110
 
     # test expand and project
     a1 .= randn(ComplexF64, 10, 6)

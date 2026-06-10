@@ -3,9 +3,11 @@
 #
 # Contract (from src/norms.jl):
 #
-#   dot(u, v) = (1/2) Σₖ c_{k₁} · Σⱼ ws[j] · Re(conj(u_kj) · v_kj)
+#   dot(u, v) = Σₖ c_{k₁} · Σⱼ ws[j] · Re(conj(u_kj) · v_kj)
 #
 #   where c_{k₁} accounts for rfft Hermitian symmetry (1 for k₁ = 0, 2 else).
+#   Combined with the 1/V FFT normalization, this gives the domain-averaged
+#   inner product: (1/V) ∫ w(j) u(j,z) v(j,z) dj dz.
 #
 #   - dot is real and symmetric in (u, v).
 #   - norm(u) = √dot(u, u) and is non-negative.
@@ -149,11 +151,28 @@
                 ref += c * real(conj(pa[m, k1]) * pb[m, k1])
             end
         end
-        ref /= 2
 
         @test dot(a, b) ≈ ref atol=1e-13
         @test norm(a)^2 ≈ dot(a, a)
         @test normdiff(a, a) == 0
         @test_throws DimensionMismatch normdiff(a, b, (0.0, 0.0), zero(b))
+    end
+
+    @testset "FTField: dot against HCubature (TripleGrid, generic dot)" begin
+        # TripleGrid has no custom dot override — it uses the generic dot from
+        # norms.jl.  With flat ws=ones(Ny) and a function independent of y, the
+        # formula reduces to:
+        #
+        #   dot(û, û) = Ny × (1/(Lx·Lz)) × ∫₀^{Lx}∫₀^{Lz} u(x, z)² dx dz
+        #
+        # We verify this against HCubature for a smooth periodic function.
+        Ny, Nx, Nz = 3, 64, 64
+        g  = TripleGrid(Ny, Nx, Nz; α=1.0, β=1.0)
+        Lx = 2π / g.α
+        Lz = 2π / g.β
+        û = NSEBase.FFT(NSEBase.Field(g, (y, x, z) -> exp(sin(x)) * cos(z)))
+        expected, _ = HCubature.hcubature(xz -> exp(2sin(xz[1])) * cos(xz[2])^2,
+                                          [0.0, 0.0], [Lx, Lz])
+        @test dot(û, û) ≈ Ny * expected / (Lx * Lz) rtol=1e-5
     end
 end

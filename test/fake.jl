@@ -28,9 +28,9 @@ function LinearAlgebra.dot(u::FTField{FakeGrid}, v::FTField{FakeGrid})
     Nx, Ny = size(grid(u))
     sum = 0.0
     for nx in 1:Nx
-        sum += 0.5*real(dot(u[nx, 1], v[nx, 1]))
+        sum += real(dot(u[nx, 1], v[nx, 1]))
         for ny in 2:((Ny >> 1) + 1)
-            sum += real(dot(u[nx, ny], v[nx, ny]))
+            sum += 2*real(dot(u[nx, ny], v[nx, ny]))
         end
     end
     return sum
