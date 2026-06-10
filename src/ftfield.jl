@@ -50,7 +50,7 @@ struct FTField{G<:AbstractGrid, A<:AbstractArray, T, D} <: AbstractArray{Complex
 
     # main constructor which sanitises data
     FTField(grid::G, data::A) where {T, D, G<:AbstractGrid{T, D}, A<:Array{Complex{T}, D}} =
-        new{G,A,T,D}(grid, apply_symmetry!(normalise_mean!(data, fft_dims(grid)), fft_dims(grid)))
+        new{G,A,T,D}(grid, apply_symmetry!(normalise_mean!(data, fft_storage_dims(grid)), fft_storage_dims(grid)))
 end
 FTField(grid::AbstractGrid{T}, data::AbstractArray) where {T} = FTField(grid, Complex{T}.(data))
 
@@ -100,7 +100,7 @@ grid(u::FTField) = u.grid
 Return an equivalent spectral field with a new homogeneous resolution.
 
 `target_size` contains one physical-space grid size for each homogeneous
-direction in `fft_dims(grid(u)) = FFT_DIMS_ORDER`, in `FFT_DIMS_ORDER` order. It must therefore
+direction in `fft_storage_dims(grid(u)) = FFT_DIMS_ORDER`, in `FFT_DIMS_ORDER` order. It must therefore
 have length `length(FFT_DIMS_ORDER)`, not the full dimension `D` of `grid(u)`.
 Inhomogeneous directions are preserved by the grid-specific
 `growto(grid(u), target_size)` method.
@@ -126,7 +126,7 @@ end
 
 Return a view of the underlying array over all non-transform dimensions for
 the wavenumber vector `k`. The wavenumbers in `k` follow the order
-of `fft_dims(grid(u)) = FFT_DIMS_ORDER`.
+of `fft_storage_dims(grid(u)) = FFT_DIMS_ORDER`.
 
 If the first (rfft) wavenumber `k[1]` is negative the view is into the
 conjugate-symmetric storage location `(-k[1], -k[2:N]…)`; the caller
@@ -149,7 +149,7 @@ end
 
 Return the complex modal coefficient for index `I` at wavenumber vector `k`.
 
-The wavenumbers in `k` follow the order of `fft_dims(grid(a)) = FFT_DIMS_ORDER`.
+The wavenumbers in `k` follow the order of `fft_storage_dims(grid(a)) = FFT_DIMS_ORDER`.
 If the first (rfft) wavenumber `k[1]` is negative the coefficient is
 obtained by conjugate symmetry: the entry stored at `(-k[1], -k[2:N]…)`
 is read and conjugated.
@@ -250,7 +250,7 @@ function apply_symmetry!(u::FTField{<:AbstractGrid{<:Any,<:Any,<:Any,FFT_DIMS_OR
     @inbounds for Ih in CartesianIndices(dc_range)
 
         Ih_neg = CartesianIndex(ntuple(Val(length(FFT_DIMS_ORDER))) do d
-            if FFT_DIMS_ORDER[d] == rfft_dim(g)
+            if FFT_DIMS_ORDER[d] == rfft_storage_dim(g)
                 # rfft axis: partner is the same index, no conjugation.
                 return Ih[d]
             else

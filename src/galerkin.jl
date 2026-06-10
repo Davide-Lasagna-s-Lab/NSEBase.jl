@@ -27,7 +27,7 @@
 #   axes  2 … Ninh + 1               : inhomogeneous-dimension sizes, in
 #                                      ascending grid-dimension order
 #                                      (same order returned by
-#                                      `inhomogeneous_dims(grid)`)
+#                                      `inhomogeneous_storage_dims(grid)`)
 #   axes  Ninh + 2 … Ninh + 1 + Nhom : homogeneous-dimension sizes, listed
 #                                      in `FFT_DIMS_ORDER` order — i.e. the
 #                                      **rfft** axis `FFT_DIMS_ORDER[1]` is
@@ -222,7 +222,7 @@ function project!(a::ProjectedField{G},
                   ::GemmGalerkin) where {N, G<:AbstractGrid{T}} where {T}
     a .= zero(Complex{T})
     g       = grid(u)
-    inh_sz  = map(d -> size(g, d), inhomogeneous_dims(g))
+    inh_sz  = map(d -> size(g, d), inhomogeneous_storage_dims(g))
     Ninh    = prod(inh_sz)
     # Flatten the kH... dimensions of pa into one column dimension.
     pa      = reshape(parent(a), size(parent(a), 1), :)   # (Nm, NkH)
@@ -252,7 +252,7 @@ function expand!(u::VectorField{N, <:FTField{G}},
                  ::GemmGalerkin) where {N, G<:AbstractGrid{T}} where {T}
     u .= zero(Complex{T})
     g       = grid(a)
-    inh_sz  = map(d -> size(g, d), inhomogeneous_dims(g))
+    inh_sz  = map(d -> size(g, d), inhomogeneous_storage_dims(g))
     Ninh    = prod(inh_sz)
     pa      = reshape(parent(a), size(parent(a), 1), :)   # (Nm, NkH)
     Nm, NkH = size(pa)

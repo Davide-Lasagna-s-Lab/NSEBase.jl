@@ -17,7 +17,7 @@
 # The five type parameters encode:
 #   T              — real scalar type (Float64 by default)
 #   D              — number of array dimensions
-#   AXES           — 4-tuple mapping logical coordinates (x,y,z,t) to array dims
+#   AXES           — 4-tuple mapping physical coordinates (x,y,z,t) to storage dims
 #   FFT_DIMS_ORDER — ordered tuple of array dimensions that are FFT-transformed;
 #                    FFT_DIMS_ORDER[1] is always the rfft dimension
 #   DECOMPOSITION  — type-level description of partitioned storage dimensions
@@ -79,7 +79,7 @@ Concrete grid packages must implement:
 - `points(grid; dealias=false)` returning one coordinate array per dimension,
    in array-dimension order.
 - `wavenumber_scale(grid, dim)` for each transformed dimension in
-  `fft_dims(grid)`.
+  `fft_storage_dims(grid)`.
 - `weights(grid)` returning quadrature weights for the inhomogeneous
   dimensions.
 - `Base.convert(::Type{S}, grid)` if fields should support changing scalar
@@ -94,7 +94,7 @@ homogeneous resolution.  Implementing grid growth is also required for
 # Provided defaults (override only if needed)
 
 - `Base.size(grid, dim)`: indexes `size(grid)`.
-- `fft_norm(grid)`: returns `map(d -> size(grid, d), fft_dims(grid))`, the mode
+- `fft_norm(grid)`: returns `map(d -> size(grid, d), fft_storage_dims(grid))`, the mode
   counts used to normalise forward transforms.
 - `transform_size(grid)`: returns the size of the corresponding `FTField`.
 """
@@ -102,81 +102,161 @@ abstract type AbstractGrid{T<:Real, D, AXES, FFT_DIMS_ORDER,
                            DECOMPOSITION<:GridDecomposition} end
 
 """
-    decomposition_dims(grid::AbstractGrid) -> Tuple{Int, ...}
+    decomposition_storage_dims(grid::AbstractGrid) -> Tuple{Int, ...}
 
 Return the storage dimensions along which `grid` is partitioned.
 
 The result is empty for an [`Undecomposed`](@ref) grid. For a
 [`Decomposed{DIMS}`](@ref) grid, the result is `DIMS`.
 """
-decomposition_dims(::AbstractGrid{<:Any, <:Any, <:Any, <:Any, Undecomposed}) = ()
-decomposition_dims(::AbstractGrid{<:Any, <:Any, <:Any, <:Any, Decomposed{DIMS}}) where {DIMS} = DIMS
+decomposition_storage_dims(::AbstractGrid{<:Any, <:Any, <:Any, <:Any, Undecomposed}) = ()
+decomposition_storage_dims(::AbstractGrid{<:Any, <:Any, <:Any, <:Any, Decomposed{DIMS}}) where {DIMS} = DIMS
 
 """
     ndecomposed_dims(grid::AbstractGrid) -> Int
 
 Return the number of storage dimensions along which `grid` is partitioned.
 """
-ndecomposed_dims(g::AbstractGrid) = length(decomposition_dims(g))
+ndecomposed_dims(g::AbstractGrid) = length(decomposition_storage_dims(g))
 
 """
-    fft_dims(grid::AbstractGrid) -> Tuple{Int, …}
+    fft_storage_dims(grid::AbstractGrid) -> Tuple{Int, …}
 
 Return the tuple of FFT-transformed array dimensions in transform order,
 i.e. the grid type parameter `FFT_DIMS_ORDER`.
 
-`fft_dims(g)[1]` is the rfft dimension (only non-negative wavenumbers are
+`fft_storage_dims(g)[1]` is the rfft dimension (only non-negative wavenumbers are
 stored); the remaining entries are full-spectrum complex FFT dimensions.
 """
-fft_dims(::AbstractGrid{<:Any, <:Any, <:Any, FFT_DIMS_ORDER}) where {FFT_DIMS_ORDER} = FFT_DIMS_ORDER
+fft_storage_dims(::AbstractGrid{<:Any, <:Any, <:Any, FFT_DIMS_ORDER}) where {FFT_DIMS_ORDER} = FFT_DIMS_ORDER
 
 """
-    spatial_fft_dims(grid::AbstractGrid) -> Tuple{Int, …}
+    spatial_fft_storage_dims(grid::AbstractGrid) -> Tuple{Int, …}
 
 Return the FFT-transformed array dimensions that correspond to spatial
 coordinates.
 
-For a steady grid this is the same tuple as [`fft_dims`](@ref).  For a
+For a steady grid this is the same tuple as [`fft_storage_dims`](@ref).  For a
 space-time grid whose logical time coordinate is also transformed, the time
 dimension is omitted.
 """
-@generated function spatial_fft_dims(::AbstractGrid{<:Any, <:Any, AXES, FFT_DIMS_ORDER}) where {AXES, FFT_DIMS_ORDER}
+@generated function spatial_fft_storage_dims(::AbstractGrid{<:Any, <:Any, AXES, FFT_DIMS_ORDER}) where {AXES, FFT_DIMS_ORDER}
     :($(Tuple(d for d in FFT_DIMS_ORDER if d != AXES[4])))
 end
 
 """
-    inhomogeneous_dims(grid::AbstractGrid) -> Tuple
+    inhomogeneous_storage_dims(grid::AbstractGrid) -> Tuple
 
 Return the array dimensions that are NOT transformed by FFTs, i.e. the
-complement of `fft_dims(grid)` within `1:D`.  These are the directions over
+complement of `fft_storage_dims(grid)` within `1:D`.  These are the directions over
 which quadrature weights are needed for inner products.
 """
-@generated function inhomogeneous_dims(::AbstractGrid{<:Any, D, <:Any, FFT_DIMS_ORDER}) where {D, FFT_DIMS_ORDER}
+@generated function inhomogeneous_storage_dims(::AbstractGrid{<:Any, D, <:Any, FFT_DIMS_ORDER}) where {D, FFT_DIMS_ORDER}
     :($(Tuple(d for d in 1:D if d ∉ FFT_DIMS_ORDER)))
 end
 
 """
-    spatial_inhomogeneous_dims(grid::AbstractGrid) -> Tuple
+    spatial_inhomogeneous_storage_dims(grid::AbstractGrid) -> Tuple
 
 Return the inhomogeneous array dimensions that correspond to spatial (not
-temporal) coordinates, i.e. dimensions in `inhomogeneous_dims(grid)` that are
-not the time axis `AXES[4]`. These are the dimensions for which a
+temporal) coordinates — i.e. dimensions in `inhomogeneous_storage_dims(grid)` that
+are not the time axis `AXES[4]`.  These are the dimensions for which a
 finite-difference or collocation derivative must be applied.
 """
-@generated function spatial_inhomogeneous_dims(::AbstractGrid{<:Any, D, AXES, FFT_DIMS_ORDER}) where {D, AXES, FFT_DIMS_ORDER}
+@generated function spatial_inhomogeneous_storage_dims(::AbstractGrid{<:Any, D, AXES, FFT_DIMS_ORDER}) where {D, AXES, FFT_DIMS_ORDER}
     :($(Tuple(d for d in 1:D if d ∉ FFT_DIMS_ORDER && d != AXES[4])))
 end
 
 """
-    rfft_dim(grid::AbstractGrid) -> Int
+    rfft_storage_dim(grid::AbstractGrid) -> Int
 
 Return the array dimension that is transformed by the real-to-complex FFT,
-i.e. the first entry of `fft_dims(grid)`.
+i.e. the first entry of `fft_storage_dims(grid)`.
 
-`rfft_dim(g)` is the rfft dimension (only non-negative wavenumbers are
+`rfft_storage_dim(g)` is the rfft dimension (only non-negative wavenumbers are
 stored); the remaining entries are full-spectrum complex FFT dimensions.
 """
-rfft_dim(::AbstractGrid{<:Any,<:Any,<:Any,FFT_DIMS_ORDER}) where {FFT_DIMS_ORDER} = FFT_DIMS_ORDER[1]
+rfft_storage_dim(::AbstractGrid{<:Any,<:Any,<:Any,FFT_DIMS_ORDER}) where {FFT_DIMS_ORDER} = FFT_DIMS_ORDER[1]
+
+# ------------------------------------------------------------------------- #
+# Physical-direction variants                                                #
+# ------------------------------------------------------------------------- #
+#
+# For every `*_storage_dims` helper above (which returns `Int` storage axes
+# read from the grid type parameters), there is a matching `*_physical_dims`
+# helper returning the corresponding physical-coordinate symbols (`:x`,
+# `:y`, `:z`, `:t`) in the same order. Naming pairs them explicitly so
+# call sites never have to remember which form a particular accessor
+# returns — the suffix says it directly.
+#
+# Each definition is a `map(physical_dim, ...)` over the storage-dim
+# tuple; `physical_dim(grid, dim::Integer)` is itself `@generated` so the
+# whole chain folds to a literal Symbol tuple at compile time when the
+# grid type parameters are known.
+
+"""
+    fft_physical_dims(grid::AbstractGrid) -> Tuple{Vararg{Symbol}}
+
+Physical-coordinate symbols for the FFT-transformed storage dimensions
+of `grid`, in transform order — the `Symbol` counterpart of
+[`fft_storage_dims`](@ref).
+
+`fft_physical_dims(g)[1]` is the physical coordinate that is rfft'd; the
+remaining entries are the signed-FFT coordinates.
+"""
+fft_physical_dims(g::AbstractGrid) =
+    map(d -> physical_dim(g, d), fft_storage_dims(g))
+
+"""
+    spatial_fft_physical_dims(grid::AbstractGrid) -> Tuple{Vararg{Symbol}}
+
+Physical-coordinate symbols for the spatial FFT-transformed storage
+dimensions of `grid` — the `Symbol` counterpart of
+[`spatial_fft_storage_dims`](@ref). A transformed logical time
+coordinate is excluded.
+"""
+spatial_fft_physical_dims(g::AbstractGrid) =
+    map(d -> physical_dim(g, d), spatial_fft_storage_dims(g))
+
+"""
+    inhomogeneous_physical_dims(grid::AbstractGrid) -> Tuple{Vararg{Symbol}}
+
+Physical-coordinate symbols for the inhomogeneous (non-FFT) storage
+dimensions of `grid` — the `Symbol` counterpart of
+[`inhomogeneous_storage_dims`](@ref).
+"""
+inhomogeneous_physical_dims(g::AbstractGrid) =
+    map(d -> physical_dim(g, d), inhomogeneous_storage_dims(g))
+
+"""
+    spatial_inhomogeneous_physical_dims(grid::AbstractGrid) -> Tuple{Vararg{Symbol}}
+
+Physical-coordinate symbols for the spatial inhomogeneous storage
+dimensions of `grid` — the `Symbol` counterpart of
+[`spatial_inhomogeneous_storage_dims`](@ref). The time coordinate is
+excluded.
+"""
+spatial_inhomogeneous_physical_dims(g::AbstractGrid) =
+    map(d -> physical_dim(g, d), spatial_inhomogeneous_storage_dims(g))
+
+"""
+    decomposition_physical_dims(grid::AbstractGrid) -> Tuple{Vararg{Symbol}}
+
+Physical-coordinate symbols for the partitioned storage dimensions of
+`grid` — the `Symbol` counterpart of [`decomposition_storage_dims`](@ref).
+Empty for an [`Undecomposed`](@ref) grid.
+"""
+decomposition_physical_dims(g::AbstractGrid) =
+    map(d -> physical_dim(g, d), decomposition_storage_dims(g))
+
+"""
+    rfft_physical_dim(grid::AbstractGrid) -> Symbol
+
+Physical-coordinate symbol for the real-to-complex FFT storage dimension
+— the `Symbol` counterpart of [`rfft_storage_dim`](@ref). Equal to
+`fft_physical_dims(grid)[1]`.
+"""
+rfft_physical_dim(g::AbstractGrid) = physical_dim(g, rfft_storage_dim(g))
 
 """
     one_or_two(I::CartesianIndex, g::AbstractGrid) -> Int
@@ -186,7 +266,7 @@ wavenumber, and `2` otherwise.  Used to apply the correct Hermitian
 multiplicity weight in inner products and norms, which are iterated 
 with `CartesianIndices`.
 """
-one_or_two(I::CartesianIndex, g::AbstractGrid) = I[rfft_dim(g)] == 1 ? 1 : 2
+one_or_two(I::CartesianIndex, g::AbstractGrid) = I[rfft_storage_dim(g)] == 1 ? 1 : 2
 
 """
     inhomogeneous_indices(I::CartesianIndex, g::AbstractGrid) -> Tuple
@@ -258,6 +338,115 @@ that span all inhomogeneous indices at a particular homogeneous index.
 end
 
 """
+    storage_dim(grid, physical_dim) -> Int | nothing
+
+Return the storage-array dimension used for physical direction `physical_dim`.
+
+`physical_dim` may be one of `:x`, `:y`, `:z`, or `:t`, or `Val` of one of those
+symbols. A missing physical direction returns `nothing`, which lets derivative
+wrappers for absent coordinates become no-ops.
+
+# Examples
+
+For `AXES = (2, 1, 3, nothing)`, `storage_dim(grid, :x) == 2`,
+`storage_dim(grid, :y) == 1`, and `storage_dim(grid, :t) === nothing`.
+"""
+# `where {T<:Real, D}` matches the constraint on the abstract type's
+# first parameter explicitly; without it Julia (1.12+) sees the literal
+# `Val{:x}` methods as ambiguous with the catch-all `Val{DIM}` fallback
+# below when the input grid passes through an indirect type hierarchy.
+storage_dim(::AbstractGrid{T, D, AXES} where {T<:Real, D}, ::Val{:x}) where {AXES} = AXES[1]
+storage_dim(::AbstractGrid{T, D, AXES} where {T<:Real, D}, ::Val{:y}) where {AXES} = AXES[2]
+storage_dim(::AbstractGrid{T, D, AXES} where {T<:Real, D}, ::Val{:z}) where {AXES} = AXES[3]
+storage_dim(::AbstractGrid{T, D, AXES} where {T<:Real, D}, ::Val{:t}) where {AXES} = AXES[4]
+storage_dim(grid::AbstractGrid, physical_dim::Symbol) = storage_dim(grid, Val(physical_dim))
+function storage_dim(::AbstractGrid, ::Val{DIM}) where {DIM}
+    throw(ArgumentError("physical direction must be one of :x, :y, :z, or :t; got $(repr(DIM))"))
+end
+
+"""
+    physical_dim(grid, storage_dim) -> Symbol | nothing
+
+Return the physical direction represented by storage-array dimension `storage_dim`.
+
+`storage_dim` may be an integer storage dimension or `Val` of one. `nothing` is
+propagated so callers can normalize optional directions.
+
+# Examples
+
+For `AXES = (2, 1, 3, nothing)`, `physical_dim(grid, 1) == :y`,
+`physical_dim(grid, 2) == :x`, and `physical_dim(grid, nothing) === nothing`.
+"""
+physical_dim(::AbstractGrid, ::Nothing) = nothing
+physical_dim(::AbstractGrid, ::Val{nothing}) = nothing
+physical_dim(grid::AbstractGrid, storage_dim::Integer) = physical_dim(grid, Val(storage_dim))
+
+@generated function physical_dim(::AbstractGrid{<:Any, D, AXES}, ::Val{DIM}) where {D, AXES, DIM}
+    isnothing(DIM) && return :(nothing)
+    if DIM isa Symbol
+        if DIM in (:x, :y, :z, :t)
+            return QuoteNode(DIM)
+        end
+        msg = "physical direction must be one of :x, :y, :z, or :t; got $(repr(DIM))"
+        return :(throw(ArgumentError($msg)))
+    end
+    if !(DIM isa Integer)
+        msg = "dimension must be a physical direction, storage integer, or nothing; got $(repr(DIM))"
+        return :(throw(ArgumentError($msg)))
+    end
+    if !(1 <= DIM <= D)
+        msg = "storage dimension $DIM is outside 1:$D"
+        return :(throw(ArgumentError($msg)))
+    end
+    directions = (:x, :y, :z, :t)
+    i = findfirst(==(DIM), AXES)
+    isnothing(i) && return :(nothing)
+    return QuoteNode(directions[i])
+end
+
+"""
+    physical_to_storage_dim(grid, physical_dim) -> Val{N} | Val{nothing}
+
+Return the storage-array dimension for `physical_dim`, wrapped in a `Val`
+so it can feed type-stably into other `Val`-dispatched functions (e.g.
+`FDGrids.mul!`).
+
+`physical_dim` may be a coordinate symbol (`:x`, `:y`, `:z`, `:t`) or a
+`Val` of one. The result is `Val{N}` where `N` is the storage dimension
+hosting that physical direction, or `Val{nothing}` when the grid omits
+that coordinate.
+
+This is a `@generated` function: the `AXES` lookup is folded to a
+literal `Val(N)` at compile time, so the call has no runtime cost at
+literal call sites such as `physical_to_storage_dim(g, Val(:x))`. Use it
+in preference to `Val(storage_dim(g, dim))`, which constructs the `Val`
+from a runtime `Int` and breaks the type-stable chain.
+
+# Examples
+
+For `AXES = (2, 1, 3, nothing)`, `physical_to_storage_dim(g, Val(:x))`
+returns `Val(2)`, `physical_to_storage_dim(g, Val(:y))` returns
+`Val(1)`, and `physical_to_storage_dim(g, Val(:t))` returns
+`Val(nothing)`.
+"""
+@generated function physical_to_storage_dim(::AbstractGrid{<:Any, <:Any, AXES},
+                                            ::Val{PHYSICAL_DIM}) where {AXES, PHYSICAL_DIM}
+    idx = if PHYSICAL_DIM === :x; 1
+    elseif PHYSICAL_DIM === :y; 2
+    elseif PHYSICAL_DIM === :z; 3
+    elseif PHYSICAL_DIM === :t; 4
+    else
+        msg = "physical direction must be :x, :y, :z, or :t; got $(repr(PHYSICAL_DIM))"
+        return :(throw(ArgumentError($msg)))
+    end
+    storage_dim_value = AXES[idx]
+    return :(Val($(QuoteNode(storage_dim_value))))
+end
+
+physical_to_storage_dim(grid::AbstractGrid, physical_dim::Symbol) =
+    physical_to_storage_dim(grid, Val(physical_dim))
+
+"""
     to_storage_order(values, grid) -> Tuple
 
 Permute a tuple from logical coordinate order into storage/array-dimension
@@ -317,7 +506,7 @@ Return the physical wavenumber scaling factor for homogeneous dimension `dim`.
 For a spatial direction with period `L` the factor is `2π/L`; for a unit-period
 temporal direction, return `1`.
 
-Downstream packages must extend this for each dimension in `fft_dims(grid)`.
+Downstream packages must extend this for each dimension in `fft_storage_dims(grid)`.
 """
 wavenumber_scale(grid::AbstractGrid, dim::Int) = throw(NotImplementedError(grid, dim))
 
@@ -325,7 +514,7 @@ wavenumber_scale(grid::AbstractGrid, dim::Int) = throw(NotImplementedError(grid,
     weights(grid::AbstractGrid) -> AbstractArray
 
 Return the quadrature weights for the inhomogeneous directions of `grid`.
-The returned array has one axis per dimension in `inhomogeneous_dims(grid)`,
+The returned array has one axis per dimension in `inhomogeneous_storage_dims(grid)`,
 in ascending array-dimension order: a `Vector` when there is one inhomogeneous
 direction, a `Matrix` when there are two, and so on.
 
@@ -344,7 +533,7 @@ weights(grid::AbstractGrid) = throw(NotImplementedError(grid))
 Return an equivalent grid with a new homogeneous resolution.
 
 `target_size` contains one physical-space size per homogeneous direction, in
-`fft_dims(grid)` order. Implementations should preserve inhomogeneous
+`fft_storage_dims(grid)` order. Implementations should preserve inhomogeneous
 directions and return a grid whose transformed dimensions match those sizes.
 
 This is optional.  Packages should only implement it if they support
@@ -372,7 +561,7 @@ transform_size(g::AbstractGrid{<:Any, D, <:Any, FFT_DIMS_ORDER}) where {D, FFT_D
 Number of grid points in each FFT dimension `FFT_DIMS_ORDER`. Used to normalise
 forward transforms. Default: reads from `size(g)`.
 """
-fft_norm(g::AbstractGrid) = map(d -> size(g, d), fft_dims(g))
+fft_norm(g::AbstractGrid) = map(d -> size(g, d), fft_storage_dims(g))
 
 # ------------------------------------------------------------------ #
 # Hermitian-symmetry enforcement on raw coefficient arrays           #
@@ -456,13 +645,13 @@ function apply_symmetry!(data::AbstractArray{<:Any, D}, ::Val{FFT_DIMS_ORDER}) w
     Base.require_one_based_indexing(data)
 
     # Split FFT_DIMS_ORDER into the rfft dim and the signed-FFT dims.
-    rfft_dim           = FFT_DIMS_ORDER[1]
+    rfft_storage_dim           = FFT_DIMS_ORDER[1]
     secondary_fft_dims = Base.tail(FFT_DIMS_ORDER)
 
     # Build the loop ranges: the rfft axis is pinned to index 1 (DC plane);
     # all other axes (signed-FFT and untransformed) run their full range.
     ranges = ntuple(Val(D)) do d
-        d == rfft_dim ? (1:1) : axes(data, d)
+        d == rfft_storage_dim ? (1:1) : axes(data, d)
     end
 
     # LinearIndices lets us guard against visiting each {I, Ineg} pair twice

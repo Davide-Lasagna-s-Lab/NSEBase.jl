@@ -28,7 +28,7 @@ using NSEBase
 const BENCH_AXES      = (2, 1, 3, 4)
 const BENCH_FFT_ORDER = (2, 3, 4)
 
-struct BenchGrid{S} <: NSEBase.AbstractGrid{Float64, 4, BENCH_AXES, BENCH_FFT_ORDER}
+struct BenchGrid{S} <: NSEBase.AbstractGrid{Float64, 4, BENCH_AXES, BENCH_FFT_ORDER, NSEBase.Undecomposed}
     ws :: Vector{Float64}   # wall-normal (inhomogeneous) quadrature weights
 end
 

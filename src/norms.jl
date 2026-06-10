@@ -90,7 +90,7 @@ Return `‖u − shift(v, shifts)‖`, the norm of the difference after optional
 shifting `v` along the homogeneous directions.
 
 `shifts` is a tuple with one entry per homogeneous dimension in
-`fft_dims(grid(u)) = FFT_DIMS_ORDER` order, defaulting to all zeros (no shift).
+`fft_storage_dims(grid(u)) = FFT_DIMS_ORDER` order, defaulting to all zeros (no shift).
 
 `tmp` is an optional pre-allocated `FTField` workspace.  For `FTField` inputs,
 the explicit workspace method copies `v` into `tmp`, shifts it in place when
@@ -209,10 +209,10 @@ normdiff(u::VectorField, v::VectorField, shifts::NTuple{M, Real}, ::Nothing) whe
 
 Return `(min_diff, shifts)`: the minimum of `‖u − shift(v, shifts)‖` over a
 regular grid of candidate shifts covering one full period in each transform
-dimension.  `N` has one entry per transform dimension in `fft_dims(grid(u))`
+dimension.  `N` has one entry per transform dimension in `fft_storage_dims(grid(u))`
 order; when omitted, each transform dimension uses 32 samples.
 
-If `fft_dims(grid(u)) == (2, 3)`, for example, then `N = (Nx, Nz)` samples the
+If `fft_storage_dims(grid(u)) == (2, 3)`, for example, then `N = (Nx, Nz)` samples the
 first transform dimension with `Nx` shifts and the second transform dimension
 with `Nz` shifts.  The returned `shifts` tuple has the same order and length as
 `N`.
@@ -239,7 +239,7 @@ function minnormdiff(u::F,
     steps = ntuple(k -> 2π / (wavenumber_scale(g, FFT_DIMS_ORDER[k]) * N[k]), Val(M))
 
     # Enumerate the candidate grid directly as zero-based shift counts in the
-    # same order as `fft_dims(g)`.
+    # same order as `fft_storage_dims(g)`.
     ranges = ntuple(k -> 0:(N[k] - 1), Val(M))
     for shift_counts in Iterators.product(ranges...)
         shifts = ntuple(k -> steps[k] * shift_counts[k], Val(M))
@@ -330,7 +330,7 @@ end
 Return `‖a − shift(b, shifts)‖`.
 
 `shifts` is a tuple with one entry per homogeneous dimension in
-`fft_dims(grid(a)) = FFT_DIMS_ORDER` order.
+`fft_storage_dims(grid(a)) = FFT_DIMS_ORDER` order.
 
 `tmp` is a pre-allocated `ProjectedField` workspace of the same type as `a`
 and `b`; `b` is copied into `tmp` and (if needed) shifted in place, so `b`

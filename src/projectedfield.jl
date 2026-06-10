@@ -33,7 +33,7 @@ of an `FTField` onto a set of basis `modes`.
 - `A`: type of the underlying coefficient array (`AbstractArray{Complex{T}, D}`)
 - `T`: real floating-point type (e.g. `Float64`); elements are stored as `Complex{T}`
 - `D`: dimensionality of the coefficient array — one mode axis plus one axis per
-  homogeneous dimension: `D = length(fft_dims(grid)) + 1`
+  homogeneous dimension: `D = length(fft_storage_dims(grid)) + 1`
 
 # Fields
 - `grid`: concrete instance of `AbstractGrid`
@@ -49,7 +49,7 @@ of an `FTField` onto a set of basis `modes`.
 # Storage layout
 
 The parent array has axis 1 reserved for the mode index and the spectral
-dimensions (from `fft_dims(grid) = FFT_DIMS_ORDER`) occupying the subsequent axes in
+dimensions (from `fft_storage_dims(grid) = FFT_DIMS_ORDER`) occupying the subsequent axes in
 `FFT_DIMS_ORDER` order.  Concretely, `parent(a)[m, i_H1, i_H2, …]` gives the coefficient
 of mode `m` at the spectral storage index `(i_H1, i_H2, …)`, where `i_H1`
 indexes the rfft dimension (`FFT_DIMS_ORDER[1]`) and each subsequent index steps over a
@@ -76,10 +76,10 @@ struct ProjectedField{G<:AbstractGrid, M, A<:AbstractArray, T, D} <: AbstractArr
         new{G, M, A, T, D}(grid, data, modes)
 
     ProjectedField(grid::G, data::A, modes::M) where {T, D, G<:AbstractGrid{T, D}, A<:Array{<:Any, D}, M} =
-        # ProjectedField storage is `(mode, fft_dims...)`, not physical grid
+        # ProjectedField storage is `(mode, fft_storage_dims...)`, not physical grid
         # storage. The rfft dimension is therefore axis 2, followed by the
         # remaining transformed axes in FFT order.
-        new{G, M, A, T, D}(grid, Complex{T}.(normalise_mean!(apply_symmetry!(data, fft_dims(grid)), fft_dims(grid))), modes)
+        new{G, M, A, T, D}(grid, Complex{T}.(normalise_mean!(apply_symmetry!(data, fft_storage_dims(grid)), fft_storage_dims(grid))), modes)
 end
 
 ProjectedField(grid::AbstractGrid{T}, data::AbstractArray, modes) where {T} = 
@@ -103,7 +103,7 @@ function ProjectedField(grid::AbstractGrid{T, D}, modes) where {T, D}
     Nm   = size(modes[1], 1)
     return ProjectedField(grid,
                           zeros(Complex{T}, Nm,
-                                transform_size(grid)[collect(fft_dims(grid))]...),
+                                transform_size(grid)[collect(fft_storage_dims(grid))]...),
                           modes)
 end
 
@@ -217,7 +217,7 @@ end
 
 Read or write the coefficient for mode `m` at 1-based storage indices
 `i1, i2, …` (one index per homogeneous dimension in `FFT_DIMS_ORDER` order;
-`M = length(fft_dims(grid(a)))`, one less than the parent array rank `D = M+1`).
+`M = length(fft_storage_dims(grid(a)))`, one less than the parent array rank `D = M+1`).
 
 `Vararg{Int, M}` forces compile-time specialisation on the number of homogeneous
 dimensions so the body can index `parent(a)` with a known-length tuple and
@@ -245,7 +245,7 @@ Read or write the coefficient at the full `D`-dimensional storage index
 in `FFT_DIMS_ORDER` order.
 
 The `CartesianIndex{D}` type parameter ensures this method only dispatches when
-the index rank matches the parent array rank (`D = length(fft_dims(grid)) + 1`).
+the index rank matches the parent array rank (`D = length(fft_storage_dims(grid)) + 1`).
 No symmetry logic is applied.  Used internally by loops over `CartesianIndices(a)`,
 e.g. in [`shift!`](@ref) for `ProjectedField`.
 """
@@ -264,7 +264,7 @@ end
     a[m::Int, k::WaveNumberVector] = val
 
 Read or write the complex modal coefficient for mode `m` at wavenumber vector
-`k`, where `k` follows the order of `fft_dims(grid(a)) = FFT_DIMS_ORDER`.
+`k`, where `k` follows the order of `fft_storage_dims(grid(a)) = FFT_DIMS_ORDER`.
 
 **Reading** — if the rfft wavenumber `k[1]` is negative, the value is obtained
 by conjugate symmetry: the entry stored at `(-k[1], -k[2:N]…)` is returned

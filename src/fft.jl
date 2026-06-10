@@ -329,13 +329,13 @@ normalised by the grid's `fft_norm`. Equivalent to planning and executing a fres
 `rfft` on `parent(u)`.
 
 Optionally provide `target_size` to change the resulting size of the data in the
-transformed directions (`fft_dims(grid(u))=FFT_DIMS_ORDER`). Requires [`growto(grid(u))`](@ref)
+transformed directions (`fft_storage_dims(grid(u))=FFT_DIMS_ORDER`). Requires [`growto(grid(u))`](@ref)
 to be implemented.
 """
 function FFT(u::Field)
     g = grid(u)
     û = FTField(g)
-    _fft_data(û) .= rfft(_fft_data(u), fft_dims(g))
+    _fft_data(û) .= rfft(_fft_data(u), fft_storage_dims(g))
     û .*= 1 / prod(fft_norm(g))
     return û
 end
@@ -351,13 +351,13 @@ corresponding to the Fourier coefficients `û`. No normalisation is applied
 transform). Equivalent to planning and executing a fresh `brfft` on `parent(û)`.
 
 Optionally provide `target_size` to change the resulting size of the data in the
-transformed directions (`fft_dims(grid(u))=FFT_DIMS_ORDER`). Requires [`growto(grid(u))`](@ref)
+transformed directions (`fft_storage_dims(grid(u))=FFT_DIMS_ORDER`). Requires [`growto(grid(u))`](@ref)
 to be implemented.
 """
 function IFFT(û::FTField)
     g = grid(û)
     u = Field(g)
-    _fft_data(u) .= brfft(_fft_data(û), size(g)[fft_dims(g)[1]], fft_dims(g))
+    _fft_data(u) .= brfft(_fft_data(û), size(g)[fft_storage_dims(g)[1]], fft_storage_dims(g))
     return u
 end
 IFFT(û::FTField, target_size) = IFFT(growto(û, target_size))

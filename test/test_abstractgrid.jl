@@ -5,6 +5,7 @@
 #
 #   - `size(grid)` and `size(grid, dim)` agree.
 #   - `fft_dims(grid)` returns the `FFT_DIMS_ORDER` type parameter verbatim.
+#   - `decomposition_dims(grid)` reports partitioned storage dimensions.
 #   - `spatial_fft_dims(grid)` returns transformed spatial dimensions, omitting
 #     a transformed logical time dimension.
 #   - `decomposition_dims(grid)` reports partitioned storage dimensions.
@@ -62,6 +63,14 @@
         struct SpaceTimeInhomogeneousGrid <: AbstractGrid{Float64, 4, (1, 2, 3, 4), (1, 2), Undecomposed} end
         @test inhomogeneous_dims(SpaceTimeInhomogeneousGrid()) === (3, 4)
         @test spatial_inhomogeneous_dims(SpaceTimeInhomogeneousGrid()) === (3,)
+
+        # Serial grids report no partitioned dimensions. Decomposed grids
+        # expose their partitioned storage dimensions directly from the type.
+        struct SlabMetadataGrid <: AbstractGrid{Float64, 3, (2, 1, 3, nothing), (2, 3), Decomposed{(1,)}} end
+        @test decomposition_dims(g) === ()
+        @test ndecomposed_dims(g) === 0
+        @test decomposition_dims(SlabMetadataGrid()) === (1,)
+        @test ndecomposed_dims(SlabMetadataGrid()) === 1
 
         # size(g, dim) must index size(g) — verify on every dimension.
         for d in 1:3

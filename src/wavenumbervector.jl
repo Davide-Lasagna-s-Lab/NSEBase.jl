@@ -2,7 +2,7 @@
 #
 # `WaveNumberVector{N}` is a lightweight struct holding N signed integer
 # wavenumbers, one per FFT-transformed dimension, ordered to match
-# `fft_dims(g) = FFT_DIMS_ORDER`.  It serves as a public, coordinate-space key for
+# `fft_storage_dims(g) = FFT_DIMS_ORDER`.  It serves as a public, coordinate-space key for
 # reading and writing individual spectral coefficients without exposing the
 # internal 1-based FFTW storage layout to callers.
 #
@@ -25,7 +25,7 @@
     WaveNumberVector{N}(ns::NTuple{N, Int})
 
 Integer wavenumber index for spectral fields.  Holds `N` wavenumbers ordered
-to match `fft_dims(g) = FFT_DIMS_ORDER`:
+to match `fft_storage_dims(g) = FFT_DIMS_ORDER`:
 
 - `k[1]` — wavenumber for the rfft dimension `H[1]` (may be negative; see below).
 - `k[2:N]` — signed wavenumbers for the remaining FFT dimensions, in FFTW
@@ -72,14 +72,14 @@ _fftw_sym_index(i::Int, N::Int) = i == 1 ? 1 : N - i + 2
 Convert a `WaveNumberVector` to 1-based `ProjectedField` axis indices plus a
 conjugate flag.  Returns the `(N+1)`-tuple `(i_H1, i_H2, …, i_HN, do_conj)`
 where each `i_Hk` is the 1-based index along axis `k+1` of the
-`ProjectedField` array (axes follow the order of `fft_dims(g) = FFT_DIMS_ORDER`).
+`ProjectedField` array (axes follow the order of `fft_storage_dims(g) = FFT_DIMS_ORDER`).
 
 `do_conj = true` means the stored entry is the complex conjugate of the
 requested wavenumber (the rfft axis stores only `n ≥ 0`, so negative wavenumbers
 are reached via conjugate symmetry).
 """
 function to_homogeneous_indices(g::AbstractGrid, k::WaveNumberVector{N}) where {N}
-    H = fft_dims(g)
+    H = fft_storage_dims(g)
     if k[1] >= 0
         rest = ntuple(j -> _fftw_index( k[j+1], size(g, H[j+1])), Val(N-1))
         return (k[1] + 1, rest..., false)

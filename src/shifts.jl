@@ -12,7 +12,7 @@
 #
 # Shifts are specified in physical units (same units as the period `L` used to
 # define `wavenumber_scale`), with one entry per homogeneous dimension in
-# `fft_dims(grid(u)) = FFT_DIMS_ORDER` order.  Passing all-zero shifts is a
+# `fft_storage_dims(grid(u)) = FFT_DIMS_ORDER` order.  Passing all-zero shifts is a
 # no-op (guarded by an early return).
 
 """
@@ -42,7 +42,7 @@ end
     shift!(u::FTField, shifts) -> u
 
 Shift `u` in-place by `shifts`, one entry per homogeneous dimension in
-`fft_dims(grid(u)) = FFT_DIMS_ORDER` order.  Each entry is a displacement in
+`fft_storage_dims(grid(u)) = FFT_DIMS_ORDER` order.  Each entry is a displacement in
 physical units (same units as the period `L` used to define `wavenumber_scale`).
 
 The phase factor applied to spectral coefficient at signed wavenumber vector `k` is
@@ -89,7 +89,7 @@ end
     shift!(a::ProjectedField, shifts) -> a
 
 Shift the projected field `a` in-place by `shifts`, one entry per homogeneous
-dimension in `fft_dims(grid(a)) = FFT_DIMS_ORDER` order. The same phase factor as for
+dimension in `fft_storage_dims(grid(a)) = FFT_DIMS_ORDER` order. The same phase factor as for
 [`shift!`](@ref) is applied to every modal coefficient at each
 spectral index independently of the mode index `m`, since the shift acts on
 the underlying physical-space field.

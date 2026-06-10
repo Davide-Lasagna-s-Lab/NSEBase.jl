@@ -46,7 +46,7 @@ is skipped, i.e. no base flow in that direction).
 # Index construction
 
 For a field stored as a `D`-dimensional spectral array, the zero-wavenumber
-slice is selected by an index pattern derived from the grid's `fft_dims`:
+slice is selected by an index pattern derived from the grid's `fft_storage_dims`:
 
 - FFT dimensions (homogeneous, transformed): index `1`, the DC bin.
   FFTW always places the zero-frequency coefficient first, for both the real

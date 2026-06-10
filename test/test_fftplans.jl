@@ -504,7 +504,7 @@ end
         plans = FFTPlans(g, dealias=false, flags=FFTW.ESTIMATE)
 
         plans(U, u)
-        @test NSEBase._fft_data(U) ≈ FFTW.rfft(raw, NSEBase.fft_dims(g)) ./ prod(NSEBase.fft_norm(g))
+        @test NSEBase._fft_data(U) ≈ FFTW.rfft(raw, NSEBase.fft_storage_dims(g)) ./ prod(NSEBase.fft_norm(g))
 
         plans(v, U)
         @test NSEBase._fft_data(v) ≈ raw
