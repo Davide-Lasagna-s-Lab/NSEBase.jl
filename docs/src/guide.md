@@ -7,7 +7,7 @@ correctly and for implementing a new downstream grid.
 ## The grid interface
 
 Everything in NSEBase is parameterised on a **grid** — a concrete subtype of
-`AbstractGrid{T, D, AXES, FFT_DIMS_ORDER}`.  The four compile-time type parameters
+`AbstractGrid{T, D, AXES, FFT_DIMS_ORDER, DECOMPOSITION}`.  The five compile-time type parameters
 encode all structural information about the domain:
 
 | Parameter | Meaning |
@@ -16,10 +16,16 @@ encode all structural information about the domain:
 | `D` | Number of array dimensions |
 | `AXES` | Four-tuple `(x_dim, y_dim, z_dim, t_dim)` mapping logical Cartesian coordinates to array dimensions; use `nothing` for absent coordinates |
 | `FFT_DIMS_ORDER` | Ordered tuple of the array dimensions that are FFT-transformed; `FFT_DIMS_ORDER[1]` is **always** the rfft dimension |
+| `DECOMPOSITION` | Storage-partition tag: `Undecomposed` for a complete local domain, or `Decomposed{DIMS}` for a grid split along the storage dimensions in `DIMS` |
 
 Because these parameters are part of the type, the compiler can fully specialise
 every loop, index mapping, and generated function at compile time — there is no
 runtime dispatch and no runtime allocation in the hot paths.
+
+NSEBase records decomposition metadata but does not prescribe communication or
+halo storage. Downstream packages use [`decomposition_dims`](@ref) to inspect the
+partitioned storage dimensions and provide the corresponding distributed
+operations.
 
 ### Required methods
 

@@ -1,7 +1,7 @@
 # ------------- #
 # concrete grid #
 # ------------- #
-struct FakeGrid <: AbstractGrid{Float64, 2, (1, 2, nothing, nothing), (2,)}
+struct FakeGrid <: AbstractGrid{Float64, 2, (1, 2, nothing, nothing), (2,), Undecomposed}
     x::Vector{Float64}
     N::Int
     L::Float64

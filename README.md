@@ -41,8 +41,10 @@ complete API reference — lives in [`docs/`](docs/).
 
 ## Extending NSEBase
 
-Implement a new grid by subtyping `AbstractGrid{T, D, AXES, FFT_DIMS_ORDER}` and
-defining four required methods:
+Implement a new grid by subtyping
+`AbstractGrid{T, D, AXES, FFT_DIMS_ORDER, DECOMPOSITION}` and defining four
+required methods. Use `Undecomposed` for a grid stored on one domain, or
+`Decomposed{DIMS}` when storage is partitioned along the dimensions in `DIMS`.
 
 | Method | Purpose |
 |--------|---------|
