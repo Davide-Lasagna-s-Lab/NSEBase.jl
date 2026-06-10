@@ -123,6 +123,29 @@
         @test_throws MethodError NSEBase.to_storage_order((:A, :B), PermGrid())
     end
 
+    @testset "index utility functions                " begin
+        # BareGrid: D=3, FFT_DIMS_ORDER=(2,3), inhomogeneous dim 1.
+        g = BareGrid()
+        I = CartesianIndex(2, 3, 4)
+
+        # rfft_dim: first entry of FFT_DIMS_ORDER.
+        @test NSEBase.rfft_dim(g) === 2
+
+        # one_or_two: 1 when the rfft-dim slot equals 1, 2 otherwise.
+        # Both the grid form and the Val form must agree.
+        @test NSEBase.one_or_two(CartesianIndex(2, 1, 4), g) === 1
+        @test NSEBase.one_or_two(CartesianIndex(2, 3, 4), g) === 2
+        @test NSEBase.one_or_two(CartesianIndex(2, 1, 4), Val((2, 3))) === 1
+        @test NSEBase.one_or_two(CartesianIndex(2, 3, 4), Val((2, 3))) === 2
+
+        # inhomogeneous_indices: dims NOT in FFT_DIMS_ORDER — only dim 1 for BareGrid.
+        @test NSEBase.inhomogeneous_indices(I, g) === (2,)
+        @test NSEBase.inhomogeneous_indices(I, Val((2, 3))) === (2,)
+
+        # homogeneous_indices: dims IN FFT_DIMS_ORDER — dims 2 and 3.
+        @test NSEBase.homogeneous_indices(I, g) === (3, 4)
+    end
+
     @testset "required interface fallthroughs throw" begin
         # Methods that have no default implementation must throw
         # `NotImplementedError` when called on a grid that doesn't override

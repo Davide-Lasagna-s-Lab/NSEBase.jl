@@ -139,7 +139,7 @@ end
         @test allocs_after_warmup(() -> eltype(u)) == 0
         @test allocs_after_warmup(() -> u[1]) == 0
         @test allocs_after_warmup(() -> (u[1] = 1 + 0im)) == 0
-        @test allocs_after_warmup(() -> NSEBase.combine_indices(g, (2,), (3, 4))) == 0
+        @test allocs_after_warmup(() -> NSEBase.combine_indices(g, CartesianIndex(2), CartesianIndex(3, 4))) == 0
         @test allocs_after_warmup(() -> NSEBase._average_complex(1 + 2im, 3 + 4im)) == 0
         @test allocs_after_warmup(() -> (u[k, 2] = 2 - 1im)) == 0
         @test allocs_after_warmup(() -> u[k, 2]) == 0

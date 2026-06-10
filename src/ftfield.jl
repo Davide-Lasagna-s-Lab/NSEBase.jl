@@ -139,9 +139,8 @@ Base.@propagate_inbounds function Base.getindex(u::FTField{G},
                                                 k::WaveNumberVector) where {FFT_DIMS_ORDER, G<:AbstractGrid{<:Any, <:Any, <:Any, FFT_DIMS_ORDER}}
     tpl     = to_homogeneous_indices(grid(u), k)
     indices = Base.front(tpl)
-    colons  = ntuple(_ -> Colon(), ndims(u) - length(FFT_DIMS_ORDER))
-    @boundscheck checkbounds(u, combine_indices(grid(u), colons, indices)...)
-    @inbounds return view(parent(u), combine_indices(grid(u), colons, indices)...)
+    @boundscheck checkbounds(u, combine_indices(grid(u), Colon(), indices)...)
+    @inbounds return view(parent(u), combine_indices(grid(u), Colon(), indices)...)
 end
 
 """
@@ -161,8 +160,8 @@ Base.@propagate_inbounds function Base.getindex(u::FTField,
     tpl     = to_homogeneous_indices(grid(u), k)
     do_conj = last(tpl)
     indices = Base.front(tpl)
-    @boundscheck checkbounds(u, combine_indices(grid(u), (i1, I...), indices)...)
-    @inbounds val = parent(u)[combine_indices(grid(u), (i1, I...), indices)...]
+    @boundscheck checkbounds(u, combine_indices(grid(u), CartesianIndex(i1, I...), CartesianIndex(indices...))...)
+    @inbounds val = parent(u)[combine_indices(grid(u), CartesianIndex(i1, I...), CartesianIndex(indices...))...]
     return do_conj ? conj(val) : val
 end
 
@@ -199,11 +198,11 @@ Base.@propagate_inbounds function Base.setindex!(u::FTField{<:AbstractGrid{T}},
     # Conjugate-symmetric indices for each signed-fft axis.
     sym_rest = ntuple(j -> _fftw_sym_index(rest[j], size(u, j + 2)), Val(N-1))
 
-    @boundscheck checkbounds(u, combine_indices(grid(u), I, (i0, rest...))...)
-    @inbounds parent(u)[combine_indices(grid(u), I, (i0, rest...))...] = do_conj ? conj(val) : val
+    @boundscheck checkbounds(u, combine_indices(grid(u), CartesianIndex(I), CartesianIndex(i0, rest...))...)
+    @inbounds parent(u)[combine_indices(grid(u), CartesianIndex(I), CartesianIndex(i0, rest...))...] = do_conj ? conj(val) : val
     # When the rfft wavenumber is zero, also write the mirror entry so that
     # the Hermitian-symmetry invariant is preserved across all signed dims.
-    i0 == 1 && @inbounds parent(u)[combine_indices(grid(u), I, (i0, sym_rest...))...] = do_conj ? val  : conj(val)
+    i0 == 1 && @inbounds parent(u)[combine_indices(grid(u), CartesianIndex(I), CartesianIndex(i0, sym_rest...))...] = do_conj ? val  : conj(val)
     return val
 end
 
@@ -293,37 +292,31 @@ end
 normalise_mean!(data, FFT_DIMS_ORDER::Dims) = normalise_mean!(data, Val(FFT_DIMS_ORDER))
 
 """
-    homogeneous_axes(u::FTField) -> Tuple
+    homogeneous_axes(u::FTField)                              -> Tuple
+    homogeneous_axes(u::AbstractArray, ::Val{FFT_DIMS_ORDER}) -> Tuple
 
-Return a tuple of `axes(u, d)` for each storage dimension `d` in
-`FFT_DIMS_ORDER` — the homogeneous (FFT) dimensions of the grid.
-
-The result is suitable for `CartesianIndices(homogeneous_axes(u))` to
-iterate over all spectral wavenumber indices of `u` without touching the
-inhomogeneous (quadrature) dimension(s).
-
-The grid type is extracted from `u` at compile time, so this call
-produces zero allocations at runtime.
+Return a tuple of `axes(u, d)` for each dimension `d` in `FFT_DIMS_ORDER`.
+Suitable for `CartesianIndices(homogeneous_axes(u))` to iterate over all
+spectral wavenumber indices without touching the inhomogeneous dimensions.
+`D` is inferred from `ndims(u)`.
 """
-@generated function homogeneous_axes(u::FTField{<:AbstractGrid{<:Any, D, <:Any, FFT_DIMS_ORDER}}) where {D, FFT_DIMS_ORDER}
+@generated function homogeneous_axes(u::AbstractArray, ::Val{FFT_DIMS_ORDER}) where {FFT_DIMS_ORDER}
     return Expr(:tuple, (:(axes(u, $d)) for d in FFT_DIMS_ORDER)...)
 end
 
+homogeneous_axes(u::FTField) = homogeneous_axes(parent(u), Val(fft_storage_dims(grid(u))))
+
 """
-    inhomogeneous_axes(u::FTField) -> Tuple
+    inhomogeneous_axes(u::FTField)                              -> Tuple
+    inhomogeneous_axes(u::AbstractArray, ::Val{FFT_DIMS_ORDER}) -> Tuple
 
-Return a tuple of `axes(u, d)` for each storage dimension `d` that is
-**not** in `FFT_DIMS_ORDER` — the inhomogeneous (non-FFT, e.g. Chebyshev)
-dimensions of the grid.  Complementary to [`homogeneous_axes`](@ref).
-
-Used as the inner loop range in [`shift!`](@ref) so that each inhomogeneous
-index is updated via a scalar `parent[I...] *= phase` with no temporary
-slice allocation.
-
-The grid type is extracted from `u` at compile time, so this call
-produces zero allocations at runtime.
+Return a tuple of `axes(u, d)` for each dimension `d` in `1:D` that is
+**not** in `FFT_DIMS_ORDER`.  Complementary to [`homogeneous_axes`](@ref).
+`D` is inferred from `ndims(u)`.
 """
-@generated function inhomogeneous_axes(u::FTField{<:AbstractGrid{<:Any, D, <:Any, FFT_DIMS_ORDER}}) where {D, FFT_DIMS_ORDER}
+@generated function inhomogeneous_axes(u::AbstractArray{<:Any, D}, ::Val{FFT_DIMS_ORDER}) where {D, FFT_DIMS_ORDER}
     inh_dims = [d for d in 1:D if d ∉ FFT_DIMS_ORDER]
     return Expr(:tuple, (:(axes(u, $d)) for d in inh_dims)...)
 end
+
+inhomogeneous_axes(u::FTField) = inhomogeneous_axes(parent(u), Val(fft_storage_dims(grid(u))))

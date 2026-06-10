@@ -108,6 +108,27 @@
         end
     end
 
+    @testset "homogeneous_axes and inhomogeneous_axes                  " begin
+        Ny, Nx, Nz = 3, 8, 5
+        g  = TripleGrid(Ny, Nx, Nz)          # FFT_DIMS_ORDER = (2, 3)
+        u  = FTField(g)                       # parent shape: (Ny, (Nx>>1)+1, Nz)
+        pu = parent(u)
+
+        # FTField dispatch (extracts Val from the grid).
+        @test NSEBase.homogeneous_axes(u)   == (axes(pu, 2), axes(pu, 3))
+        @test NSEBase.inhomogeneous_axes(u) == (axes(pu, 1),)
+
+        # AbstractArray + Val dispatch: same result from the raw parent array.
+        vFFT = Val((2, 3))
+        @test NSEBase.homogeneous_axes(pu, vFFT)   == (axes(pu, 2), axes(pu, 3))
+        @test NSEBase.inhomogeneous_axes(pu, vFFT) == (axes(pu, 1),)
+
+        # Sanity: CartesianIndices over homogeneous axes covers the full kH
+        # storage (rfft half-spectrum × signed-FFT dimension).
+        @test length(CartesianIndices(NSEBase.homogeneous_axes(u))) ==
+              ((Nx >> 1) + 1) * Nz
+    end
+
     @testset "WaveNumberVector getindex and setindex preserve symmetry" begin
         Ny, Nx, Nz = 2, 8, 5
         g = TripleGrid(Ny, Nx, Nz)
