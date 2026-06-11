@@ -29,8 +29,10 @@ export FarazmandWeight
 export CartesianPrimitive3DNSE, CartesianPrimitive3DLNSE
 export CartesianPrimitive2DNSE, CartesianPrimitive2DLNSE
 export CartesianPrimitive2D3CNSE, CartesianPrimitive2D3CLNSE
+export CartesianPrimitive3DBoussinesqNSE, CartesianPrimitive3DBoussinesqLNSE
 export Forward, AdjointContinuous, AdjointDiscrete, NoForce, CompoundForcing, Mode
 export construct_equations, CartesianPrimitive3D, CartesianPrimitive2D, CartesianPrimitive2D3C, PolarPrimitive
+export CartesianPrimitive3DBoussinesq
 export ncomp, cache_length, nonlinear_operator, linearised_operator
 export ProjectedNSE
 
@@ -53,6 +55,7 @@ include("equations/types.jl")
 include("equations/cartesianprimitive_3d.jl")
 include("equations/cartesianprimitive_2d.jl")
 include("equations/cartesianprimitive_2d3c.jl")
+include("equations/cartesianprimitive_3d_boussinesq.jl")
 include("equations/projectednse.jl")
 include("equations/shared.jl")
 
