@@ -565,6 +565,28 @@ local_size(g::DecomposedGrid, phys_dim::Symbol) =
 local_size(g::DecomposedGrid, stor_dim::Int) = size(g, stor_dim)
 
 """
+    local_physical_size(g::DecomposedGrid; dealias=false) -> NTuple{D,Int}
+
+Return the per-rank physical-space interior size. With `dealias=true`, the FFT
+storage dimensions are padded by the same 3/2-rule used by `NSEBase.Field`.
+Halo cells are not included.
+"""
+local_physical_size(g::DecomposedGrid; dealias::Bool=false) =
+    dealias ? NSEBase.get_padded_size(local_size(g), NSEBase.fft_storage_dims(g)) :
+              local_size(g)
+
+"""
+    local_transform_size(g::DecomposedGrid) -> NTuple{D,Int}
+
+Return the per-rank spectral interior size corresponding to
+`local_size(g)`. The rfft storage dimension is halved in FFTW's
+real-to-complex layout; all other dimensions keep their local extent.
+Halo cells are not included.
+"""
+local_transform_size(g::DecomposedGrid) =
+    NSEBase._get_transform_size(local_size(g), NSEBase.rfft_storage_dim(g))
+
+"""
     global_first_index(g::DecomposedGrid, phys_dim::Symbol) -> Int
     global_first_index(g::DecomposedGrid, stor_dim::Int) -> Int
 

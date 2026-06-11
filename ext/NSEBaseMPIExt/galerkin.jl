@@ -10,16 +10,16 @@ Each rank holds only a local slab of the inhomogeneous dimension, so
 `MPI.Allreduce!` then sums the partial modal coefficients across all ranks,
 recovering the correct global projection.
 """
-function NSEBase.project!(a::NSEBase.ProjectedField{<:DecomposedGrid},
-                          u::NSEBase.VectorField{N, <:NSEBase.FTField{<:DecomposedGrid}}) where {N}
+function NSEBase.project!(a::DecomposedProjectedField,
+                          u::DecomposedFTVectorField)
 
     fill!(parent(a), zero(eltype(a)))
-    for i in 1:N
+    for i in eachindex(u)
         NSEBase._project_component!(parent(a),
                                     parent(u[i]),
-                                    modes(a)[i],
-                                    weights(grid(u)),
-                                    Val(fft_dims(grid(u))))
+                                    NSEBase.modes(a)[i],
+                                    NSEBase.weights(NSEBase.grid(u)),
+                                    Val(NSEBase.fft_storage_dims(NSEBase.grid(u))))
     end
 
     # Sum the per-rank partial projections into the global modal coefficients.

@@ -25,14 +25,11 @@ the global inner product. Every rank returns the same value.
 `u` and `v` must share the same `DecomposedGrid` (so the partition,
 weights, and Hermitian-symmetry multipliers agree across ranks).
 """
-function LinearAlgebra.dot(u::NSEBase.FTField{G},
-                           v::NSEBase.FTField{G}) where {FFT_DIMS_ORDER, G<:DecomposedGrid{<:Any,
-                                                                                           <:Any,
-                                                                                           <:Any,
-                                                                                           FFT_DIMS_ORDER}}
+function LinearAlgebra.dot(u::F, v::F) where {F<:DecomposedFTField}
+    g = NSEBase.grid(u)
     local_dot = NSEBase._dot(parent(u),
                              parent(v),
-                             NSEBase.weights(NSEBase.grid(u)),
-                             Val(FFT_DIMS_ORDER))
-    return MPI.Allreduce(real(local_dot), MPI.SUM, comm(NSEBase.grid(u)))
+                             NSEBase.weights(g),
+                             Val(NSEBase.fft_storage_dims(g)))
+    return MPI.Allreduce(real(local_dot), MPI.SUM, comm(g))
 end

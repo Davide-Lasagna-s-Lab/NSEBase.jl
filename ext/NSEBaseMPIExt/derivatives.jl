@@ -1,17 +1,4 @@
-# Finite-difference and spectral derivatives for decomposed grids.
-#
-# Functions are ordered from most user-facing (top) to most internal (bottom):
-#
-#   ddx! / ddy! / ddz! / ddt!          — named user entry points
-#   dd!(out, u, ::Val{SD}, requests)    — storage-dim dispatch + halo sequencing
-#   laplacian!(out, u, requests)        — full Laplacian with halo sequencing
-#   interior_dd! / boundary_dd!         — split FD derivative (pre/post halo)
-#   interior_laplacian! / boundary_laplacian! — split Laplacian
-#   _dd_over!                           — FD kernel
-#
-# Physical direction names (:x, :y, :z, :t) appear only in ddx!/ddy!/ddz!/ddt!,
-# which resolve them to Val{STORAGE_DIM} via physical_to_storage_dim.
-# All other functions take Val{STORAGE_DIM} directly.
+# Halo exchange and finite-difference derivatives for decomposed grids.
 #
 # Concrete decomposed grids must implement
 #   derivative_matrix(g, stor_dim::Int, ::Val{ORDER}, ::Val{ADJOINT})
@@ -19,82 +6,36 @@
 
 
 # ------------------------------------------------------------------ #
-# ddx! / ddy! / ddz! / ddt!                                          #
+# init_requests! / wait_requests!                                    #
 # ------------------------------------------------------------------ #
 
-NSEBase.ddx!(out::NSEBase.FTField{G}, u::NSEBase.FTField{G}, requests; kwargs...) where {G<:DecomposedGrid} =
-    NSEBase.dd!(out, u, NSEBase.physical_to_storage_dim(NSEBase.grid(u), Val(:x)), requests; kwargs...)
-NSEBase.ddx!(out::NSEBase.VectorField{N, F}, u::NSEBase.VectorField{N, F}, requests::NTuple{N}; kwargs...) where {N, F<:NSEBase.FTField{<:DecomposedGrid}} =
-    NSEBase.dd!(out, u, NSEBase.physical_to_storage_dim(NSEBase.grid(u[1]), Val(:x)), requests; kwargs...)
+NSEBase.init_requests!(u::DecomposedScalarField) = HaloArrays.haloswap!(parent(u), false)
+NSEBase.init_requests!(u::DecomposedVectorField{N}) where {N} =
+    ntuple(n -> HaloArrays.haloswap!(parent(u[n]), false), Val(N))
 
-NSEBase.ddy!(out::NSEBase.FTField{G}, u::NSEBase.FTField{G}, requests; kwargs...) where {G<:DecomposedGrid} =
-    NSEBase.dd!(out, u, NSEBase.physical_to_storage_dim(NSEBase.grid(u), Val(:y)), requests; kwargs...)
-NSEBase.ddy!(out::NSEBase.VectorField{N, F}, u::NSEBase.VectorField{N, F}, requests::NTuple{N}; kwargs...) where {N, F<:NSEBase.FTField{<:DecomposedGrid}} =
-    NSEBase.dd!(out, u, NSEBase.physical_to_storage_dim(NSEBase.grid(u[1]), Val(:y)), requests; kwargs...)
-
-NSEBase.ddz!(out::NSEBase.FTField{G}, u::NSEBase.FTField{G}, requests; kwargs...) where {G<:DecomposedGrid} =
-    NSEBase.dd!(out, u, NSEBase.physical_to_storage_dim(NSEBase.grid(u), Val(:z)), requests; kwargs...)
-NSEBase.ddz!(out::NSEBase.VectorField{N, F}, u::NSEBase.VectorField{N, F}, requests::NTuple{N}; kwargs...) where {N, F<:NSEBase.FTField{<:DecomposedGrid}} =
-    NSEBase.dd!(out, u, NSEBase.physical_to_storage_dim(NSEBase.grid(u[1]), Val(:z)), requests; kwargs...)
-
-NSEBase.ddt!(out::NSEBase.FTField{G}, u::NSEBase.FTField{G}, requests; kwargs...) where {G<:DecomposedGrid} =
-    NSEBase.dd!(out, u, NSEBase.physical_to_storage_dim(NSEBase.grid(u), Val(:t)), requests; kwargs...)
-NSEBase.ddt!(out::NSEBase.VectorField{N, F}, u::NSEBase.VectorField{N, F}, requests::NTuple{N}; kwargs...) where {N, F<:NSEBase.FTField{<:DecomposedGrid}} =
-    NSEBase.dd!(out, u, NSEBase.physical_to_storage_dim(NSEBase.grid(u[1]), Val(:t)), requests; kwargs...)
+NSEBase.wait_requests!(requests::MPI.AbstractMultiRequest) = (MPI.Waitall(requests); nothing)
+NSEBase.wait_requests!(tokens::Tuple) = (foreach(NSEBase.wait_requests!, tokens); nothing)
 
 
 # ------------------------------------------------------------------ #
-# dd! — halo sequencing                                              #
+# laplacian! — 2-arg blocking override for decomposed grids          #
 # ------------------------------------------------------------------ #
 
-function NSEBase.dd!(out::F, u::F, ::Val{STORAGE_DIM}, requests;
-                     kwargs...) where {F<:NSEBase.FTField{<:DecomposedGrid}, STORAGE_DIM}
-    interior_dd!(out, u, Val(STORAGE_DIM); kwargs...)
-    wait_halo_exchange!(requests)
-    boundary_dd!(out, u, Val(STORAGE_DIM); kwargs...)
-    return out
-end
-
-function NSEBase.dd!(out::NSEBase.VectorField{N, F}, u::NSEBase.VectorField{N, F},
-                     ::Val{STORAGE_DIM}, requests::NTuple{N};
-                     kwargs...) where {N, F<:NSEBase.FTField{<:DecomposedGrid}, STORAGE_DIM}
-    for n in 1:N
-        NSEBase.dd!(out[n], u[n], Val(STORAGE_DIM), requests[n]; kwargs...)
-    end
-    return out
-end
-
-
-# ------------------------------------------------------------------ #
-# laplacian! — halo sequencing                                       #
-# ------------------------------------------------------------------ #
-
-function NSEBase.laplacian!(out::NSEBase.FTField{G}, u::NSEBase.FTField{G}, requests;
-                            kwargs...) where {G<:DecomposedGrid}
+function NSEBase.laplacian!(out::DecomposedFTField, u::DecomposedFTField; kwargs...)
+    requests = NSEBase.init_requests!(u)
     interior_laplacian!(out, u; kwargs...)
-    wait_halo_exchange!(requests)
+    NSEBase.wait_requests!(requests)
     boundary_laplacian!(out, u; kwargs...)
     return out
 end
 
-function NSEBase.laplacian!(out::NSEBase.FTField{G}, u::NSEBase.FTField{G};
-                            kwargs...) where {G<:DecomposedGrid}
-    requests = haloswap!(u, false)
-    return NSEBase.laplacian!(out, u, requests; kwargs...)
-end
-
-function NSEBase.laplacian!(out::NSEBase.VectorField{N, F}, u::NSEBase.VectorField{N, F},
-                            requests::NTuple{N}; kwargs...) where {N, F<:NSEBase.FTField{<:DecomposedGrid}}
+function NSEBase.laplacian!(out::DecomposedFTVectorField,
+                            u::DecomposedFTVectorField; kwargs...)
+    requests = NSEBase.init_requests!(u)
     interior_laplacian!(out, u; kwargs...)
-    wait_halo_exchange!(requests)
+    NSEBase.wait_requests!(requests)
     boundary_laplacian!(out, u; kwargs...)
     return out
-end
-
-function NSEBase.laplacian!(out::NSEBase.VectorField{N, F}, u::NSEBase.VectorField{N, F};
-                            kwargs...) where {N, F<:NSEBase.FTField{<:DecomposedGrid}}
-    requests = haloswap!(u, false)
-    return NSEBase.laplacian!(out, u, requests; kwargs...)
 end
 
 
@@ -102,9 +43,8 @@ end
 # interior_dd! / boundary_dd!                                        #
 # ------------------------------------------------------------------ #
 
-function interior_dd!(out::NSEBase.FTField{G}, u::NSEBase.FTField{G},
-                      ::Val{STORAGE_DIM};
-                      adjoint::Bool = false) where {G<:DecomposedGrid, STORAGE_DIM}
+function interior_dd!(out::DecomposedFTField, u::DecomposedFTField,
+                      ::Val{STORAGE_DIM}; adjoint::Bool = false) where {STORAGE_DIM}
     isnothing(STORAGE_DIM) && return out
     g = NSEBase.grid(u)
     STORAGE_DIM in NSEBase.fft_storage_dims(g) &&
@@ -114,17 +54,16 @@ function interior_dd!(out::NSEBase.FTField{G}, u::NSEBase.FTField{G},
                      adjoint = adjoint)
 end
 
-function interior_dd!(out::NSEBase.VectorField{N, F}, u::NSEBase.VectorField{N, F},
-                      ::Val{STORAGE_DIM}; kwargs...) where {N, F<:NSEBase.FTField{<:DecomposedGrid}, STORAGE_DIM}
-    for n in 1:N
+function interior_dd!(out::DecomposedFTVectorField, u::DecomposedFTVectorField,
+                      ::Val{STORAGE_DIM}; kwargs...) where {STORAGE_DIM}
+    for n in eachindex(u)
         interior_dd!(out[n], u[n], Val(STORAGE_DIM); kwargs...)
     end
     return out
 end
 
-function boundary_dd!(out::NSEBase.FTField{G}, u::NSEBase.FTField{G},
-                      ::Val{STORAGE_DIM};
-                      adjoint::Bool = false) where {G<:DecomposedGrid, STORAGE_DIM}
+function boundary_dd!(out::DecomposedFTField, u::DecomposedFTField,
+                      ::Val{STORAGE_DIM}; adjoint::Bool = false) where {STORAGE_DIM}
     isnothing(STORAGE_DIM) && return out
     g = NSEBase.grid(u)
     STORAGE_DIM in NSEBase.fft_storage_dims(g) && return out
@@ -133,9 +72,9 @@ function boundary_dd!(out::NSEBase.FTField{G}, u::NSEBase.FTField{G},
                      adjoint = adjoint)
 end
 
-function boundary_dd!(out::NSEBase.VectorField{N, F}, u::NSEBase.VectorField{N, F},
-                      ::Val{STORAGE_DIM}; kwargs...) where {N, F<:NSEBase.FTField{<:DecomposedGrid}, STORAGE_DIM}
-    for n in 1:N
+function boundary_dd!(out::DecomposedFTVectorField, u::DecomposedFTVectorField,
+                      ::Val{STORAGE_DIM}; kwargs...) where {STORAGE_DIM}
+    for n in eachindex(u)
         boundary_dd!(out[n], u[n], Val(STORAGE_DIM); kwargs...)
     end
     return out
@@ -146,8 +85,8 @@ end
 # interior_laplacian! / boundary_laplacian!                          #
 # ------------------------------------------------------------------ #
 
-function interior_laplacian!(out::NSEBase.FTField{G}, u::NSEBase.FTField{G};
-                             adjoint::Bool = false) where {G<:DecomposedGrid}
+function interior_laplacian!(out::DecomposedFTField, u::DecomposedFTField;
+                             adjoint::Bool = false)
     g = NSEBase.grid(u)
     fd_stor_dims = NSEBase.spatial_inhomogeneous_storage_dims(g)
 
@@ -175,16 +114,16 @@ function interior_laplacian!(out::NSEBase.FTField{G}, u::NSEBase.FTField{G};
     return out
 end
 
-function interior_laplacian!(out::NSEBase.VectorField{N, F}, u::NSEBase.VectorField{N, F};
-                              kwargs...) where {N, F<:NSEBase.FTField{<:DecomposedGrid}}
-    for n in 1:N
+function interior_laplacian!(out::DecomposedFTVectorField,
+                             u::DecomposedFTVectorField; kwargs...)
+    for n in eachindex(u)
         interior_laplacian!(out[n], u[n]; kwargs...)
     end
     return out
 end
 
-function boundary_laplacian!(out::NSEBase.FTField{G}, u::NSEBase.FTField{G};
-                             adjoint::Bool = false) where {G<:DecomposedGrid}
+function boundary_laplacian!(out::DecomposedFTField, u::DecomposedFTField;
+                             adjoint::Bool = false)
     g = NSEBase.grid(u)
     for sd in NSEBase.spatial_inhomogeneous_storage_dims(g)
         _dd_over!(out, u, g, Val(sd), Val(2),
@@ -194,13 +133,31 @@ function boundary_laplacian!(out::NSEBase.FTField{G}, u::NSEBase.FTField{G};
     return out
 end
 
-function boundary_laplacian!(out::NSEBase.VectorField{N, F}, u::NSEBase.VectorField{N, F};
-                              kwargs...) where {N, F<:NSEBase.FTField{<:DecomposedGrid}}
-    for n in 1:N
+function boundary_laplacian!(out::DecomposedFTVectorField,
+                             u::DecomposedFTVectorField; kwargs...)
+    for n in eachindex(u)
         boundary_laplacian!(out[n], u[n]; kwargs...)
     end
     return out
 end
+
+
+# ------------------------------------------------------------------ #
+# init_* / complete_* / init_laplacian! / complete_laplacian!        #
+# ------------------------------------------------------------------ #
+
+NSEBase.init_ddx!(out::DecomposedSpectralField, u::DecomposedSpectralField; kwargs...) = interior_dd!(out, u, NSEBase.physical_to_storage_dim(NSEBase.grid(u), Val(:x)); kwargs...)
+NSEBase.init_ddy!(out::DecomposedSpectralField, u::DecomposedSpectralField; kwargs...) = interior_dd!(out, u, NSEBase.physical_to_storage_dim(NSEBase.grid(u), Val(:y)); kwargs...)
+NSEBase.init_ddz!(out::DecomposedSpectralField, u::DecomposedSpectralField; kwargs...) = interior_dd!(out, u, NSEBase.physical_to_storage_dim(NSEBase.grid(u), Val(:z)); kwargs...)
+NSEBase.init_ddt!(out::DecomposedSpectralField, u::DecomposedSpectralField; kwargs...) = interior_dd!(out, u, NSEBase.physical_to_storage_dim(NSEBase.grid(u), Val(:t)); kwargs...)
+
+NSEBase.complete_ddx!(out::DecomposedSpectralField, u::DecomposedSpectralField; kwargs...) = boundary_dd!(out, u, NSEBase.physical_to_storage_dim(NSEBase.grid(u), Val(:x)); kwargs...)
+NSEBase.complete_ddy!(out::DecomposedSpectralField, u::DecomposedSpectralField; kwargs...) = boundary_dd!(out, u, NSEBase.physical_to_storage_dim(NSEBase.grid(u), Val(:y)); kwargs...)
+NSEBase.complete_ddz!(out::DecomposedSpectralField, u::DecomposedSpectralField; kwargs...) = boundary_dd!(out, u, NSEBase.physical_to_storage_dim(NSEBase.grid(u), Val(:z)); kwargs...)
+NSEBase.complete_ddt!(out::DecomposedSpectralField, u::DecomposedSpectralField; kwargs...) = boundary_dd!(out, u, NSEBase.physical_to_storage_dim(NSEBase.grid(u), Val(:t)); kwargs...)
+
+NSEBase.init_laplacian!(out::DecomposedSpectralField, u::DecomposedSpectralField; kwargs...) = interior_laplacian!(out, u; kwargs...)
+NSEBase.complete_laplacian!(out::DecomposedSpectralField, u::DecomposedSpectralField; kwargs...) = boundary_laplacian!(out, u; kwargs...)
 
 
 # ------------------------------------------------------------------ #
