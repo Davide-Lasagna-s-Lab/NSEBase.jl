@@ -123,9 +123,7 @@ struct FFTPlans{DEALIAS, D, T, FFT_DIMS_ORDER, PLAN, IPLAN}
     end
 end
 
-FFTPlans(g::AbstractGrid{T}; kwargs...) where {T} =
-    FFTPlans(_fft_size(g), fft_storage_dims(g), T; kwargs...)
-
+FFTPlans(g::AbstractGrid{T}; kwargs...) where {T} = FFTPlans(_fft_size(g), fft_storage_dims(g), T; kwargs...)
 FFTPlans(u::FTField; kwargs...) = FFTPlans(grid(u); kwargs...)
 FFTPlans(u::Field; kwargs...) = FFTPlans(grid(u); kwargs...)
 
