@@ -37,6 +37,19 @@ physical-space caches.
 struct CartesianPrimitive2D end
 
 """
+    CartesianPrimitive2D3C
+
+Tag selecting the 2D-3C (u, v, w) Cartesian primitive-variable NSE
+formulation.  Pass `CartesianPrimitive2D3C()` to [`construct_equations`](@ref)
+to build [`CartesianPrimitive2D3CNSE`](@ref) and [`CartesianPrimitive2D3CLNSE`](@ref)
+operators with three velocity components on a two-dimensional spatial grid.
+The in-plane pair (u, v) satisfies the standard incompressible 2D NSE; the
+out-of-plane component w is advected by (u, v) without contributing to the
+pressure or to its own advection.
+"""
+struct CartesianPrimitive2D3C end
+
+"""
     PolarPrimitive
 
 Tag reserved for a polar (cylindrical) primitive-variable NSE formulation.
@@ -101,6 +114,13 @@ cache_length(       ::CartesianPrimitive2D, ::Type{<:FTField}) = 3
 cache_length(       ::CartesianPrimitive2D, ::Type{<:Field})   = 6
 nonlinear_operator( ::CartesianPrimitive2D)                    = CartesianPrimitive2DNSE
 linearised_operator(::CartesianPrimitive2D, ::M) where {M}     = CartesianPrimitive2DLNSE{M}
+
+# CartesianPrimitive2D3C
+ncomp(              ::CartesianPrimitive2D3C)                    = 3
+cache_length(       ::CartesianPrimitive2D3C, ::Type{<:FTField}) = 3
+cache_length(       ::CartesianPrimitive2D3C, ::Type{<:Field})   = 6
+nonlinear_operator( ::CartesianPrimitive2D3C)                    = CartesianPrimitive2D3CNSE
+linearised_operator(::CartesianPrimitive2D3C, ::M) where {M}     = CartesianPrimitive2D3CLNSE{M}
 
 # PolarPrimitive (not yet implemented)
 ncomp(              ::PolarPrimitive)                    = throw(error("polar primitive Navier-Stokes formulation has not been implemented"))
