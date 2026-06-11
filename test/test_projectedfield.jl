@@ -2,7 +2,7 @@
 #
 # Contract:
 #   - `ProjectedField(grid, modes)` stores modal coefficients as
-#     `(mode, fft_dims...)`, independent of the physical grid storage order.
+#     `(mode, fft_storage_dims...)`, independent of the physical grid storage order.
 #   - Linear, CartesianIndex, and storage indexing are ordinary array indexing
 #     into the parent array, with no symmetry logic applied.
 #   - WaveNumberVector indexing maintains the same zero-mode and Hermitian

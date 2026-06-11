@@ -1,7 +1,7 @@
 # ------------- #
 # concrete grid #
 # ------------- #
-struct FakeGrid <: AbstractGrid{Float64, 2, (1, 2, nothing, nothing), (2,), Undecomposed}
+struct FakeGrid <: AbstractGrid{Float64, 2, (1, 2, nothing, nothing), (2,)}
     x::Vector{Float64}
     N::Int
     L::Float64
@@ -40,5 +40,5 @@ end
 # ------------------ #
 # derivative methods #
 # ------------------ #
-NSEBase.ddx!(out::FTField{FakeGrid}, u::FTField{FakeGrid}, ::Val{1}; adjoint=false) = (out .= u; return out)
+NSEBase.dd!(out::FTField{FakeGrid}, u::FTField{FakeGrid}, ::Val{1}; adjoint=false) = (out .= u; return out)
 NSEBase.inhomogeneous_laplacian!(out::FTField{FakeGrid}, u::FTField{FakeGrid}; adjoint=false) = (out .= u; return out)

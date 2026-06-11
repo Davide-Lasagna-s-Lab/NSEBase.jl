@@ -83,7 +83,7 @@
     end
 
     @testset "combined indexing         " begin
-        struct MockGrid{D, AXES, FFT_DIMS_ORDER} <: AbstractGrid{Float64, D, AXES, FFT_DIMS_ORDER, Undecomposed} end
+        struct MockGrid{D, AXES, FFT_DIMS_ORDER} <: AbstractGrid{Float64, D, AXES, FFT_DIMS_ORDER} end
         CI = CartesianIndex
 
         # ── FFT_DIMS_ORDER = () : no constrained dims, all free ────────────────────────────

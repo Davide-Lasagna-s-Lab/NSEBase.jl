@@ -1,7 +1,6 @@
 # Abstract interface for all computational grids in NSEBase.
 #
-# `AbstractGrid{T, D, AXES, FFT_DIMS_ORDER, DECOMPOSITION}` is the single point of
-# coupling between
+# `AbstractGrid{T, D, AXES, FFT_DIMS_ORDER}` is the single point of coupling between
 # field types (`FTField`, `Field`, `VectorField`, `ProjectedField`) and the
 # underlying geometry.  Every field stores a reference to its grid and
 # dispatches size queries, FFT index ranges, quadrature weights, and coordinate
@@ -14,45 +13,20 @@
 # is derived automatically from the compile-time type parameters without
 # any runtime overhead.
 #
-# The five type parameters encode:
+# The four type parameters encode:
 #   T              — real scalar type (Float64 by default)
 #   D              — number of array dimensions
 #   AXES           — 4-tuple mapping physical coordinates (x,y,z,t) to storage dims
 #   FFT_DIMS_ORDER — ordered tuple of array dimensions that are FFT-transformed;
 #                    FFT_DIMS_ORDER[1] is always the rfft dimension
-#   DECOMPOSITION  — type-level description of partitioned storage dimensions
+#
+# Whether a grid is domain-decomposed for distributed execution is *not* recorded
+# in the grid type. Downstream MPI packages (e.g. NSEBaseMPIExt) wrap a serial
+# grid in their own `DecomposedGrid` type that holds the partition metadata; the
+# core abstract grid stays agnostic to decomposition.
 
 """
-    GridDecomposition
-
-Abstract type for the decomposition metadata carried by an [`AbstractGrid`](@ref).
-
-NSEBase records whether a grid is partitioned and, if so, along which storage
-dimensions. Communication and halo storage remain the responsibility of
-downstream packages.
-"""
-abstract type GridDecomposition end
-
-"""
-    Undecomposed <: GridDecomposition
-
-Tag for a grid whose arrays store the complete computational domain.
-"""
-struct Undecomposed <: GridDecomposition end
-
-"""
-    Decomposed{DIMS} <: GridDecomposition
-
-Tag for a grid partitioned along the storage dimensions in `DIMS`.
-
-For example, `Decomposed{(1,)}` describes a slab decomposition along the first
-array dimension. `DIMS` is expressed in storage order, not logical Cartesian
-coordinate order.
-"""
-struct Decomposed{DIMS} <: GridDecomposition end
-
-"""
-    AbstractGrid{T, D, AXES, FFT_DIMS_ORDER, DECOMPOSITION} where {T<:Real}
+    AbstractGrid{T, D, AXES, FFT_DIMS_ORDER} where {T<:Real}
 
 Abstract type that represents a generic computational grid of a
 `D`-dimensional domain.
@@ -68,8 +42,6 @@ Type parameters:
   grid stored as `(y, x, z)` should use `AXES = (2, 1, 3, nothing)`.
 - `FFT_DIMS_ORDER`: tuple of statistically homogeneous array dimensions. These are
   transformed by FFTs; `FFT_DIMS_ORDER[1]` is the rfft dimension.
-- `DECOMPOSITION`: subtype of [`GridDecomposition`](@ref) describing whether
-  the stored arrays cover the complete grid or a partition of it.
 
 # Required downstream methods
 
@@ -98,26 +70,7 @@ homogeneous resolution.  Implementing grid growth is also required for
   counts used to normalise forward transforms.
 - `transform_size(grid)`: returns the size of the corresponding `FTField`.
 """
-abstract type AbstractGrid{T<:Real, D, AXES, FFT_DIMS_ORDER,
-                           DECOMPOSITION<:GridDecomposition} end
-
-"""
-    decomposition_storage_dims(grid::AbstractGrid) -> Tuple{Int, ...}
-
-Return the storage dimensions along which `grid` is partitioned.
-
-The result is empty for an [`Undecomposed`](@ref) grid. For a
-[`Decomposed{DIMS}`](@ref) grid, the result is `DIMS`.
-"""
-decomposition_storage_dims(::AbstractGrid{<:Any, <:Any, <:Any, <:Any, Undecomposed}) = ()
-decomposition_storage_dims(::AbstractGrid{<:Any, <:Any, <:Any, <:Any, Decomposed{DIMS}}) where {DIMS} = DIMS
-
-"""
-    ndecomposed_dims(grid::AbstractGrid) -> Int
-
-Return the number of storage dimensions along which `grid` is partitioned.
-"""
-ndecomposed_dims(g::AbstractGrid) = length(decomposition_storage_dims(g))
+abstract type AbstractGrid{T<:Real, D, AXES, FFT_DIMS_ORDER} end
 
 """
     fft_storage_dims(grid::AbstractGrid) -> Tuple{Int, …}
@@ -226,16 +179,6 @@ excluded.
 """
 spatial_inhomogeneous_physical_dims(g::AbstractGrid) =
     map(d -> physical_dim(g, d), spatial_inhomogeneous_storage_dims(g))
-
-"""
-    decomposition_physical_dims(grid::AbstractGrid) -> Tuple{Vararg{Symbol}}
-
-Physical-coordinate symbols for the partitioned storage dimensions of
-`grid` — the `Symbol` counterpart of [`decomposition_storage_dims`](@ref).
-Empty for an [`Undecomposed`](@ref) grid.
-"""
-decomposition_physical_dims(g::AbstractGrid) =
-    map(d -> physical_dim(g, d), decomposition_storage_dims(g))
 
 """
     rfft_physical_dim(grid::AbstractGrid) -> Symbol

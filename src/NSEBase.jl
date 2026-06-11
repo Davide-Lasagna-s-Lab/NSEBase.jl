@@ -6,8 +6,7 @@ using LinearAlgebra, FFTW, JLD2
 
 export FFTW
 
-export GridDecomposition, Undecomposed, Decomposed
-export AbstractGrid, decomposition_storage_dims, decomposition_physical_dims, ndecomposed_dims
+export AbstractGrid
 export storage_dim, physical_dim, physical_to_storage_dim, to_storage_order
 export rfft_storage_dim, rfft_physical_dim
 export points, growto, weights

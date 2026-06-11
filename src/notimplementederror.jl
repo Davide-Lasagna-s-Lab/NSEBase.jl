@@ -22,7 +22,7 @@ missing.
 # Example
 
 ```julia
-struct MyGrid <: AbstractGrid{Float64, 3, (2,1,3,nothing), (1,2), Undecomposed} end
+struct MyGrid <: AbstractGrid{Float64, 3, (2,1,3,nothing), (1,2)} end
 # Base.size not yet defined for MyGrid.
 size(MyGrid())
 # → NotImplementedError: size(MyGrid) is missing a concrete implementation!

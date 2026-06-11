@@ -18,7 +18,7 @@
         A = FarazmandWeight(g)
         @test A.scales === (α, β)
 
-        # Varargs form: takes the scales explicitly, in fft_dims order.
+        # Varargs form: takes the scales explicitly, in fft_storage_dims order.
         B = FarazmandWeight(2π, 4π)
         @test B.scales === (2π, 4π)
 

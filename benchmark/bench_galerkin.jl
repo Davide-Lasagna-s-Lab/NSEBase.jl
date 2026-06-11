@@ -198,7 +198,7 @@ println("  GemmGalerkin expand!  : ", BenchmarkTools.prettytime(median(bge2).tim
 #   (mode_idx, rfft_idx) instead of (rfft_idx, z_idx).  The z-dimension
 #   is never touched and pa is indexed at wrong positions.
 
-struct FlippedChannelGrid <: AbstractGrid{Float64, 3, (1, 3, 2, nothing), (1, 2), Undecomposed}
+struct FlippedChannelGrid <: AbstractGrid{Float64, 3, (1, 3, 2, nothing), (1, 2)}
     Nx :: Int
     Nz :: Int
     Ny :: Int

@@ -40,7 +40,9 @@
         αv = FTField(g, α .* parent(v))
         βw = FTField(g, β .* parent(w))
         αvβw = FTField(g, α .* parent(v) .+ β .* parent(w))
-        @test dot(u, αvβw) ≈ α*dot(u, v) + β*dot(u, w) atol=1e-14
+        # Relative tolerance: dot scales with the (random) data magnitude, so an
+        # absolute atol would be flaky across RNG seeds.
+        @test dot(u, αvβw) ≈ α*dot(u, v) + β*dot(u, w) rtol=1e-12
     end
 
     @testset "FTField: norm and norm-difference identities" begin

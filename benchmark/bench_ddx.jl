@@ -251,7 +251,7 @@ end
 # This exercises the three-FFT-dim code path in make_wavenumber_dict
 # (field :dim2, :dim3, :dim4) and the D=4 reshape in the kernel.
 
-struct QuadGrid <: AbstractGrid{Float64, 4, (2, 1, 3, 4), (2, 3, 4), Undecomposed}
+struct QuadGrid <: AbstractGrid{Float64, 4, (2, 1, 3, 4), (2, 3, 4)}
     Ny :: Int
     Nx :: Int
     Nz :: Int

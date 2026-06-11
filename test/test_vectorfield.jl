@@ -40,7 +40,7 @@
         add_base_flow!(u, (U, nothing, W))
 
         # The zero homogeneous slice is (:, 1, 1) for TripleGrid because
-        # fft_dims(g) == (2, 3).  Components with `nothing` are skipped.
+        # fft_storage_dims(g) == (2, 3).  Components with `nothing` are skipped.
         @test parent(u[1])[:, 1, 1] == U
         @test parent(u[2])[:, 1, 1] == zeros(Ny)
         @test parent(u[3])[:, 1, 1] == W

@@ -24,7 +24,7 @@ import NSEBase
 # Benchmark grids                                                     #
 # ------------------------------------------------------------------ #
 
-struct TripleGrid <: NSEBase.AbstractGrid{Float64, 3, (2, 1, 3, nothing), (2, 3), NSEBase.Undecomposed}
+struct TripleGrid <: NSEBase.AbstractGrid{Float64, 3, (2, 1, 3, nothing), (2, 3)}
     Ny::Int
     Nx::Int
     Nz::Int
@@ -46,7 +46,7 @@ NSEBase.wavenumber_scale(g::TripleGrid, dim::Int) =
     dim == 3 ? g.beta :
     one(g.alpha)
 
-struct QuadTimeGrid <: NSEBase.AbstractGrid{Float64, 4, (2, 1, 3, 4), (2, 3, 4), NSEBase.Undecomposed}
+struct QuadTimeGrid <: NSEBase.AbstractGrid{Float64, 4, (2, 1, 3, 4), (2, 3, 4)}
     Ny::Int
     Nx::Int
     Nz::Int

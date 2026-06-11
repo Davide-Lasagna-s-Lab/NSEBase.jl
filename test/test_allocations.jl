@@ -95,8 +95,8 @@ end
         (; g) = alloc_fixture()
         values = (:x, :y, :z, :t)
 
-        @test allocs_after_warmup(() -> NSEBase.fft_dims(g)) == 0
-        @test allocs_after_warmup(() -> NSEBase.inhomogeneous_dims(g)) == 0
+        @test allocs_after_warmup(() -> NSEBase.fft_storage_dims(g)) == 0
+        @test allocs_after_warmup(() -> NSEBase.inhomogeneous_storage_dims(g)) == 0
         @test allocs_after_warmup(() -> NSEBase.to_storage_order(values, g)) == 0
         @test allocs_after_warmup(() -> size(g)) == 0
         @test allocs_after_warmup(() -> size(g, 2)) == 0
@@ -145,8 +145,8 @@ end
         @test allocs_after_warmup(() -> u[k, 2]) == 0
 
         data = randn(ComplexF64, size(parent(u)))
-        @test allocs_after_warmup(() -> NSEBase.apply_symmetry!(data, Val(NSEBase.fft_dims(g)))) == 0
-        @test allocs_after_warmup(() -> NSEBase.normalise_mean!(data, Val(NSEBase.fft_dims(g)))) == 0
+        @test allocs_after_warmup(() -> NSEBase.apply_symmetry!(data, Val(NSEBase.fft_storage_dims(g)))) == 0
+        @test allocs_after_warmup(() -> NSEBase.normalise_mean!(data, Val(NSEBase.fft_storage_dims(g)))) == 0
 
         @test allocs_after_warmup(() -> similar(u)) > 0
         @test allocs_after_warmup(() -> copy(u)) > 0
@@ -200,7 +200,7 @@ end
         cache = similar(dealias_plans.cache)
         compact = similar(parent(uhat))
 
-        @test allocs_after_warmup(() -> FFTPlans(size(u), NSEBase.fft_dims(grid(u)), Float64; dealias=false, flags=FFTW.ESTIMATE)) > 0
+        @test allocs_after_warmup(() -> FFTPlans(size(u), NSEBase.fft_storage_dims(grid(u)), Float64; dealias=false, flags=FFTW.ESTIMATE)) > 0
         @test allocs_after_warmup(() -> NSEBase.get_padded_size((5, 8), (2,))) == 0
         @test allocs_after_warmup(() -> NSEBase._get_transform_size((5, 8), 2)) == 0
         @test allocs_after_warmup(() -> NSEBase._loopblk!(compact, axes(compact), compact, axes(compact), Val(false))) == 0
@@ -329,8 +329,8 @@ end
         end
         @test allocs_after_warmup(() -> ddz!(out, u)) == 0
         @test allocs_after_warmup(() -> ddt!(out, u)) == 0
-        @test allocs_after_warmup(() -> NSEBase.ddx!(out, u, Val(2))) == 0
-        @test allocs_after_warmup(() -> NSEBase.ddx!(qout, q, Val(2))) == 0
+        @test allocs_after_warmup(() -> NSEBase.dd!(out, u, Val(2))) == 0
+        @test allocs_after_warmup(() -> NSEBase.dd!(qout, q, Val(2))) == 0
         # inhomogeneous_laplacian! and laplacian! also go through mul! on PolynomialGrid.
         if VERSION >= v"1.11"
             @test allocs_after_warmup(() -> NSEBase.inhomogeneous_laplacian!(out, u)) == 0
