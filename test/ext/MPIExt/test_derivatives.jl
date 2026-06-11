@@ -1,5 +1,5 @@
 # Tests for the Val{STORAGE_DIM}-dispatched derivative API in
-# `NSEBaseMPIExt/src/derivatives.jl`.
+# `MPIExt/src/derivatives.jl`.
 #
 # Covers:
 #   - `interior_dd!` / `boundary_dd!` cover the local dimension exactly
@@ -51,7 +51,7 @@ base_comm = MPI.Comm_dup(MPI.COMM_WORLD)
 # coefficients at integer wavenumbers) and z has period 2π/5.8 to match
 # `cos(4π*x)` and `cos(5.8*z)` factors in the analytic test field.
 g_parent = MockChannelGrid(Ny, Nx, Nz, Nt; stencil_width=5, α=2π, β=5.8)
-g = NSEBaseMPIExt.distributed(g_parent, base_comm;
+g = MPIExt.distributed(g_parent, base_comm;
                               decomposed_physical_dims=(:y,), nprocesses=(nranks,), nhalo=(NHALO,))
 
 # Pre-build FFT plans and reusable physical/spectral fields.
@@ -96,9 +96,9 @@ sd(sym) = NSEBase.physical_to_storage_dim(NSEBase.grid(u), Val(sym))
 Test.@testset "interior_dd! + wait + boundary_dd! covers the FD direction" begin
     out = NSEBase.FTField(g)
     requests = NSEBase.init_requests!(u)
-    NSEBaseMPIExt.interior_dd!(out, u, sd(:y))
+    MPIExt.interior_dd!(out, u, sd(:y))
     NSEBase.wait_requests!(requests)
-    NSEBaseMPIExt.boundary_dd!(out, u, sd(:y))
+    MPIExt.boundary_dd!(out, u, sd(:y))
 
     expected = NSEBase.FTField(g)
     plans(expected, NSEBase.Field(g, dudy_fun))
@@ -107,20 +107,20 @@ end
 
 Test.@testset "dd! along an FFT direction is spectral (no halo needed)" begin
     out = NSEBase.FTField(g)
-    NSEBaseMPIExt.interior_dd!(out, u, sd(:x))
+    MPIExt.interior_dd!(out, u, sd(:x))
     # Boundary work is a no-op for FFT directions; the result must already match.
     expected = NSEBase.FTField(g)
     plans(expected, NSEBase.Field(g, dudx_fun))
     Test.@test parent(out) ≈ parent(expected) rtol=1e-6
 
     out_z = NSEBase.FTField(g)
-    NSEBaseMPIExt.interior_dd!(out_z, u, sd(:z))
+    MPIExt.interior_dd!(out_z, u, sd(:z))
     expected_z = NSEBase.FTField(g)
     plans(expected_z, NSEBase.Field(g, dudz_fun))
     Test.@test parent(out_z) ≈ parent(expected_z) rtol=1e-6
 
     out_t = NSEBase.FTField(g)
-    NSEBaseMPIExt.interior_dd!(out_t, u, sd(:t))
+    MPIExt.interior_dd!(out_t, u, sd(:t))
     expected_t = NSEBase.FTField(g)
     plans(expected_t, NSEBase.Field(g, dudt_fun))
     Test.@test parent(out_t) ≈ parent(expected_t) rtol=1e-6
@@ -129,9 +129,9 @@ end
 Test.@testset "interior_laplacian! + boundary_laplacian! matches analytic Laplacian" begin
     out = NSEBase.FTField(g)
     requests = NSEBase.init_requests!(u)
-    NSEBaseMPIExt.interior_laplacian!(out, u)
+    MPIExt.interior_laplacian!(out, u)
     NSEBase.wait_requests!(requests)
-    NSEBaseMPIExt.boundary_laplacian!(out, u)
+    MPIExt.boundary_laplacian!(out, u)
 
     expected = NSEBase.FTField(g)
     plans(expected, NSEBase.Field(g, lapl_fun))
@@ -143,9 +143,9 @@ Test.@testset "NSEBase.laplacian!(out, u) agrees with the explicit form" begin
     out_b = NSEBase.FTField(g)
 
     requests = NSEBase.init_requests!(u)
-    NSEBaseMPIExt.interior_laplacian!(out_a, u)
+    MPIExt.interior_laplacian!(out_a, u)
     NSEBase.wait_requests!(requests)
-    NSEBaseMPIExt.boundary_laplacian!(out_a, u)
+    MPIExt.boundary_laplacian!(out_a, u)
 
     # 2-arg overload — auto-exchange.
     NSEBase.laplacian!(out_b, u)

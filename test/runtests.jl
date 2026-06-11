@@ -37,7 +37,7 @@ include("test_operators.jl")
 
 # Extension integration tests. These launch MPI subprocesses so each test file
 # runs with the requested Cartesian communicator size.
-include("ext/NSEBaseMPIExt/runtests.jl")
+include("ext/MPIExt/runtests.jl")
 
 # Allocation tests — check that no unexpected allocations occur
 include("test_allocations.jl")

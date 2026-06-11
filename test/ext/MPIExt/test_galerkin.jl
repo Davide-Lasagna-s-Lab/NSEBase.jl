@@ -1,5 +1,5 @@
 # Tests for the `project!` Galerkin override in
-# `NSEBaseMPIExt/src/galerkin.jl`.
+# `MPIExt/src/galerkin.jl`.
 #
 # The override extends `NSEBase.project!` with an `MPI.Allreduce!` over
 # the grid communicator so each rank's partial weighted inner product is
@@ -26,7 +26,7 @@ const NMODES = 2
 const NCOMP = 2
 
 base_comm = MPI.Comm_dup(MPI.COMM_WORLD)
-g = NSEBaseMPIExt.distributed(MockChannelGrid(Ny, Nx, Nz, Nt), base_comm;
+g = MPIExt.distributed(MockChannelGrid(Ny, Nx, Nz, Nt), base_comm;
                               decomposed_physical_dims=(:y,),
                               nprocesses=(nranks,), nhalo=(NHALO,))
 
@@ -48,7 +48,7 @@ basis = NSEBase.ProjectedField(g, modes_components)
 u = NSEBase.VectorField(g, NSEBase.FTField; N=NCOMP)
 for n in 1:NCOMP
     flat = Vector{ComplexF64}(vec(randn(ComplexF64, size(parent(u[n]))...)))
-    MPI.Bcast!(flat, 0, NSEBaseMPIExt.comm(g))
+    MPI.Bcast!(flat, 0, MPIExt.comm(g))
     parent(u[n]) .= reshape(flat, size(parent(u[n])))
 end
 
@@ -57,7 +57,7 @@ Test.@testset "project! coefficients are rank-consistent" begin
 
     # Pull rank 0's coefficients and compare to each rank's local copy.
     a_root = Vector{ComplexF64}(vec(parent(a_local)))
-    MPI.Bcast!(a_root, 0, NSEBaseMPIExt.comm(g))
+    MPI.Bcast!(a_root, 0, MPIExt.comm(g))
     Test.@test vec(parent(a_local)) ≈ a_root
 end
 

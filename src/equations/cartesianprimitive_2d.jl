@@ -13,7 +13,7 @@
 #
 # init_requests!(u) returns nothing for serial grids; init_* computes the full
 # serial derivative/laplacian and complete_* is a no-op. For decomposed grids
-# NSEBaseMPIExt overrides the same hooks with an interior → wait → boundary
+# MPIExt overrides the same hooks with an interior → wait → boundary
 # split. Both paths share this source; see cartesianprimitive_3d.jl for full
 # notes.
 

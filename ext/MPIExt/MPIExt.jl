@@ -1,4 +1,4 @@
-module NSEBaseMPIExt
+module MPIExt
 
 import FDGrids
 import HaloArrays

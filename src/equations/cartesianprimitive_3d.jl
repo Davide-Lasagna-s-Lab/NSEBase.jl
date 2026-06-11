@@ -30,7 +30,7 @@
 #
 # For serial grids: init_requests! returns nothing, wait_requests!(nothing)
 # is a no-op, interior_* does the full computation, boundary_* is a no-op —
-# zero extra allocations. NSEBaseMPIExt overrides all four for DecomposedGrid
+# zero extra allocations. MPIExt overrides all four for DecomposedGrid
 # fields, achieving communication–computation overlap without any Task objects.
 
 

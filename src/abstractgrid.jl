@@ -21,7 +21,7 @@
 #                    FFT_DIMS_ORDER[1] is always the rfft dimension
 #
 # Whether a grid is domain-decomposed for distributed execution is *not* recorded
-# in the grid type. Downstream MPI packages (e.g. NSEBaseMPIExt) wrap a serial
+# in the grid type. Downstream MPI packages (e.g. MPIExt) wrap a serial
 # grid in their own `DecomposedGrid` type that holds the partition metadata; the
 # core abstract grid stays agnostic to decomposition.
 

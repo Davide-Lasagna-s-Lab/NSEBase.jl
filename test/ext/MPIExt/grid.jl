@@ -1,5 +1,5 @@
 # Mock channel grid used as the parent (Undecomposed) grid for the
-# NSEBaseMPIExt integration tests.
+# MPIExt integration tests.
 #
 # The grid mirrors the production `ReSolverChannelFlow.ChannelGrid` shape:
 #
@@ -8,7 +8,7 @@
 #   - Three FFT directions (`:x`, `:z`, `:t` -> storage dims 2, 3, 4)
 #   - Wall-normal finite-difference operators `D₁`, `D₂` supplied by FDGrids
 #
-# It is intentionally minimal: only the NSEBase + NSEBaseMPIExt parent-grid
+# It is intentionally minimal: only the NSEBase + MPIExt parent-grid
 # hooks needed by `distributed(...)` are implemented. The decomposed test
 # subject is always
 # `distributed(g, comm; decomposed_physical_dims=(:y,), nprocesses=..., nhalo=...)`.
@@ -19,9 +19,9 @@ import LinearAlgebra
 import MPI
 import NSEBase
 
-const NSEBaseMPIExt = Base.get_extension(NSEBase, :NSEBaseMPIExt)
-NSEBaseMPIExt === nothing &&
-    error("NSEBaseMPIExt did not load; import FDGrids, HaloArrays, MPI, and NSEBase before including grid.jl")
+const MPIExt = Base.get_extension(NSEBase, :MPIExt)
+MPIExt === nothing &&
+    error("MPIExt did not load; import FDGrids, HaloArrays, MPI, and NSEBase before including grid.jl")
 
 # Physical-coordinate layout for the mock channel grid. The y direction lives
 # on storage dim 1, matching the production ChannelGrid convention; x, z, t
@@ -148,7 +148,7 @@ function NSEBase.growto(g::MockChannelGrid{S, T},
 end
 
 # ------------------------------------------------------------------ #
-# NSEBaseMPIExt parent-grid contract                                 #
+# MPIExt parent-grid contract                                 #
 # ------------------------------------------------------------------ #
 #
 # `distributed(parent, comm; decomposed_physical_dims, nprocesses, nhalo)` forwards
@@ -157,7 +157,7 @@ end
 # a finite-difference direction here; the FFT directions never call this
 # hook.
 
-function NSEBaseMPIExt.derivative_matrix(g           ::MockChannelGrid,
+function MPIExt.derivative_matrix(g           ::MockChannelGrid,
                                          storage_dim ::Integer,
                                          ::Val{ORDER},
                                          ::Val{ADJ} = Val(false)) where {ORDER, ADJ}
@@ -180,7 +180,7 @@ end
                      stencil_width=3) -> DecomposedGrid
 
 Build a `MockChannelGrid` and wrap it with
-`NSEBaseMPIExt.distributed(...)` along the wall-normal `:y` direction.
+`MPIExt.distributed(...)` along the wall-normal `:y` direction.
 """
 function distributed_mock(Ny::Int, Nx::Int, Nz::Int, Nt::Int, comm;
                           nhalo = (1,),
@@ -193,7 +193,7 @@ function distributed_mock(Ny::Int, Nx::Int, Nz::Int, Nt::Int, comm;
     nhalo_tuple = nhalo isa Integer ?
         ntuple(_ -> Int(nhalo), length(decomposed_physical_dims)) :
         nhalo
-    return NSEBaseMPIExt.distributed(parent, comm;
+    return MPIExt.distributed(parent, comm;
                                      decomposed_physical_dims = decomposed_physical_dims,
                                      nprocesses = nprocesses,
                                      nhalo = nhalo_tuple)

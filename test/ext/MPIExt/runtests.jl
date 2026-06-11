@@ -1,4 +1,4 @@
-# Orchestrator for the NSEBaseMPIExt test suite.
+# Orchestrator for the MPIExt test suite.
 #
 # Each `test_<source_file>.jl` is a self-contained MPI program that
 # exercises one part of the NSEBase MPI extension. The runner spawns

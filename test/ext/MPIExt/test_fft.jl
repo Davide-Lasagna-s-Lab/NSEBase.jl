@@ -1,4 +1,4 @@
-# Tests for the FFT-plan overrides in `NSEBaseMPIExt/src/fft.jl`.
+# Tests for the FFT-plan overrides in `MPIExt/src/fft.jl`.
 #
 # Covers:
 #   - `FFTPlans` constructor on a decomposed grid plans against the full
@@ -24,7 +24,7 @@ const Ny = 16; const Nx = 7; const Nz = 9; const Nt = 5
 const NHALO = 1
 
 base_comm = MPI.Comm_dup(MPI.COMM_WORLD)
-g = NSEBaseMPIExt.distributed(MockChannelGrid(Ny, Nx, Nz, Nt), base_comm;
+g = MPIExt.distributed(MockChannelGrid(Ny, Nx, Nz, Nt), base_comm;
                               decomposed_physical_dims=(:y,), nprocesses=(nranks,), nhalo=(NHALO,))
 
 # Build a non-trivial physical-space field whose interior values are seeded

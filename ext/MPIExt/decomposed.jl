@@ -23,7 +23,7 @@
 # Internal helpers and derivative kernels always work with `Int` storage dims.
 #
 # The only method the parent grid must add beyond the standard NSEBase interface
-# is `NSEBaseMPIExt.derivative_matrix(parent, stor_dim::Int, ::Val{ORDER}, ::Val{ADJ})`.
+# is `MPIExt.derivative_matrix(parent, stor_dim::Int, ::Val{ORDER}, ::Val{ADJ})`.
 
 # ------------------------------------------------------------------ #
 # Private helpers                                                     #
@@ -274,7 +274,7 @@ Base.parent(g::DecomposedGrid) = g.parent
     decomposition_storage_dims(g::DecomposedGrid) -> Tuple{Int, ...}
 
 Return the storage dimensions along which `g` is partitioned, i.e. the `DDIMS`
-type parameter. These accessors live in NSEBaseMPIExt rather than NSEBase: the
+type parameter. These accessors live in MPIExt rather than NSEBase: the
 core `AbstractGrid` type is agnostic to decomposition, and only the MPI wrapper
 knows a grid is partitioned.
 """
@@ -440,7 +440,7 @@ function Base.convert(::Type{T}, g::DecomposedGrid{T0, D, AXES, FFT_DIMS_ORDER, 
 end
 
 # ------------------------------------------------------------------ #
-# NSEBaseMPIExt decomposed-grid interface                             #
+# MPIExt decomposed-grid interface                             #
 # ------------------------------------------------------------------ #
 
 """
@@ -507,7 +507,7 @@ dimension `stor_dim`, in its forward (`ADJ=false`) or adjoint
 
 Downstream single-domain grid types implement this on `parent(g)`:
 ```
-NSEBaseMPIExt.derivative_matrix(::ParentType, stor_dim::Int, ::Val{ORDER}, ::Val{ADJ})
+MPIExt.derivative_matrix(::ParentType, stor_dim::Int, ::Val{ORDER}, ::Val{ADJ})
 ```
 """
 derivative_matrix(g           ::DecomposedGrid,

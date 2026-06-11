@@ -1,5 +1,5 @@
 # Tests for the physical-space field constructor in
-# `NSEBaseMPIExt/src/field.jl`.
+# `MPIExt/src/field.jl`.
 #
 # Verifies that `Field(g)` and `Field(g, func)` on a decomposed grid:
 #   - use the per-rank local size (`local_size`)
@@ -22,7 +22,7 @@ const Ny = 16; const Nx = 7; const Nz = 9; const Nt = 5
 const NHALO = 1
 
 base_comm = MPI.Comm_dup(MPI.COMM_WORLD)
-g = NSEBaseMPIExt.distributed(MockChannelGrid(Ny, Nx, Nz, Nt), base_comm;
+g = MPIExt.distributed(MockChannelGrid(Ny, Nx, Nz, Nt), base_comm;
                               decomposed_physical_dims=(:y,), nprocesses=(nranks,), nhalo=(NHALO,))
 
 Ny_local = Ny ÷ nranks

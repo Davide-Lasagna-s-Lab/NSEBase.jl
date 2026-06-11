@@ -22,20 +22,20 @@ const NHALO = 1
 
 base_comm = MPI.Comm_dup(MPI.COMM_WORLD)
 g_parent = MockChannelGrid(Ny, Nx, Nz, Nt)
-g        = NSEBaseMPIExt.distributed(g_parent, base_comm;
+g        = MPIExt.distributed(g_parent, base_comm;
                                      decomposed_physical_dims=(:y,), nprocesses=(nranks,), nhalo=(NHALO,))
 
 Test.@testset "Field allocation picks HaloArray storage when nhalo > 0" begin
     u = NSEBase.Field(g)
     Test.@test parent(u) isa HaloArrays.HaloArray
-    Test.@test HaloArrays.nhalo(parent(u)) == NSEBaseMPIExt.nhalo(g)
+    Test.@test HaloArrays.nhalo(parent(u)) == MPIExt.nhalo(g)
     Test.@test all(parent(u) .== 0)
 end
 
 Test.@testset "FTField allocation picks HaloArray storage when nhalo > 0" begin
     uhat = NSEBase.FTField(g)
     Test.@test parent(uhat) isa HaloArrays.HaloArray
-    Test.@test HaloArrays.nhalo(parent(uhat)) == NSEBaseMPIExt.nhalo(g)
+    Test.@test HaloArrays.nhalo(parent(uhat)) == MPIExt.nhalo(g)
     Test.@test all(parent(uhat) .== 0)
 end
 

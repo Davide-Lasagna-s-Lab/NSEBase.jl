@@ -1,5 +1,5 @@
 # Tests for the `DecomposedGrid` wrapper defined in
-# `NSEBaseMPIExt/src/distributed.jl`.
+# `MPIExt/src/distributed.jl`.
 #
 # Covers:
 #   - construction validation (required kwargs, rejected dims, communicator shape)
@@ -25,7 +25,7 @@ const NHALO = 1
 
 base_comm = MPI.Comm_dup(MPI.COMM_WORLD)
 g_parent = MockChannelGrid(Ny, Nx, Nz, Nt)
-g        = NSEBaseMPIExt.distributed(g_parent, base_comm;
+g        = MPIExt.distributed(g_parent, base_comm;
                                      decomposed_physical_dims=(:y,), nprocesses=(nranks,), nhalo=(NHALO,))
 
 Ny_local = Ny ÷ nranks
@@ -33,32 +33,32 @@ y_offset = rank * Ny_local
 
 Test.@testset "distributed: required kwargs and validation" begin
     # Missing required kwargs.
-    Test.@test_throws UndefKeywordError NSEBaseMPIExt.distributed(g_parent, base_comm)
-    Test.@test_throws UndefKeywordError NSEBaseMPIExt.distributed(
+    Test.@test_throws UndefKeywordError MPIExt.distributed(g_parent, base_comm)
+    Test.@test_throws UndefKeywordError MPIExt.distributed(
         g_parent, base_comm; decomposed_physical_dims=(:y,))
 
     # `prod(nprocesses)` must equal `Comm_size(comm)`.
-    Test.@test_throws ArgumentError NSEBaseMPIExt.distributed(
+    Test.@test_throws ArgumentError MPIExt.distributed(
         g_parent, base_comm;
         decomposed_physical_dims=(:y,),
         nprocesses=(nranks * 2,), nhalo=(NHALO,))
 
     # Decomposed direction must be spatial inhomogeneous; `:x` is
     # FFT-transformed in the channel layout.
-    Test.@test_throws ArgumentError NSEBaseMPIExt.distributed(
+    Test.@test_throws ArgumentError MPIExt.distributed(
         g_parent, base_comm;
         decomposed_physical_dims=(:x,),
         nprocesses=(nranks,), nhalo=(NHALO,))
 
     # Duplicate decomposed_physical_dims entries are rejected.
-    Test.@test_throws ArgumentError NSEBaseMPIExt.distributed(
+    Test.@test_throws ArgumentError MPIExt.distributed(
         g_parent, base_comm;
         decomposed_physical_dims=(:y, :y),
         nprocesses=(1, nranks), nhalo=(NHALO, NHALO))
 
     # Decomposed dimensions always allocate HaloArray-backed fields, so their
     # halo widths must be positive.
-    Test.@test_throws ArgumentError NSEBaseMPIExt.distributed(
+    Test.@test_throws ArgumentError MPIExt.distributed(
         g_parent, base_comm;
         decomposed_physical_dims=(:y,),
         nprocesses=(nranks,), nhalo=(0,))
@@ -68,7 +68,7 @@ Test.@testset "distributed: required kwargs and validation" begin
     topologized_comm = MPI.Cart_create(base_comm, (nranks,);
                                        periodic=(false,), reorder=false)
     try
-        Test.@test_throws ArgumentError NSEBaseMPIExt.distributed(
+        Test.@test_throws ArgumentError MPIExt.distributed(
             g_parent, topologized_comm;
             decomposed_physical_dims=(:y,),
             nprocesses=(nranks,), nhalo=(NHALO,))
@@ -81,7 +81,7 @@ if nranks > 1
     Test.@testset "distributed: rejects non-divisible parent size" begin
         # Ny + 1 across nranks (>1) does not divide evenly.
         bad_parent = MockChannelGrid(Ny + 1, Nx, Nz, Nt)
-        Test.@test_throws ArgumentError NSEBaseMPIExt.distributed(bad_parent, base_comm;
+        Test.@test_throws ArgumentError MPIExt.distributed(bad_parent, base_comm;
                                                                    decomposed_physical_dims=(:y,), nprocesses=(nranks,), nhalo=(1,))
     end
 end
@@ -114,27 +114,27 @@ Test.@testset "wavenumber_scale delegates to parent (symbol arg)" begin
 end
 
 Test.@testset "nhalo / global_size are baked into the type" begin
-    Test.@test NSEBaseMPIExt.nhalo(g) == (NHALO, 0, 0, 0)
-    Test.@test NSEBaseMPIExt.nhalo(g, :y) == NHALO
-    Test.@test NSEBaseMPIExt.global_size(g) == (Ny, Nx, Nz, Nt)
-    Test.@test NSEBaseMPIExt.global_size(g, :y) == Ny
-    Test.@test NSEBaseMPIExt.local_size(g, :y) == Ny_local
+    Test.@test MPIExt.nhalo(g) == (NHALO, 0, 0, 0)
+    Test.@test MPIExt.nhalo(g, :y) == NHALO
+    Test.@test MPIExt.global_size(g) == (Ny, Nx, Nz, Nt)
+    Test.@test MPIExt.global_size(g, :y) == Ny
+    Test.@test MPIExt.local_size(g, :y) == Ny_local
 end
 
 Test.@testset "growto enlarges only FFT dimensions and re-wraps" begin
     target = (Nx + 2, Nz + 2, Nt + 2)  # grow x, z, t by 2 each
     g2 = NSEBase.growto(g, target)
-    Test.@test g2 isa NSEBaseMPIExt.DecomposedGrid
-    Test.@test NSEBaseMPIExt.global_size(g2) == (Ny, target[1], target[2], target[3])
-    Test.@test NSEBaseMPIExt.nhalo(g2) == NSEBaseMPIExt.nhalo(g)
-    Test.@test NSEBaseMPIExt.decomposition_physical_dims(g2) == (:y,)
+    Test.@test g2 isa MPIExt.DecomposedGrid
+    Test.@test MPIExt.global_size(g2) == (Ny, target[1], target[2], target[3])
+    Test.@test MPIExt.nhalo(g2) == MPIExt.nhalo(g)
+    Test.@test MPIExt.decomposition_physical_dims(g2) == (:y,)
 end
 
 Test.@testset "convert preserves wrapper metadata" begin
     g32 = convert(Float32, g)
     Test.@test eltype(parent(g32).y) === Float32
-    Test.@test NSEBaseMPIExt.decomposition_physical_dims(g32) == (:y,)
-    Test.@test NSEBaseMPIExt.nhalo(g32) == NSEBaseMPIExt.nhalo(g)
+    Test.@test MPIExt.decomposition_physical_dims(g32) == (:y,)
+    Test.@test MPIExt.nhalo(g32) == MPIExt.nhalo(g)
     # Already-Float64 conversion is the identity.
     Test.@test convert(Float64, g) === g
 end

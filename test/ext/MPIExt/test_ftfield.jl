@@ -1,5 +1,5 @@
 # Tests for the spectral-field constructor in
-# `NSEBaseMPIExt/src/ftfield.jl`.
+# `MPIExt/src/ftfield.jl`.
 #
 # Verifies that `FTField(g)` on a decomposed grid:
 #   - allocates `HaloArrays.HaloArray` storage
@@ -22,14 +22,14 @@ const NHALO = 1
 
 base_comm = MPI.Comm_dup(MPI.COMM_WORLD)
 g_parent = MockChannelGrid(Ny, Nx, Nz, Nt)
-g_halo   = NSEBaseMPIExt.distributed(g_parent, base_comm;
+g_halo   = MPIExt.distributed(g_parent, base_comm;
                                      decomposed_physical_dims=(:y,), nprocesses=(nranks,), nhalo=(NHALO,))
 
 Test.@testset "FTField on decomposed grid is HaloArray-backed" begin
     uhat = NSEBase.FTField(g_halo)
     Test.@test parent(uhat) isa HaloArrays.HaloArray
     Test.@test size(uhat) == NSEBase.transform_size(g_halo)
-    Test.@test HaloArrays.nhalo(parent(uhat)) == NSEBaseMPIExt.nhalo(g_halo)
+    Test.@test HaloArrays.nhalo(parent(uhat)) == MPIExt.nhalo(g_halo)
     Test.@test all(parent(uhat) .== 0)
 end
 

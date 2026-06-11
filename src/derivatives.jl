@@ -168,7 +168,7 @@ Return the halo-exchange request handle(s) for `u`, initiating a non-blocking
 exchange if needed.
 
 For serial (non-decomposed) grids this is a no-op that returns `nothing`.
-NSEBaseMPIExt overrides this for `DecomposedGrid` fields to post non-blocking
+MPIExt overrides this for `DecomposedGrid` fields to post non-blocking
 MPI communication; the returned handle is passed to the three-argument forms of
 `ddx!`, `ddy!`, `laplacian!`, etc. so that interior work can proceed while the
 halo is in flight.
@@ -187,7 +187,7 @@ halo is in flight.
 #
 # For serial grids: init_requests! returns nothing, wait_requests! is a
 # no-op, init_* does the full computation, complete_* is a no-op.
-# NSEBaseMPIExt overrides all four families for DecomposedGrid fields so
+# MPIExt overrides all four families for DecomposedGrid fields so
 # that interior rows are computed while MPI halos are in flight.
 
 init_requests!(u) = nothing
