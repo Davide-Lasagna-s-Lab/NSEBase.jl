@@ -11,7 +11,19 @@ FFTW = "7a1cc6ca-52ef-59f5-83cd-3a7055c09341"
 JLD2 = "033835bb-8acc-5ee8-8aae-3f567f8a3819"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 
+[weakdeps]
+FDGrids = "28eb41cd-435a-4ede-8bdb-f2685fc03e8c"
+HaloArrays = "fb8acbf3-7450-4a92-9b90-d90d6800475e"
+MPI = "da04e1cc-30fd-572f-bb4f-1f8673147195"
+
+[extensions]
+NSEBaseMPIExt = ["FDGrids", "HaloArrays", "MPI"]
+
+
 [compat]
+FDGrids = "0.3.2"
 FFTW = "1.8"
+HaloArrays = "0.1, 0.2"
 JLD2 = "0.4, 0.5, 0.6"
+MPI = "0.20.23"
 julia = "1.10"
