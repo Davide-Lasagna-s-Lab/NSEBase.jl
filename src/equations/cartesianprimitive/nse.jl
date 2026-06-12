@@ -8,7 +8,7 @@
 #
 #   {2,2} planar 2D    {2,3} 2D-3C    {3,3} 3D    {3,4} 3D + scalar (Boussinesq)
 #
-# The call skeletons and the AbstractNSE supertype live in abstract_nse.jl; the
+# The call skeletons and the AbstractNSE supertype live in abstractnse.jl; the
 # form-dispatched advection helpers live in advection_*.jl.
 #
 # `visc` is the coefficient that multiplies the Laplacian (ν = 1/Re): a scalar
@@ -64,3 +64,9 @@ end
 const CartesianPrimitive2DNSE   = CartesianPrimitiveNSE{2, 2}
 const CartesianPrimitive2D3CNSE = CartesianPrimitiveNSE{2, 3}
 const CartesianPrimitive3DNSE   = CartesianPrimitiveNSE{3, 3}
+
+operator_ncomponents(::Type{<:CartesianPrimitiveNSE{NDIM, NCOMP}}) where {NDIM, NCOMP} = NCOMP
+
+shared_nonlinear_operator(::Type{<:CartesianPrimitiveNSE{NDIM, NCOMP}},
+                          visc, form::FORM, ln, force) where {NDIM, NCOMP, FORM<:AdvectionForm} =
+    CartesianPrimitiveNSE{NDIM, NCOMP, NonLinear, FORM}(visc, ln.plans, ln.scache, ln.pcache, force)

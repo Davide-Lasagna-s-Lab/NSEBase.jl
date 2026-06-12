@@ -99,21 +99,27 @@ end
 # ------------------------------------------------------------------ #
 # construct_equations factory                                        #
 # ------------------------------------------------------------------ #
-# The operator type alias itself selects the formulation — there is no separate
-# tag hierarchy. `construct_equations(grid, Re, base, CartesianPrimitive3DNSE)`
-# reads `(NDIM, NCOMP)` straight off the alias and builds the nonlinear and
-# linearised operators on a shared cache pool.
+# The operator type itself selects the formulation. `construct_equations` asks
+# the operator type for its component count, builds the requested linearised
+# operator on the large cache pool, then asks the type to rebuild a nonlinear
+# operator sharing those plans and caches.
+
+operator_ncomponents(::Type{OP}) where {OP<:AbstractNSE} =
+    throw(ArgumentError("operator_ncomponents is not implemented for $OP"))
+
+default_linearised_mode(::Type{OP}) where {OP<:AbstractNSE} = AdjointDiscrete()
+
+shared_nonlinear_operator(::Type{OP}, visc, form, ln, force) where {OP<:AbstractNSE} =
+    throw(ArgumentError("shared nonlinear construction is not implemented for $OP"))
 
 """
-    construct_equations(grid, Re, base, ::Type{<:CartesianPrimitiveNSE{NDIM,NCOMP}}=CartesianPrimitive3DNSE;
+    construct_equations(grid, Re, base, op_type=CartesianPrimitive3DNSE;
                         visc=1/Re, form=Advective(), mode=AdjointDiscrete(),
                         force=NoForce(), flags=FFTW.EXHAUSTIVE, dealias=true)
 
-Build a [`ProjectedNSE`](@ref) for a velocity-only Cartesian primitive flow. The
-operator alias (e.g. [`CartesianPrimitive3DNSE`](@ref), `CartesianPrimitive2DNSE`,
-`CartesianPrimitive2D3CNSE`, or `CartesianPrimitiveNSE{3,4}`) fixes `NDIM`/`NCOMP`.
-The nonlinear and linearised operators share one cache pool (sized for the
-linearised operator).
+Build a [`ProjectedNSE`](@ref) for an NSE operator type. The operator type fixes
+the component count and coordinate system. The nonlinear and linearised
+operators share one cache pool (sized for the linearised operator).
 
 `form` selects the advection form; `mode` the adjoint flavour of the linearised
 operator; `visc` the Laplacian coefficient (scalar `ν=1/Re`, or an `NCOMP`-tuple
@@ -121,19 +127,20 @@ for a per-component diffusivity). `base` is the laminar base flow, one entry per
 component (or `nothing`), passed to [`add_base_flow!`](@ref).
 """
 function construct_equations(grid::AbstractGrid{T}, Re, base,
-                                  ::Type{<:CartesianPrimitiveNSE{NDIM, NCOMP}}=CartesianPrimitive3DNSE;
+                             op_type::Type{<:AbstractNSE}=CartesianPrimitive3DNSE;
                              visc                =inv(convert(T, Re)),
                              form::AdvectionForm =Advective(),
-                             mode::Mode          =AdjointDiscrete(),
+                             mode::Mode          =default_linearised_mode(op_type),
                              force               =NoForce(),
                              flags               =FFTW.EXHAUSTIVE,
-                             dealias             =true) where {T, NDIM, NCOMP}
-    mode isa Union{AdjointContinuous, AdjointDiscrete} ||
-        throw(ArgumentError("linearised operator has to operate in adjoint mode"))
+                             dealias             =true) where {T}
+    mode isa _LinearisedMode ||
+        throw(ArgumentError("projected linearised operator has to use a linearised mode"))
     # build the linearised operator (allocates the larger, shared cache pool),
     # then build the nonlinear operator sharing its plans and caches.
-    ln = CartesianPrimitiveNSE{NDIM, NCOMP}(grid, Re; mode=mode, visc=visc, form=form,
-                                            force=force, flags=flags, dealias=dealias)
-    nl = CartesianPrimitiveNSE{NDIM, NCOMP, NonLinear, typeof(form)}(visc, ln.plans, ln.scache, ln.pcache, force)
+    ln = op_type(grid, Re; mode=mode, visc=visc, form=form,
+                 force=force, flags=flags, dealias=dealias)
+    nl = shared_nonlinear_operator(op_type, visc, form, ln, force)
+    NCOMP = operator_ncomponents(op_type)
     return ProjectedNSE(grid, NCOMP, nl, ln, base)
 end

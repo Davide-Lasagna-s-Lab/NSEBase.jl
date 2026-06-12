@@ -26,14 +26,20 @@ const _LinearisedMode = Union{Forward, AdjointContinuous, AdjointDiscrete}
 
 # Apply the viscous coefficient: a scalar scales every component uniformly; an
 # NCOMP-tuple gives a per-component diffusivity.
-diffuse!(out, visc::Number) = (out .*= visc; out)
-diffuse!(out::VectorField{N}, visc::NTuple{N}) where {N} =
+scale_diffusion!(out, visc::Number) = (out .*= visc; out)
+scale_diffusion!(out::VectorField{N}, visc::NTuple{N}) where {N} =
     (for n in 1:N; out[n] .*= visc[n]; end; out)
+
+function diffusion!(out, u, eq::AbstractNSE; adjoint::Bool=false)
+    laplacian!(out, u; adjoint=adjoint)
+    scale_diffusion!(out, eq.visc)
+    return out
+end
 
 
 # ------------------------- nonlinear ------------------------- #
 function (eq::AbstractNSE{NonLinear, FORM})(::Real, u, out) where {FORM}
-    laplacian!(out, u); diffuse!(out, eq.visc)
+    diffusion!(out, u, eq)
     advection!(out, u, eq, FORM())
     eq.force(out, u, Forward())
     return out
@@ -48,21 +54,21 @@ function (eq::AbstractNSE{MODE, FORM})(::Real, u, v, out) where {MODE<:_Linearis
 end
 
 function (eq::AbstractNSE{Forward, FORM})(::Real, v, out) where {FORM}
-    laplacian!(out, v); diffuse!(out, eq.visc)
+    diffusion!(out, v, eq)
     linearised_advection!(out, v, eq, FORM())
     eq.force(out, v, Forward())
     return out
 end
 
 function (eq::AbstractNSE{AdjointContinuous, FORM})(::Real, v, out) where {FORM}
-    laplacian!(out, v); diffuse!(out, eq.visc)
+    diffusion!(out, v, eq)
     adjoint_continuous_advection!(out, v, eq, FORM())
     eq.force(out, v, AdjointContinuous())
     return out
 end
 
 function (eq::AbstractNSE{AdjointDiscrete, FORM})(::Real, v, out) where {FORM}
-    laplacian!(out, v, adjoint=true); diffuse!(out, eq.visc)
+    diffusion!(out, v, eq; adjoint=true)
     adjoint_discrete_advection!(out, v, eq, FORM())
     eq.force(out, v, AdjointDiscrete())
     return out

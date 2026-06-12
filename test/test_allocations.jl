@@ -374,7 +374,7 @@ end
         @test allocs_after_warmup(() -> construct_equations(g, 100.0, base, CartesianPrimitive2DNSE; flags=FFTW.ESTIMATE, dealias=false)) > 0
     end
 
-    @testset "src/equations/cartesianprimitive/operators.jl" begin
+    @testset "src/equations/cartesianprimitive/nse.jl" begin
         (; g, q) = alloc_polynomial_fixture()
         out = zero(q)
         eq = CartesianPrimitive2DNSE(g, 100.0; flags=FFTW.ESTIMATE)
@@ -391,7 +391,7 @@ end
         end
     end
 
-    @testset "src/equations/cartesianprimitive/operators.jl                     " begin
+    @testset "src/equations/cartesianprimitive/nse.jl                           " begin
         (; g) = alloc_fixture()
 
         # Construction allocates caches and FFTW plans. The full 3-D operator
