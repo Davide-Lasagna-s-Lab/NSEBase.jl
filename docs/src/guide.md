@@ -222,42 +222,29 @@ Downstream grids must implement `growto` to support de-aliasing.
 
 ---
 
-## NSE formulations
+## NSE Operators
 
-NSEBase includes three velocity-only Cartesian primitive-variable formulations.
-They are implemented by the generic operator families
-`CartesianPrimitiveNSE{NDIM,NCOMP}` and `CartesianPrimitiveLNSE{NDIM,NCOMP}`,
-with the older concrete names kept as compatibility aliases:
+NSEBase includes a single Cartesian primitive-variable operator family,
+`CartesianPrimitiveNSE{NDIM,NCOMP}`. `NDIM` is the number of spatial derivative
+directions, `NCOMP` is the number of advected components, and `MODE <: Mode`
+selects whether the object applies the nonlinear equation or a linearised
+variant. The common cases have short aliases:
 
-| Tag struct | Components | Operators |
-|-----------|-----------|----------|
-| `CartesianPrimitive2D()` | u, v (2 components) | `CartesianPrimitive2DNSE`, `CartesianPrimitive2DLNSE{MODE}` |
-| `CartesianPrimitive2D3C()` | u, v, w on a 2D grid | `CartesianPrimitive2D3CNSE`, `CartesianPrimitive2D3CLNSE{MODE}` |
-| `CartesianPrimitive3D()` | u, v, w (3 components) | `CartesianPrimitive3DNSE`, `CartesianPrimitive3DLNSE{MODE}` |
+| Operator alias | Components |
+|---------------|------------|
+| `CartesianPrimitive2DNSE` | u, v on a 2D grid |
+| `CartesianPrimitive2D3CNSE` | u, v, w on a 2D grid |
+| `CartesianPrimitive3DNSE` | u, v, w on a 3D grid |
 
-Each linearised operator `CartesianPrimitiveLNSE{NDIM,NCOMP,MODE,FORM}` is
-parameterised on a `MODE <: Mode` tag and an advection `FORM <: AdvectionForm`:
+Each operator is parameterised on a `MODE <: Mode` tag and an advection
+`FORM <: AdvectionForm`:
 
 | `MODE` | Operator computed |
 |--------|------------------|
+| `NonLinear` | Nonlinear NSE |
 | `Forward` | Standard linearised NSE around base flow |
 | `AdjointContinuous` | Continuous adjoint of the linearised operator |
 | `AdjointDiscrete` | Discrete (numerical) adjoint — exact transpose of `Forward` |
-
-### Adding a new formulation
-
-Implement a singleton struct (no fields) and the four interface methods:
-
-```julia
-struct MyFormulation end
-ncomp(              ::MyFormulation)                    = ...   # number of velocity components
-cache_length(       ::MyFormulation, ::Type{<:FTField}) = ...   # spectral scratch arrays needed
-cache_length(       ::MyFormulation, ::Type{<:Field})   = ...   # physical scratch arrays needed
-nonlinear_operator( ::MyFormulation)                    = ...   # return concrete operator type
-linearised_operator(::MyFormulation, ::M) where {M}     = ...   # return parametric operator type
-```
-
-Then pass `MyFormulation()` to `construct_equations`.
 
 ---
 
@@ -266,7 +253,7 @@ Then pass `MyFormulation()` to `construct_equations`.
 `construct_equations` is the recommended entry point for building a solver.  It:
 
 1. Allocates two shared scratch pools — `scache` (spectral) and `pcache`
-   (physical), sized by `cache_length`.
+   (physical), sized for the linearised operator.
 2. Builds FFTW plans for the grid.
 3. Instantiates the nonlinear and linearised operators, wiring them to the same
    scratch pools.

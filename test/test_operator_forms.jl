@@ -59,7 +59,7 @@ end
     Re = 137.0
 
     nse(form)  = CartesianPrimitive3DNSE(g, Re; form=form, flags=FFTW.ESTIMATE)
-    lnse(m, f) = CartesianPrimitive3DLNSE(g, Re; mode=m, form=f, flags=FFTW.ESTIMATE)
+    lnse(m, f) = CartesianPrimitive3DNSE(g, Re; mode=m, form=f, flags=FFTW.ESTIMATE)
 
     @testset "nonlinear NSE" begin
         oa = nse(Advective())( 0.0, U, similar(U))

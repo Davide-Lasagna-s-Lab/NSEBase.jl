@@ -104,14 +104,6 @@ add_base_flow!
 ## NSE formulations
 
 ```@docs
-CartesianPrimitive3D
-CartesianPrimitive2D
-CartesianPrimitive2D3C
-PolarPrimitive
-ncomp
-cache_length
-nonlinear_operator
-linearised_operator
 construct_equations
 ```
 
@@ -119,15 +111,10 @@ construct_equations
 
 ```@docs
 AbstractNSE
-AbstractLNSE
 CartesianPrimitiveNSE
-CartesianPrimitiveLNSE
 CartesianPrimitive3DNSE
-CartesianPrimitive3DLNSE
 CartesianPrimitive2DNSE
-CartesianPrimitive2DLNSE
 CartesianPrimitive2D3CNSE
-CartesianPrimitive2D3CLNSE
 ProjectedNSE
 ```
 
@@ -135,11 +122,13 @@ ProjectedNSE
 
 ```@docs
 Mode
+NonLinear
 Forward
 AdjointContinuous
 AdjointDiscrete
 NoForce
 CompoundForcing
+BuoyancyForce
 ```
 
 ## IO

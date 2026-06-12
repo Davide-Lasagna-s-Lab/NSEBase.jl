@@ -21,8 +21,8 @@
 
     # operator construction
     nl = CartesianPrimitive3DNSE(g, 100; flags=FFTW.ESTIMATE)
-    ln = CartesianPrimitive3DLNSE(g, 100; mode=AdjointDiscrete(), flags=FFTW.ESTIMATE)
-    op = construct_equations(g, 100, nothing, CartesianPrimitive3D(); flags=FFTW.ESTIMATE)
+    ln = CartesianPrimitive3DNSE(g, 100; mode=AdjointDiscrete(), flags=FFTW.ESTIMATE)
+    op = construct_equations(g, 100, nothing, CartesianPrimitive3DNSE; flags=FFTW.ESTIMATE)
     @test op.cache1 isa VectorField{3, <:FTField{FakeGrid}}
     @test op.cache2 isa VectorField{3, <:FTField{FakeGrid}}
 

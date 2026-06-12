@@ -367,26 +367,21 @@ end
         @test allocs_after_warmup(() -> cf(out, nothing, Forward())) == 0
     end
 
-    @testset "src/equations/shared.jl" begin
+    @testset "src/equations/projectednse.jl constructors" begin
         (; g) = alloc_polynomial_fixture()
         base = (zeros(size(g, 1)), nothing)
 
-        @test allocs_after_warmup(() -> NSEBase.ncomp(CartesianPrimitive3D())) == 0
-        @test allocs_after_warmup(() -> NSEBase.cache_length(CartesianPrimitive3D(), FTField)) == 0
-        @test allocs_after_warmup(() -> NSEBase.cache_length(CartesianPrimitive3D(), Field)) == 0
-        @test allocs_after_warmup(() -> NSEBase.nonlinear_operator(CartesianPrimitive2D())) == 0
-        @test allocs_after_warmup(() -> NSEBase.linearised_operator(CartesianPrimitive2D(), AdjointDiscrete())) == 0
-        @test allocs_after_warmup(() -> construct_equations(g, 100.0, base, CartesianPrimitive2D(); flags=FFTW.ESTIMATE, dealias=false)) > 0
+        @test allocs_after_warmup(() -> construct_equations(g, 100.0, base, CartesianPrimitive2DNSE; flags=FFTW.ESTIMATE, dealias=false)) > 0
     end
 
     @testset "src/equations/cartesianprimitive/operators.jl" begin
         (; g, q) = alloc_polynomial_fixture()
         out = zero(q)
         eq = CartesianPrimitive2DNSE(g, 100.0; flags=FFTW.ESTIMATE)
-        ln = CartesianPrimitive2DLNSE(g, 100.0; mode=AdjointDiscrete(), flags=FFTW.ESTIMATE)
+        ln = CartesianPrimitive2DNSE(g, 100.0; mode=AdjointDiscrete(), flags=FFTW.ESTIMATE)
 
         @test allocs_after_warmup(() -> CartesianPrimitive2DNSE(g, 100.0; flags=FFTW.ESTIMATE)) > 0
-        @test allocs_after_warmup(() -> CartesianPrimitive2DLNSE(g, 100.0; mode=AdjointDiscrete(), flags=FFTW.ESTIMATE)) > 0
+        @test allocs_after_warmup(() -> CartesianPrimitive2DNSE(g, 100.0; mode=AdjointDiscrete(), flags=FFTW.ESTIMATE)) > 0
         # Equation actions call PolynomialGrid's mul!-based derivatives internally;
         # on Julia < 1.11 mul! allocates with --check-bounds=yes.
         if VERSION >= v"1.11"
@@ -403,13 +398,13 @@ end
         # requires a downstream inhomogeneous derivative implementation for
         # `TripleGrid`, so operator action is covered by the 2-D section above.
         @test allocs_after_warmup(() -> CartesianPrimitive3DNSE(g, 100.0; flags=FFTW.ESTIMATE)) > 0
-        @test allocs_after_warmup(() -> CartesianPrimitive3DLNSE(g, 100.0; mode=AdjointDiscrete(), flags=FFTW.ESTIMATE)) > 0
+        @test allocs_after_warmup(() -> CartesianPrimitive3DNSE(g, 100.0; mode=AdjointDiscrete(), flags=FFTW.ESTIMATE)) > 0
     end
 
     @testset "src/equations/projectednse.jl" begin
         (; g, modes, a, b) = alloc_projected_2d_fixture()
         base = (zeros(size(g, 1)), nothing)
-        eq = construct_equations(g, 100.0, base, CartesianPrimitive2D(); flags=FFTW.ESTIMATE, dealias=true)
+        eq = construct_equations(g, 100.0, base, CartesianPrimitive2DNSE; flags=FFTW.ESTIMATE, dealias=true)
 
         @test allocs_after_warmup(() -> ProjectedNSE(g, 2, eq.nl, eq.ln, base)) > 0
         if VERSION >= v"1.11"

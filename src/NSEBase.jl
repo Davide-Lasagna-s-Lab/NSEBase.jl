@@ -27,16 +27,11 @@ export shift!, shift, normdiff, minnormdiff
 export save_grid, load_grid, save_field, load_field
 export FarazmandWeight
 export AdvectionForm, Advective, Divergence, Rotational
-export AbstractNSE, AbstractLNSE
-export CartesianPrimitiveNSE, CartesianPrimitiveLNSE
-export CartesianPrimitive3DNSE, CartesianPrimitive3DLNSE
-export CartesianPrimitive2DNSE, CartesianPrimitive2DLNSE
-export CartesianPrimitive2D3CNSE, CartesianPrimitive2D3CLNSE
-export CartesianPrimitive3DBoussinesqNSE, CartesianPrimitive3DBoussinesqLNSE
-export Forward, AdjointContinuous, AdjointDiscrete, NoForce, CompoundForcing, Mode
-export construct_equations, CartesianPrimitive3D, CartesianPrimitive2D, CartesianPrimitive2D3C, PolarPrimitive
-export CartesianPrimitive3DBoussinesq
-export ncomp, cache_length, nonlinear_operator, linearised_operator
+export AbstractNSE, CartesianPrimitiveNSE
+export CartesianPrimitive2DNSE, CartesianPrimitive2D3CNSE, CartesianPrimitive3DNSE
+export Mode, NonLinear, Forward, AdjointContinuous, AdjointDiscrete
+export NoForce, CompoundForcing, BuoyancyForce
+export construct_equations
 export ProjectedNSE
 
 include("notimplementederror.jl")
@@ -55,14 +50,12 @@ include("broadcasting.jl")
 include("derivatives.jl")
 include("io.jl")
 include("equations/types.jl")
-include("equations/caches.jl")
+include("equations/forcings.jl")
 include("equations/abstract_nse.jl")
 include("equations/cartesianprimitive/operators.jl")
 include("equations/cartesianprimitive/advection_2d.jl")
 include("equations/cartesianprimitive/advection_2d3c.jl")
 include("equations/cartesianprimitive/advection_3d.jl")
-include("equations/cartesianprimitive_3d_boussinesq.jl")
 include("equations/projectednse.jl")
-include("equations/shared.jl")
 
 end

@@ -94,3 +94,46 @@ function (eq::ProjectedNSE)(out::ProjectedField,
 
     return out
 end
+
+
+# ------------------------------------------------------------------ #
+# construct_equations factory                                        #
+# ------------------------------------------------------------------ #
+# The operator type alias itself selects the formulation — there is no separate
+# tag hierarchy. `construct_equations(grid, Re, base, CartesianPrimitive3DNSE)`
+# reads `(NDIM, NCOMP)` straight off the alias and builds the nonlinear and
+# linearised operators on a shared cache pool.
+
+"""
+    construct_equations(grid, Re, base, ::Type{<:CartesianPrimitiveNSE{NDIM,NCOMP}}=CartesianPrimitive3DNSE;
+                        visc=1/Re, form=Advective(), mode=AdjointDiscrete(),
+                        force=NoForce(), flags=FFTW.EXHAUSTIVE, dealias=true)
+
+Build a [`ProjectedNSE`](@ref) for a velocity-only Cartesian primitive flow. The
+operator alias (e.g. [`CartesianPrimitive3DNSE`](@ref), `CartesianPrimitive2DNSE`,
+`CartesianPrimitive2D3CNSE`, or `CartesianPrimitiveNSE{3,4}`) fixes `NDIM`/`NCOMP`.
+The nonlinear and linearised operators share one cache pool (sized for the
+linearised operator).
+
+`form` selects the advection form; `mode` the adjoint flavour of the linearised
+operator; `visc` the Laplacian coefficient (scalar `ν=1/Re`, or an `NCOMP`-tuple
+for a per-component diffusivity). `base` is the laminar base flow, one entry per
+component (or `nothing`), passed to [`add_base_flow!`](@ref).
+"""
+function construct_equations(grid::AbstractGrid{T}, Re, base,
+                                  ::Type{<:CartesianPrimitiveNSE{NDIM, NCOMP}}=CartesianPrimitive3DNSE;
+                             visc                =inv(convert(T, Re)),
+                             form::AdvectionForm =Advective(),
+                             mode::Mode          =AdjointDiscrete(),
+                             force               =NoForce(),
+                             flags               =FFTW.EXHAUSTIVE,
+                             dealias             =true) where {T, NDIM, NCOMP}
+    mode isa Union{AdjointContinuous, AdjointDiscrete} ||
+        throw(ArgumentError("linearised operator has to operate in adjoint mode"))
+    # build the linearised operator (allocates the larger, shared cache pool),
+    # then build the nonlinear operator sharing its plans and caches.
+    ln = CartesianPrimitiveNSE{NDIM, NCOMP}(grid, Re; mode=mode, visc=visc, form=form,
+                                            force=force, flags=flags, dealias=dealias)
+    nl = CartesianPrimitiveNSE{NDIM, NCOMP, NonLinear, typeof(form)}(visc, ln.plans, ln.scache, ln.pcache, force)
+    return ProjectedNSE(grid, NCOMP, nl, ln, base)
+end

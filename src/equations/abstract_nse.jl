@@ -1,0 +1,75 @@
+# Equation layer: the abstract Navier-Stokes operator and its call skeletons.
+#
+# One operator type covers the nonlinear equation and every linearised variant,
+# selected by the `MODE` parameter (`NonLinear`, `Forward`, `AdjointContinuous`,
+# `AdjointDiscrete`). A concrete operator (Cartesian, cylindrical, …) supplies
+# its fields `(visc, plans, scache, pcache, force)` and the form-dispatched
+# advection helpers; the surrounding skeleton — viscous term → advection → body
+# force — is inherited from here.
+#
+# `visc` (= ν = 1/Re) may be a scalar (uniform) or an NCOMP-tuple (per-component,
+# e.g. Boussinesq, where the temperature diffuses at 1/(Re·Pr)).
+
+"""
+    AbstractNSE{MODE<:Mode, FORM<:AdvectionForm}
+
+Supertype for primitive Navier-Stokes operators. Subtypes carry
+`(visc, plans, scache, pcache, force)` and supply the form-dispatched advection
+helpers: `advection!` for `NonLinear`, and `lnse_setup!`, `linearised_advection!`,
+`adjoint_continuous_advection!`, `adjoint_discrete_advection!` for the linearised
+modes. The call skeletons are inherited.
+"""
+abstract type AbstractNSE{MODE<:Mode, FORM<:AdvectionForm} end
+
+const _LinearisedMode = Union{Forward, AdjointContinuous, AdjointDiscrete}
+
+
+# Apply the viscous coefficient: a scalar scales every component uniformly; an
+# NCOMP-tuple gives a per-component diffusivity.
+diffuse!(out, visc::Number) = (out .*= visc; out)
+diffuse!(out::VectorField{N}, visc::NTuple{N}) where {N} =
+    (for n in 1:N; out[n] .*= visc[n]; end; out)
+
+
+# ------------------------- nonlinear ------------------------- #
+function (eq::AbstractNSE{NonLinear, FORM})(::Real, u, out) where {FORM}
+    laplacian!(out, u); diffuse!(out, eq.visc)
+    advection!(out, u, eq, FORM())
+    eq.force(out, u, Forward())
+    return out
+end
+
+# ------------------------- linearised ------------------------ #
+# 3-arg: cache the base-flow quantities the form needs, then delegate to 2-arg.
+function (eq::AbstractNSE{MODE, FORM})(::Real, u, v, out) where {MODE<:_LinearisedMode, FORM}
+    lnse_setup!(u, eq, FORM())
+    eq(0, v, out)
+    return out
+end
+
+function (eq::AbstractNSE{Forward, FORM})(::Real, v, out) where {FORM}
+    laplacian!(out, v); diffuse!(out, eq.visc)
+    linearised_advection!(out, v, eq, FORM())
+    eq.force(out, v, Forward())
+    return out
+end
+
+function (eq::AbstractNSE{AdjointContinuous, FORM})(::Real, v, out) where {FORM}
+    laplacian!(out, v); diffuse!(out, eq.visc)
+    adjoint_continuous_advection!(out, v, eq, FORM())
+    eq.force(out, v, AdjointContinuous())
+    return out
+end
+
+function (eq::AbstractNSE{AdjointDiscrete, FORM})(::Real, v, out) where {FORM}
+    laplacian!(out, v, adjoint=true); diffuse!(out, eq.visc)
+    adjoint_discrete_advection!(out, v, eq, FORM())
+    eq.force(out, v, AdjointDiscrete())
+    return out
+end
+
+# The exact discrete adjoint has to be derived per discrete form; until a form
+# supplies that method, fail loudly rather than apply the wrong transpose.
+adjoint_discrete_advection!(out, v, eq, form::AdvectionForm) =
+    throw(ArgumentError("discrete adjoint is implemented for the advective form only; " *
+                        "got $(typeof(form)). Use AdjointContinuous for divergence/rotational."))

@@ -12,9 +12,20 @@
     Mode
 
 Abstract supertype for equation-mode tags.  Concrete subtypes select which
-variant of the linearised Navier-Stokes operator is applied.
+variant of the Navier-Stokes operator is applied: the nonlinear equation
+([`NonLinear`](@ref)) or one of the linearised variants ([`Forward`](@ref),
+[`AdjointContinuous`](@ref), [`AdjointDiscrete`](@ref)).
 """
 abstract type Mode end
+
+"""
+    NonLinear <: Mode
+
+Tag selecting the nonlinear Navier-Stokes operator `N(u) = ν·Δu − (u·∇)u + force`.
+A single operator type covers the nonlinear and linearised equations; this mode
+selects the nonlinear branch.
+"""
+struct NonLinear         <: Mode end
 
 """
     Forward <: Mode
@@ -102,46 +113,3 @@ self-advection block only; scalar / out-of-plane components use the divergence
 treatment.
 """
 struct Rotational <: AdvectionForm end
-
-
-# ============================================================================ #
-# Body Forces                                                                  #
-# ============================================================================ #
-"""
-    NoForce
-
-Default body-force callable that applies no forcing.  Its call signature is
-`(out, u, mode) -> out`; it returns `out` unchanged.
-
-Pass `NoForce()` to any NSE constructor that accepts a `force` keyword when no
-body force is needed.
-"""
-struct NoForce end
-(::NoForce)(out, _, _) = out
-
-
-"""
-    CompoundForcing(forces...)
-
-A body force that applies each of `forces` in sequence. Use this to combine
-multiple body-force terms, e.g.:
-
-```julia
-CompoundForcing(ConstantForcing(), CoriolisForce(Ro))
-```
-"""
-struct CompoundForcing{N, F<:NTuple{N, Any}}
-    forces::F
-end
-CompoundForcing(forces...) = CompoundForcing{length(forces), typeof(forces)}(forces)
-
-# A plain `for f in cf.forces` loop iterates via `iterate(::Tuple, ::Int)`, which
-# returns a Union of all element types and causes dynamic dispatch for each call.
-# N is a type parameter so @nexprs can unroll the calls into N statically-typed
-# statements at compile time, keeping dispatch fully specialised.
-@generated function (cf::CompoundForcing{N})(out, u, mode) where {N}
-    return quote
-        Base.Cartesian.@nexprs $N i -> cf.forces[i](out, u, mode)
-        return out
-    end
-end
