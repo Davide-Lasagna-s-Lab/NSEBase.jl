@@ -185,7 +185,7 @@ end
 # ================================================================== #
 # advective: +(U·∇)w − Σ_i w_i ∇U_i. The cross-gradient sum runs over all NCOMP
 # components but only contributes to the NDIM velocity adjoint components.
-function adjoint_continuous_advection!(out, v, eq::CartesianPrimitiveNSE{3, NCOMP}, ::Advective) where {NCOMP}
+function adjoint_advection!(out, v, eq::CartesianPrimitiveNSE{3, NCOMP}, ::Advective, ::AdjointContinuous) where {NCOMP}
     dudx = eq.scache[1]; dvdx = eq.scache[2]; dvdy = eq.scache[3]; dvdz = eq.scache[4]
     U    = eq.pcache[1]; dUdx = eq.pcache[2]; dUdy = eq.pcache[3]; dUdz = eq.pcache[4]
     V    = eq.pcache[5]; dVdx = eq.pcache[6]; dVdy = eq.pcache[7]; dVdz = eq.pcache[8]
@@ -207,7 +207,7 @@ function adjoint_continuous_advection!(out, v, eq::CartesianPrimitiveNSE{3, NCOM
 end
 
 # divergence: +(U·∇)w in conservative form ∂_j(U_j w_i), plus the cross-gradient.
-function adjoint_continuous_advection!(out, v, eq::CartesianPrimitiveNSE{3, 3}, ::Divergence)
+function adjoint_advection!(out, v, eq::CartesianPrimitiveNSE{3, 3}, ::Divergence, ::AdjointContinuous)
     U    = eq.pcache[1]; dUdx = eq.pcache[2]; dUdy = eq.pcache[3]; dUdz = eq.pcache[4]
     V    = eq.pcache[5]; P    = eq.pcache[6][1]; G = eq.pcache[7]
 
@@ -233,14 +233,14 @@ function adjoint_continuous_advection!(out, v, eq::CartesianPrimitiveNSE{3, 3}, 
 end
 
 # rotational has no distinct continuous-adjoint form; reuse the divergence one.
-adjoint_continuous_advection!(out, v, eq::CartesianPrimitiveNSE{3, 3}, ::Rotational) =
-    adjoint_continuous_advection!(out, v, eq, Divergence())
+adjoint_advection!(out, v, eq::CartesianPrimitiveNSE{3, 3}, ::Rotational, ::AdjointContinuous) =
+    adjoint_advection!(out, v, eq, Divergence(), AdjointContinuous())
 
 
 # ================================================================== #
 # DISCRETE ADJOINT (advective only; div/rot are a future addition)  #
 # ================================================================== #
-function adjoint_discrete_advection!(out, v, eq::CartesianPrimitiveNSE{3, NCOMP}, ::Advective) where {NCOMP}
+function adjoint_advection!(out, v, eq::CartesianPrimitiveNSE{3, NCOMP}, ::Advective, ::AdjointDiscrete) where {NCOMP}
     dudx = eq.scache[1]; u1v = eq.scache[2]; u2v = eq.scache[3]; u3v = eq.scache[4]
     U    = eq.pcache[1]; dUdx = eq.pcache[2]; dUdy = eq.pcache[3]; dUdz = eq.pcache[4]
     V    = eq.pcache[5]; U1V = eq.pcache[6]; U2V = eq.pcache[7]; U3V = eq.pcache[8]

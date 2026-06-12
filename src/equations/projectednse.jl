@@ -134,7 +134,7 @@ function construct_equations(grid::AbstractGrid{T}, Re, base,
                              force               =NoForce(),
                              flags               =FFTW.EXHAUSTIVE,
                              dealias             =true) where {T}
-    mode isa _LinearisedMode ||
+    mode isa LinearisedMode ||
         throw(ArgumentError("projected linearised operator has to use a linearised mode"))
     # build the linearised operator (allocates the larger, shared cache pool),
     # then build the nonlinear operator sharing its plans and caches.

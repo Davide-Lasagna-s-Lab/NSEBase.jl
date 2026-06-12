@@ -55,6 +55,9 @@ resolution.
 """
 struct AdjointContinuous <: Mode end
 
+const LinearisedMode = Union{Forward, AdjointContinuous, AdjointDiscrete}
+const AdjointMode = Union{AdjointContinuous, AdjointDiscrete}
+
 
 # ============================================================================ #
 # Advection-Form Tags                                                          #

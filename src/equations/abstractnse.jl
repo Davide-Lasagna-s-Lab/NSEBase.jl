@@ -16,13 +16,9 @@
 Supertype for primitive Navier-Stokes operators. Subtypes carry
 `(visc, plans, scache, pcache, force)` and supply the form-dispatched advection
 helpers: `advection!` for `NonLinear`, and `lnse_setup!`, `linearised_advection!`,
-`adjoint_continuous_advection!`, `adjoint_discrete_advection!` for the linearised
-modes. The call skeletons are inherited.
+`adjoint_advection!` for the linearised modes. The call skeletons are inherited.
 """
 abstract type AbstractNSE{MODE<:Mode, FORM<:AdvectionForm} end
-
-const _LinearisedMode = Union{Forward, AdjointContinuous, AdjointDiscrete}
-
 
 # Apply the viscous coefficient: a scalar scales every component uniformly; an
 # NCOMP-tuple gives a per-component diffusivity.
@@ -47,7 +43,7 @@ end
 
 # ------------------------- linearised ------------------------ #
 # 3-arg: cache the base-flow quantities the form needs, then delegate to 2-arg.
-function (eq::AbstractNSE{MODE, FORM})(::Real, u, v, out) where {MODE<:_LinearisedMode, FORM}
+function (eq::AbstractNSE{MODE, FORM})(::Real, u, v, out) where {MODE<:LinearisedMode, FORM}
     lnse_setup!(u, eq, FORM())
     eq(0, v, out)
     return out
@@ -60,22 +56,19 @@ function (eq::AbstractNSE{Forward, FORM})(::Real, v, out) where {FORM}
     return out
 end
 
-function (eq::AbstractNSE{AdjointContinuous, FORM})(::Real, v, out) where {FORM}
-    diffusion!(out, v, eq)
-    adjoint_continuous_advection!(out, v, eq, FORM())
-    eq.force(out, v, AdjointContinuous())
-    return out
-end
+adjoint_diffusion_flag(::AdjointContinuous) = false
+adjoint_diffusion_flag(::AdjointDiscrete) = true
 
-function (eq::AbstractNSE{AdjointDiscrete, FORM})(::Real, v, out) where {FORM}
-    diffusion!(out, v, eq; adjoint=true)
-    adjoint_discrete_advection!(out, v, eq, FORM())
-    eq.force(out, v, AdjointDiscrete())
+function (eq::AbstractNSE{MODE, FORM})(::Real, v, out) where {MODE<:AdjointMode, FORM}
+    mode = MODE()
+    diffusion!(out, v, eq; adjoint=adjoint_diffusion_flag(mode))
+    adjoint_advection!(out, v, eq, FORM(), mode)
+    eq.force(out, v, mode)
     return out
 end
 
 # The exact discrete adjoint has to be derived per discrete form; until a form
 # supplies that method, fail loudly rather than apply the wrong transpose.
-adjoint_discrete_advection!(out, v, eq, form::AdvectionForm) =
+adjoint_advection!(out, v, eq, form::AdvectionForm, ::AdjointDiscrete) =
     throw(ArgumentError("discrete adjoint is implemented for the advective form only; " *
                         "got $(typeof(form)). Use AdjointContinuous for divergence/rotational."))

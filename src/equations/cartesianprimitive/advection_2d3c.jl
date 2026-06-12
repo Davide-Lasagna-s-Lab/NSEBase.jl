@@ -151,7 +151,7 @@ end
 # CONTINUOUS ADJOINT                                                 #
 # ================================================================== #
 # advective: +(U·∇)w − Σ_i w_i ∇U_i
-function adjoint_continuous_advection!(out, v::VectorField{3, F}, eq::CartesianPrimitiveNSE{2, 3}, ::Advective) where {F<:FTField}
+function adjoint_advection!(out, v::VectorField{3, F}, eq::CartesianPrimitiveNSE{2, 3}, ::Advective, ::AdjointContinuous) where {F<:FTField}
     dudx = eq.scache[1]; dvdx = eq.scache[2]; dvdy = eq.scache[3]
     U    = eq.pcache[1]; dUdx = eq.pcache[2]; dUdy = eq.pcache[3]
     V    = eq.pcache[4]; dVdx = eq.pcache[5]; dVdy = eq.pcache[6]
@@ -172,7 +172,7 @@ function adjoint_continuous_advection!(out, v::VectorField{3, F}, eq::CartesianP
 end
 
 # divergence: +(U·∇)w in conservative form, plus the cross-gradient.
-function adjoint_continuous_advection!(out, v::VectorField{3, F}, eq::CartesianPrimitiveNSE{2, 3}, ::Divergence) where {F<:FTField}
+function adjoint_advection!(out, v::VectorField{3, F}, eq::CartesianPrimitiveNSE{2, 3}, ::Divergence, ::AdjointContinuous) where {F<:FTField}
     U = eq.pcache[1]; dUdx = eq.pcache[2]; dUdy = eq.pcache[3]
     V = eq.pcache[4]; P = eq.pcache[5][1]; G = eq.pcache[6]
 
@@ -196,14 +196,14 @@ function adjoint_continuous_advection!(out, v::VectorField{3, F}, eq::CartesianP
 end
 
 # rotational has no distinct continuous-adjoint form; reuse the divergence one.
-adjoint_continuous_advection!(out, v::VectorField{3, F}, eq::CartesianPrimitiveNSE{2, 3}, ::Rotational) where {F<:FTField} =
-    adjoint_continuous_advection!(out, v, eq, Divergence())
+adjoint_advection!(out, v::VectorField{3, F}, eq::CartesianPrimitiveNSE{2, 3}, ::Rotational, ::AdjointContinuous) where {F<:FTField} =
+    adjoint_advection!(out, v, eq, Divergence(), AdjointContinuous())
 
 
 # ================================================================== #
 # DISCRETE ADJOINT (advective only)                                 #
 # ================================================================== #
-function adjoint_discrete_advection!(out, v::VectorField{3, F}, eq::CartesianPrimitiveNSE{2, 3}, ::Advective) where {F<:FTField}
+function adjoint_advection!(out, v::VectorField{3, F}, eq::CartesianPrimitiveNSE{2, 3}, ::Advective, ::AdjointDiscrete) where {F<:FTField}
     dudx = eq.scache[1]; u1v = eq.scache[2]; u2v = eq.scache[3]
     U    = eq.pcache[1]; dUdx = eq.pcache[2]; dUdy = eq.pcache[3]
     V    = eq.pcache[4]; U1V = eq.pcache[5]; U2V = eq.pcache[6]
