@@ -189,6 +189,14 @@ halo is in flight.
 # no-op, init_* does the full computation, complete_* is a no-op.
 # MPIExt overrides all four families for DecomposedGrid fields so
 # that interior rows are computed while MPI halos are in flight.
+#
+# NOTE (overlap effectiveness): single-node benchmarking shows this split gives
+# no speedup over a plain blocking halo swap (and an async progress thread is
+# strictly worse) — there is little shared-memory comm latency to hide. The
+# split is kept because it is no worse, and may still pay off on a multi-node
+# cluster with real network latency, which has NOT yet been benchmarked. Do not
+# add the complexity of progress polling / threads, or remove the split, without
+# multi-node data. See https://github.com/Davide-Lasagna-s-Lab/NSEBase.jl/issues/21
 
 init_requests!(u) = nothing
 wait_requests!(::Nothing) = nothing

@@ -32,6 +32,10 @@
 # is a no-op, interior_* does the full computation, boundary_* is a no-op —
 # zero extra allocations. MPIExt overrides all four for DecomposedGrid
 # fields, achieving communication–computation overlap without any Task objects.
+#
+# NOTE: on a single node this overlap measures no faster than a blocking swap
+# (benchmarks/mpi_overlap.jl); it is kept pending a multi-node benchmark. See
+# https://github.com/Davide-Lasagna-s-Lab/NSEBase.jl/issues/21 before changing it.
 
 
 # ----------------------- #
