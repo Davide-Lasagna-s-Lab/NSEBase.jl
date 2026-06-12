@@ -191,3 +191,29 @@ function construct_equations(grid::AbstractGrid{T},
     ln = linearised_operator(formulation, mode)(T(Re), plans, scache, pcache, force)
     return ProjectedNSE(grid, ncomp(formulation), nl, ln, base)
 end
+
+"""
+    construct_equations(grid, Re, base, ::CartesianPrimitive3D; form=Advective(), kwargs...)
+
+Three-component Cartesian build with a selectable advection [`AdvectionForm`](@ref).
+The `form` is shared by the nonlinear and linearised operators (which share their
+cache pool). Passing the `CartesianPrimitive3D()` tag explicitly is what enables
+the `form` keyword; the default keeps the advective form. The discrete-adjoint
+mode supports the advective form only (divergence/rotational are Phase B).
+"""
+function construct_equations(grid::AbstractGrid{T},
+                               Re,
+                             base,
+                                 ::CartesianPrimitive3D;
+                             form::AdvectionForm=Advective(),
+                            force=NoForce(),
+                             mode=AdjointDiscrete(),
+                            flags=FFTW.EXHAUSTIVE,
+                          dealias=true) where {T}
+    mode isa Union{AdjointContinuous, AdjointDiscrete} || throw(ArgumentError("linearised operator has to operate in adjoint mode"))
+    plans          = FFTPlans(grid; flags=flags)
+    scache, pcache = alloc_caches(grid, 3, 4, 8; dealias=dealias)
+    nl = CartesianPrimitive3DNSE{typeof(form)}(T(Re), plans, scache, pcache, force)
+    ln = CartesianPrimitive3DLNSE{typeof(mode), typeof(form)}(T(Re), plans, scache, pcache, force)
+    return ProjectedNSE(grid, 3, nl, ln, base)
+end

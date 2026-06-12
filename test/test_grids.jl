@@ -132,6 +132,72 @@ function NSEBase.inhomogeneous_laplacian!(out::FTField{PolynomialGrid},
 end
 
 
+# Mock channel grid: a real 3-D channel layout (x, z Fourier; y wall-normal)
+# with a genuine Lagrange-collocation wall-normal derivative, used to test the
+# advection-form variants. Unlike FakeGrid/TripleGrid (which fake the wall-normal
+# derivative as identity), this distinguishes the forms — they differ precisely
+# in their finite-difference treatment of the inhomogeneous direction.
+#
+#   array dim 1: inhomogeneous (y), length Ny — real collocation derivative.
+#   array dim 2: rfft           (x), length Nx, period 2π/α.
+#   array dim 3: signed FFT     (z), length Nz, period 2π/β.
+#
+# Unit weights ⇒ the discrete adjoint of the wall-normal derivative is the plain
+# matrix transpose (D'), so discrete-adjoint identities hold to machine precision.
+struct ChannelMockGrid <: AbstractGrid{Float64, 3, (2, 1, 3, nothing), (2, 3)}
+    y  :: Vector{Float64}
+    Nx :: Int
+    Nz :: Int
+    α  :: Float64
+    β  :: Float64
+    D1 :: Matrix{Float64}
+    D2 :: Matrix{Float64}
+    ws :: Vector{Float64}
+end
+
+function ChannelMockGrid(Ny, Nx, Nz; α=1.0, β=1.0)
+    # Chebyshev-Gauss-Lobatto nodes on [-1, 1]: well-conditioned collocation
+    # derivative (the natural channel wall-normal grid).
+    y  = [-cospi((j - 1) / (Ny - 1)) for j in 1:Ny]
+    D1 = _lagrange_derivative_matrix(y)
+    D2 = D1 * D1
+    return ChannelMockGrid(y, Nx, Nz, α, β, D1, D2, ones(Ny))
+end
+
+Base.size(g::ChannelMockGrid)                        = (length(g.y), g.Nx, g.Nz)
+NSEBase.weights(g::ChannelMockGrid)                  = g.ws
+NSEBase.wavenumber_scale(g::ChannelMockGrid, d::Int) = d == 2 ? g.α : d == 3 ? g.β : one(g.α)
+Base.convert(::Type{Float64}, g::ChannelMockGrid)    = g
+NSEBase.growto(g::ChannelMockGrid, (Nx, Nz)::NTuple{2, Int}) =
+    ChannelMockGrid(g.y, Nx, Nz, g.α, g.β, g.D1, g.D2, g.ws)
+
+NSEBase.points(g::ChannelMockGrid; dealias=false) = begin
+    Ny, Nx, Nz = size(g)
+    if dealias
+        ps = NSEBase.get_padded_size(size(g), NSEBase.fft_storage_dims(g))
+        Nx, Nz = ps[2], ps[3]
+    end
+    y = reshape(g.y,                       Ny, 1, 1)
+    x = reshape((0:Nx-1) .* (2π/g.α/Nx),   1, Nx, 1)
+    z = reshape((0:Nz-1) .* (2π/g.β/Nz),   1, 1, Nz)
+    return (y, x, z)
+end
+
+# Apply the dense wall-normal matrix along storage dim 1 by reshaping all
+# trailing dims into columns (dim 1 is contiguous, so the reshape is free).
+function _mul_dim1!(out, D, u)
+    Ny = size(parent(u), 1)
+    LinearAlgebra.mul!(reshape(parent(out), Ny, :), D, reshape(parent(u), Ny, :))
+    return out
+end
+NSEBase.dd!(out::FTField{<:ChannelMockGrid}, u::FTField{<:ChannelMockGrid},
+            ::Val{1}; adjoint::Bool=false) =
+    _mul_dim1!(out, adjoint ? grid(u).D1' : grid(u).D1, u)
+NSEBase.inhomogeneous_laplacian!(out::FTField{<:ChannelMockGrid}, u::FTField{<:ChannelMockGrid};
+                                 adjoint::Bool=false) =
+    _mul_dim1!(out, adjoint ? grid(u).D2' : grid(u).D2, u)
+
+
 # Minimal grids used by several generic tests.  They intentionally implement
 # only `size`; tests that use them exercise code paths that need no concrete
 # coordinate arrays, weights, or derivative extensions.

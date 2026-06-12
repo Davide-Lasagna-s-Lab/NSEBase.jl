@@ -26,6 +26,7 @@ export inhomogeneous_laplacian!, add_homogeneous_laplacian!, laplacian!
 export shift!, shift, normdiff, minnormdiff
 export save_grid, load_grid, save_field, load_field
 export FarazmandWeight
+export AdvectionForm, Advective, Divergence, Rotational
 export CartesianPrimitive3DNSE, CartesianPrimitive3DLNSE
 export CartesianPrimitive2DNSE, CartesianPrimitive2DLNSE
 export CartesianPrimitive2D3CNSE, CartesianPrimitive2D3CLNSE
@@ -52,7 +53,10 @@ include("broadcasting.jl")
 include("derivatives.jl")
 include("io.jl")
 include("equations/types.jl")
-include("equations/cartesianprimitive_3d.jl")
+include("equations/forms.jl")
+include("equations/caches.jl")
+include("equations/cartesian3d/operators.jl")
+include("equations/cartesian3d/advection.jl")
 include("equations/cartesianprimitive_2d.jl")
 include("equations/cartesianprimitive_2d3c.jl")
 include("equations/cartesianprimitive_3d_boussinesq.jl")
