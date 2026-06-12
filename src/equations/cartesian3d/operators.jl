@@ -13,6 +13,19 @@
 #   CartesianPrimitive3DLNSE{Forward}             — forward linearised operator
 #   CartesianPrimitive3DLNSE{AdjointContinuous}   — continuous adjoint
 #   CartesianPrimitive3DLNSE{AdjointDiscrete}     — discrete adjoint (advective only, Phase A)
+#
+# Performance — speedup over the advective baseline on a channel grid
+# (benchmarks/advection_forms.jl; CPU, single-threaded FFTW, Apple M5):
+#
+#                       divergence    rotational
+#   nonlinear NSE          ~1.5×         ~1.6×
+#   forward LNSE           ~1.8×         ~1.9×
+#   continuous adjoint     ~0.7–1.1×     ~0.6–1.1×   (not a win — see note below)
+#
+# The divergence/rotational forms pay off for the NSE and forward operators (the
+# resolvent hot path) by cutting the FFT count. For the continuous adjoint they
+# are roughly break-even to slower: the (U·∇)w term needs nine physical products
+# (nine forward transforms), which does not beat the advective derivative path.
 
 
 # ----------------------- #
