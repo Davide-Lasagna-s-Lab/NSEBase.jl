@@ -13,7 +13,7 @@
 """
     AbstractNSE{MODE<:Mode, FORM<:AdvectionForm}
 
-Supertype for primitive Navier-Stokes operators. Subtypes carry
+Supertype for Navier-Stokes operators. Subtypes carry
 `(visc, plans, scache, pcache, force)` and supply the form-dispatched advection
 helpers: `advection!` for `NonLinear`, and `lnse_setup!`, `linearised_advection!`,
 `adjoint_advection!` for the linearised modes. The call skeletons are inherited.

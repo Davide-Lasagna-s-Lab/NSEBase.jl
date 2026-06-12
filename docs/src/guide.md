@@ -224,17 +224,17 @@ Downstream grids must implement `growto` to support de-aliasing.
 
 ## NSE Operators
 
-NSEBase includes a single Cartesian primitive-variable operator family,
-`CartesianPrimitiveNSE{NDIM,NCOMP}`. `NDIM` is the number of spatial derivative
+NSEBase includes a single Cartesian operator family,
+`CartesianNSE{NDIM,NCOMP}`. `NDIM` is the number of spatial derivative
 directions, `NCOMP` is the number of advected components, and `MODE <: Mode`
 selects whether the object applies the nonlinear equation or a linearised
 variant. The common cases have short aliases:
 
 | Operator alias | Components |
 |---------------|------------|
-| `CartesianPrimitive2DNSE` | u, v on a 2D grid |
-| `CartesianPrimitive2D3CNSE` | u, v, w on a 2D grid |
-| `CartesianPrimitive3DNSE` | u, v, w on a 3D grid |
+| `Cartesian2DNSE` | u, v on a 2D grid |
+| `Cartesian2D3CNSE` | u, v, w on a 2D grid |
+| `Cartesian3DNSE` | u, v, w on a 3D grid |
 
 Each operator is parameterised on a `MODE <: Mode` tag and an advection
 `FORM <: AdvectionForm`:

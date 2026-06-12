@@ -58,8 +58,8 @@ end
                     (y,x,z)->(1-y^2) *exp(cos(x))  *exp(sin(z)))
     Re = 137.0
 
-    nse(form)  = CartesianPrimitive3DNSE(g, Re; form=form, flags=FFTW.ESTIMATE)
-    lnse(m, f) = CartesianPrimitive3DNSE(g, Re; mode=m, form=f, flags=FFTW.ESTIMATE)
+    nse(form)  = Cartesian3DNSE(g, Re; form=form, flags=FFTW.ESTIMATE)
+    lnse(m, f) = Cartesian3DNSE(g, Re; mode=m, form=f, flags=FFTW.ESTIMATE)
 
     @testset "nonlinear NSE" begin
         oa = nse(Advective())( 0.0, U, similar(U))

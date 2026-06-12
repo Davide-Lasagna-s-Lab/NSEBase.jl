@@ -77,7 +77,7 @@ for (Nx,Ny,Nz,Nt) in CASES
 
     # nonlinear NSE
     t = map(FORMS) do (_, f)
-        op = CartesianPrimitive3DNSE(g, 1000.0; form=f, flags=FFTW.MEASURE)
+        op = Cartesian3DNSE(g, 1000.0; form=f, flags=FFTW.MEASURE)
         @belapsed $op(0.0, $u, $(similar(u))) samples=15 evals=1
     end
     @printf("(%2d,%3d,%2d,%2d) NSE%9s %12.3f %12.3f %12.3f   %7.2f× %7.2f×\n",
@@ -86,7 +86,7 @@ for (Nx,Ny,Nz,Nt) in CASES
     # forward + continuous adjoint: set base once (3-arg), time the 2-arg hot path
     for (role, mode) in (("forward", Forward()), ("adjoint-cont", AdjointContinuous()))
         t = map(FORMS) do (_, f)
-            op = CartesianPrimitive3DNSE(g, 1000.0; mode=mode, form=f, flags=FFTW.MEASURE)
+            op = Cartesian3DNSE(g, 1000.0; mode=mode, form=f, flags=FFTW.MEASURE)
             op(0.0, base, u, similar(u))                      # cache base flow
             @belapsed $op(0.0, $u, $(similar(u))) samples=15 evals=1
         end

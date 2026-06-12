@@ -1,4 +1,4 @@
-# Advection helpers for 3D Cartesian primitive velocity.
+# Advection helpers for 3D Cartesian velocity.
 #
 # Organised by role: nonlinear, then linearised (forward), then continuous
 # adjoint, then discrete adjoint; within each role, by advection form.
@@ -44,7 +44,7 @@ end
 # NONLINEAR                                                          #
 # ================================================================== #
 # advective: N_i = u_j ∂_j u_i, generic over NCOMP.
-function advection!(out, u, eq::CartesianPrimitiveNSE{3, NCOMP}, ::Advective) where {NCOMP}
+function advection!(out, u, eq::CartesianNSE{3, NCOMP}, ::Advective) where {NCOMP}
     dudx = eq.scache[1]; dudy = eq.scache[2]; dudz = eq.scache[3]
     U    = eq.pcache[1]; dUdx = eq.pcache[2]; dUdy = eq.pcache[3]; dUdz = eq.pcache[4]
 
@@ -58,7 +58,7 @@ function advection!(out, u, eq::CartesianPrimitiveNSE{3, NCOMP}, ::Advective) wh
 end
 
 # divergence: N_i = ∂_j(u_i u_j)
-function advection!(out, u, eq::CartesianPrimitiveNSE{3, 3}, ::Divergence)
+function advection!(out, u, eq::CartesianNSE{3, 3}, ::Divergence)
     sA = eq.scache[1]; sB = eq.scache[2]; t = eq.scache[3][1]
     U  = eq.pcache[1]; P = eq.pcache[2][1]
 
@@ -83,7 +83,7 @@ function advection!(out, u, eq::CartesianPrimitiveNSE{3, 3}, ::Divergence)
 end
 
 # rotational: N = ω×u  (the ∇(½|u|²) gradient is dropped — removed by projection)
-function advection!(out, u, eq::CartesianPrimitiveNSE{3, 3}, ::Rotational)
+function advection!(out, u, eq::CartesianNSE{3, 3}, ::Rotational)
     W  = eq.scache[1]; t = eq.scache[2][1]
     U  = eq.pcache[1]; Om = eq.pcache[2]; C = eq.pcache[3]
 
@@ -99,7 +99,7 @@ end
 # LINEARISED (forward)                                              #
 # ================================================================== #
 # --- base-flow setup (shared by every linearised mode) ---
-function lnse_setup!(u, eq::CartesianPrimitiveNSE{3, NCOMP}, ::Advective) where {NCOMP}
+function lnse_setup!(u, eq::CartesianNSE{3, NCOMP}, ::Advective) where {NCOMP}
     dudx = eq.scache[1]; dudy = eq.scache[2]; dudz = eq.scache[3]
     U    = eq.pcache[1]; dUdy = eq.pcache[3]; dUdz = eq.pcache[4]
     ddx!(dudx, u); ddy!(dudy, u); ddz!(dudz, u)
@@ -108,10 +108,10 @@ function lnse_setup!(u, eq::CartesianPrimitiveNSE{3, NCOMP}, ::Advective) where 
 end
 
 # divergence reuses the advective base-flow caching.
-lnse_setup!(u, eq::CartesianPrimitiveNSE{3, 3}, ::Divergence) = lnse_setup!(u, eq, Advective())
+lnse_setup!(u, eq::CartesianNSE{3, 3}, ::Divergence) = lnse_setup!(u, eq, Advective())
 
 # rotational additionally caches the base vorticity Ω (in pcache[5]).
-function lnse_setup!(u, eq::CartesianPrimitiveNSE{3, 3}, ::Rotational)
+function lnse_setup!(u, eq::CartesianNSE{3, 3}, ::Rotational)
     lnse_setup!(u, eq, Advective())
     W  = eq.scache[4]; t = eq.scache[2][1]
     Om = eq.pcache[5]
@@ -122,7 +122,7 @@ end
 
 # --- forward advection ---
 # advective: L(v)_i = (U·∇)v_i + (v·∇)U_i, generic over NCOMP.
-function linearised_advection!(out, v, eq::CartesianPrimitiveNSE{3, NCOMP}, ::Advective) where {NCOMP}
+function linearised_advection!(out, v, eq::CartesianNSE{3, NCOMP}, ::Advective) where {NCOMP}
     dudx = eq.scache[1]; dvdx = eq.scache[2]; dvdy = eq.scache[3]; dvdz = eq.scache[4]
     U    = eq.pcache[1]; dUdx = eq.pcache[2]; dUdy = eq.pcache[3]; dUdz = eq.pcache[4]
     V    = eq.pcache[5]; dVdx = eq.pcache[6]; dVdy = eq.pcache[7]; dVdz = eq.pcache[8]
@@ -139,7 +139,7 @@ function linearised_advection!(out, v, eq::CartesianPrimitiveNSE{3, NCOMP}, ::Ad
 end
 
 # divergence: L(v)_i = ∂_j(U_i v_j + U_j v_i)
-function linearised_advection!(out, v, eq::CartesianPrimitiveNSE{3, 3}, ::Divergence)
+function linearised_advection!(out, v, eq::CartesianNSE{3, 3}, ::Divergence)
     sA = eq.scache[1]; sB = eq.scache[2]; t = eq.scache[3][1]
     U  = eq.pcache[1]; V = eq.pcache[5]; P = eq.pcache[6][1]
 
@@ -164,7 +164,7 @@ function linearised_advection!(out, v, eq::CartesianPrimitiveNSE{3, 3}, ::Diverg
 end
 
 # rotational: L(v) = (∇×v)×U + Ω×v
-function linearised_advection!(out, v, eq::CartesianPrimitiveNSE{3, 3}, ::Rotational)
+function linearised_advection!(out, v, eq::CartesianNSE{3, 3}, ::Rotational)
     Wv = eq.scache[1]; t = eq.scache[2][1]
     U  = eq.pcache[1]; Om  = eq.pcache[5]
     V  = eq.pcache[6]; OmV = eq.pcache[7]; C = eq.pcache[8]
@@ -185,7 +185,7 @@ end
 # ================================================================== #
 # advective: +(U·∇)w − Σ_i w_i ∇U_i. The cross-gradient sum runs over all NCOMP
 # components but only contributes to the NDIM velocity adjoint components.
-function adjoint_advection!(out, v, eq::CartesianPrimitiveNSE{3, NCOMP}, ::Advective, ::AdjointContinuous) where {NCOMP}
+function adjoint_advection!(out, v, eq::CartesianNSE{3, NCOMP}, ::Advective, ::AdjointContinuous) where {NCOMP}
     dudx = eq.scache[1]; dvdx = eq.scache[2]; dvdy = eq.scache[3]; dvdz = eq.scache[4]
     U    = eq.pcache[1]; dUdx = eq.pcache[2]; dUdy = eq.pcache[3]; dUdz = eq.pcache[4]
     V    = eq.pcache[5]; dVdx = eq.pcache[6]; dVdy = eq.pcache[7]; dVdz = eq.pcache[8]
@@ -207,7 +207,7 @@ function adjoint_advection!(out, v, eq::CartesianPrimitiveNSE{3, NCOMP}, ::Advec
 end
 
 # divergence: +(U·∇)w in conservative form ∂_j(U_j w_i), plus the cross-gradient.
-function adjoint_advection!(out, v, eq::CartesianPrimitiveNSE{3, 3}, ::Divergence, ::AdjointContinuous)
+function adjoint_advection!(out, v, eq::CartesianNSE{3, 3}, ::Divergence, ::AdjointContinuous)
     U    = eq.pcache[1]; dUdx = eq.pcache[2]; dUdy = eq.pcache[3]; dUdz = eq.pcache[4]
     V    = eq.pcache[5]; P    = eq.pcache[6][1]; G = eq.pcache[7]
 
@@ -233,14 +233,14 @@ function adjoint_advection!(out, v, eq::CartesianPrimitiveNSE{3, 3}, ::Divergenc
 end
 
 # rotational has no distinct continuous-adjoint form; reuse the divergence one.
-adjoint_advection!(out, v, eq::CartesianPrimitiveNSE{3, 3}, ::Rotational, ::AdjointContinuous) =
+adjoint_advection!(out, v, eq::CartesianNSE{3, 3}, ::Rotational, ::AdjointContinuous) =
     adjoint_advection!(out, v, eq, Divergence(), AdjointContinuous())
 
 
 # ================================================================== #
 # DISCRETE ADJOINT (advective only; div/rot are a future addition)  #
 # ================================================================== #
-function adjoint_advection!(out, v, eq::CartesianPrimitiveNSE{3, NCOMP}, ::Advective, ::AdjointDiscrete) where {NCOMP}
+function adjoint_advection!(out, v, eq::CartesianNSE{3, NCOMP}, ::Advective, ::AdjointDiscrete) where {NCOMP}
     dudx = eq.scache[1]; u1v = eq.scache[2]; u2v = eq.scache[3]; u3v = eq.scache[4]
     U    = eq.pcache[1]; dUdx = eq.pcache[2]; dUdy = eq.pcache[3]; dUdz = eq.pcache[4]
     V    = eq.pcache[5]; U1V = eq.pcache[6]; U2V = eq.pcache[7]; U3V = eq.pcache[8]

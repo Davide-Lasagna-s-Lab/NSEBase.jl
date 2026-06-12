@@ -111,10 +111,10 @@ construct_equations
 
 ```@docs
 AbstractNSE
-CartesianPrimitiveNSE
-CartesianPrimitive3DNSE
-CartesianPrimitive2DNSE
-CartesianPrimitive2D3CNSE
+CartesianNSE
+Cartesian3DNSE
+Cartesian2DNSE
+Cartesian2D3CNSE
 ProjectedNSE
 ```
 

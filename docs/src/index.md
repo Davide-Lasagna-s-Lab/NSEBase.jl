@@ -11,7 +11,7 @@ for Navier-Stokes solvers targeting wall-bounded flows.  It defines:
 - **spectral derivative operators** and a Laplacian;
 - **Galerkin projection** onto arbitrary bases;
 - **continuous phase shifts**, inner products, norms;
-- **concrete Cartesian primitive-variable NSE and LNSE operators** (3-D and 2-D),
+- **concrete Cartesian NSE and LNSE operators** (3-D and 2-D),
   with forward, continuous-adjoint, and discrete-adjoint modes; and
 - a `construct_equations` factory that wires all of the above together into a
   ready-to-use `ProjectedNSE` callable.

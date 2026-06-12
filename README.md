@@ -3,7 +3,7 @@
 **NSEBase** is a Julia package that provides the shared spectral-field infrastructure
 for Navier-Stokes solvers targeting wall-bounded flows.  It defines the grid
 interface, all field types, FFT transforms, spectral derivative operators,
-Galerkin projection utilities, and concrete Cartesian primitive-variable NSE
+Galerkin projection utilities, and concrete Cartesian NSE
 operators.  Downstream packages (e.g. *ChannelFlow.jl*) contribute a concrete
 `AbstractGrid` subtype and obtain a fully-featured, allocation-free spectral
 solver without reimplementing any of the above.

@@ -4,7 +4,7 @@
 # Each resolves its direction to a compile-time `Val{STORAGE_DIM}` via
 # `physical_to_storage_dim` and delegates to `dd!(out, u, ::Val{STORAGE_DIM})`.
 #
-# `dd!(out, u, ::Val{STORAGE_DIM})` is the core primitive, implemented with
+# `dd!(out, u, ::Val{STORAGE_DIM})` is the core derivative kernel, implemented with
 # CartesianIndices loops.  For the rfft dimension all stored wavenumbers are
 # non-negative so a single loop over the full array suffices.  For signed-FFT
 # dimensions the index range is split into a positive block [1:(N÷2)+1] and a
@@ -30,7 +30,7 @@
 
 Differentiate `u` along the named physical direction, storing the result in
 `out`. Each wrapper resolves its direction to a `Val{STORAGE_DIM}` at the
-call site and delegates to the low-level [`dd!`](@ref)`(out, u, ::Val)` primitive.
+call site and delegates to the low-level [`dd!`](@ref)`(out, u, ::Val)` kernel.
 
 For an absent direction (e.g. `:z` on a 2D grid) the call is a compile-time no-op.
 """

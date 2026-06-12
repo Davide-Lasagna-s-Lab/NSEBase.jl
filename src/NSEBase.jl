@@ -1,6 +1,6 @@
 module NSEBase
 
-# TODO: add benchmark scripts, profile the cartesian primitive NSE and LNSE implementations
+# TODO: add benchmark scripts, profile the Cartesian NSE and LNSE implementations
 
 using LinearAlgebra, FFTW, JLD2
 
@@ -27,8 +27,8 @@ export shift!, shift, normdiff, minnormdiff
 export save_grid, load_grid, save_field, load_field
 export FarazmandWeight
 export AdvectionForm, Advective, Divergence, Rotational
-export AbstractNSE, CartesianPrimitiveNSE
-export CartesianPrimitive2DNSE, CartesianPrimitive2D3CNSE, CartesianPrimitive3DNSE
+export AbstractNSE, CartesianNSE
+export Cartesian2DNSE, Cartesian2D3CNSE, Cartesian3DNSE
 export Mode, NonLinear, Forward, AdjointContinuous, AdjointDiscrete
 export NoForce, CompoundForcing, BuoyancyForce
 export construct_equations
@@ -52,10 +52,10 @@ include("io.jl")
 include("equations/types.jl")
 include("equations/forcings.jl")
 include("equations/abstractnse.jl")
-include("equations/cartesianprimitive/nse.jl")
-include("equations/cartesianprimitive/advection_2d.jl")
-include("equations/cartesianprimitive/advection_2d3c.jl")
-include("equations/cartesianprimitive/advection_3d.jl")
+include("equations/cartesian/nse.jl")
+include("equations/cartesian/advection_2d.jl")
+include("equations/cartesian/advection_2d3c.jl")
+include("equations/cartesian/advection_3d.jl")
 include("equations/projectednse.jl")
 
 end

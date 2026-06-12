@@ -113,7 +113,7 @@ shared_nonlinear_operator(::Type{OP}, visc, form, ln, force) where {OP<:Abstract
     throw(ArgumentError("shared nonlinear construction is not implemented for $OP"))
 
 """
-    construct_equations(grid, Re, base, op_type=CartesianPrimitive3DNSE;
+    construct_equations(grid, Re, base, op_type=Cartesian3DNSE;
                         visc=1/Re, form=Advective(), mode=AdjointDiscrete(),
                         force=NoForce(), flags=FFTW.EXHAUSTIVE, dealias=true)
 
@@ -127,7 +127,7 @@ for a per-component diffusivity). `base` is the laminar base flow, one entry per
 component (or `nothing`), passed to [`add_base_flow!`](@ref).
 """
 function construct_equations(grid::AbstractGrid{T}, Re, base,
-                             op_type::Type{<:AbstractNSE}=CartesianPrimitive3DNSE;
+                             op_type::Type{<:AbstractNSE}=Cartesian3DNSE;
                              visc                =inv(convert(T, Re)),
                              form::AdvectionForm =Advective(),
                              mode::Mode          =default_linearised_mode(op_type),
