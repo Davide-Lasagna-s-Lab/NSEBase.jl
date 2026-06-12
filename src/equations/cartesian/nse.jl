@@ -6,14 +6,16 @@
 # public names are *bare* type aliases, which forward both construction and
 # dispatch with no hand-written forwarding methods:
 #
-#   {2,2} planar 2D    {2,3} 2D-3C    {3,3} 3D    {3,4} 3D + scalar (Boussinesq)
+#   {2,2} planar 2D    {2,3} 2D-3C    {3,3} 3D
+#
+# TODO: Revisit buoyancy / passive-scalar coupling as a separate operator design
+# rather than extending the 3D Cartesian velocity operator to `NCOMP == 4`.
 #
 # The call skeletons and the AbstractNSE supertype live in abstractnse.jl; the
 # form-dispatched advection helpers live in advection_*.jl.
 #
 # `visc` is the coefficient that multiplies the Laplacian (ν = 1/Re): a scalar
-# applies uniformly; an NCOMP-tuple gives a per-component diffusivity (e.g. 1/Re
-# for velocity, 1/(Re·Pr) for the Boussinesq temperature).
+# applies uniformly; an NCOMP-tuple gives a per-component diffusivity.
 
 
 """
@@ -25,7 +27,7 @@ geometry, `MODE` selects the equation (`NonLinear`, `Forward`,
 `visc` is the per-component (or scalar) Laplacian coefficient ν = 1/Re.
 
 Build with `CartesianNSE{NDIM,NCOMP}(g, Re; mode, form, …)` or via
-[`construct_equations`](@ref).
+[`ProjectedNSE`](@ref).
 """
 mutable struct CartesianNSE{NDIM, NCOMP, MODE<:Mode, FORM<:AdvectionForm, V, FFT, S, P, BF} <: AbstractNSE{MODE, FORM}
             visc::V
@@ -48,7 +50,7 @@ function CartesianNSE{NDIM, NCOMP}(g::AbstractGrid{T}, Re;
                                             force               =NoForce(),
                                             flags               =FFTW.EXHAUSTIVE,
                                             dealias             =true) where {NDIM, NCOMP, T}
-    ((NDIM == 2 && (NCOMP == 2 || NCOMP == 3)) || (NDIM == 3 && (NCOMP == 3 || NCOMP == 4))) ||
+    ((NDIM == 2 && (NCOMP == 2 || NCOMP == 3)) || (NDIM == 3 && NCOMP == 3)) ||
         throw(ArgumentError("unsupported Cartesian dimensions: NDIM=$NDIM, NCOMP=$NCOMP"))
     # The nonlinear operator needs fewer scratch fields than a linearised one
     # (which also caches base-flow quantities).
@@ -59,14 +61,16 @@ function CartesianNSE{NDIM, NCOMP}(g::AbstractGrid{T}, Re;
     return CartesianNSE{NDIM, NCOMP, typeof(mode), typeof(form)}(visc, plans, scache, pcache, force)
 end
 
+function CartesianNSE{NDIM, NCOMP}(eq::CartesianNSE{NDIM, NCOMP, MODE, FORM};
+                                   mode::Mode          =NonLinear(),
+                                   visc                =eq.visc,
+                                   form::AdvectionForm =FORM(),
+                                   force               =eq.force) where {NDIM, NCOMP, MODE, FORM}
+    return CartesianNSE{NDIM, NCOMP, typeof(mode), typeof(form)}(visc, eq.plans, eq.scache, eq.pcache, force)
+end
+
 
 # --------------------- public aliases -------------------- #
 const Cartesian2DNSE   = CartesianNSE{2, 2}
 const Cartesian2D3CNSE = CartesianNSE{2, 3}
 const Cartesian3DNSE   = CartesianNSE{3, 3}
-
-operator_ncomponents(::Type{<:CartesianNSE{NDIM, NCOMP}}) where {NDIM, NCOMP} = NCOMP
-
-shared_nonlinear_operator(::Type{<:CartesianNSE{NDIM, NCOMP}},
-                          visc, form::FORM, ln, force) where {NDIM, NCOMP, FORM<:AdvectionForm} =
-    CartesianNSE{NDIM, NCOMP, NonLinear, FORM}(visc, ln.plans, ln.scache, ln.pcache, force)

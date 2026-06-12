@@ -101,12 +101,6 @@ FarazmandWeight
 add_base_flow!
 ```
 
-## NSE formulations
-
-```@docs
-construct_equations
-```
-
 ## Operators
 
 ```@docs
@@ -128,7 +122,6 @@ AdjointContinuous
 AdjointDiscrete
 NoForce
 CompoundForcing
-BuoyancyForce
 ```
 
 ## IO

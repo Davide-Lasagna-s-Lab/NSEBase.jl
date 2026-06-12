@@ -7,8 +7,8 @@
 # advection helpers; the surrounding skeleton — viscous term → advection → body
 # force — is inherited from here.
 #
-# `visc` (= ν = 1/Re) may be a scalar (uniform) or an NCOMP-tuple (per-component,
-# e.g. Boussinesq, where the temperature diffuses at 1/(Re·Pr)).
+# `visc` (= ν = 1/Re) may be a scalar (uniform) or an NCOMP-tuple
+# (per-component).
 
 """
     AbstractNSE{MODE<:Mode, FORM<:AdvectionForm}

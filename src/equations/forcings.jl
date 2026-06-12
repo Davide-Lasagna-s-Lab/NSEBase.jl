@@ -33,26 +33,3 @@ CompoundForcing(forces...) = CompoundForcing{length(forces), typeof(forces)}(for
         return out
     end
 end
-
-
-"""
-    BuoyancyForce(Ri, grav, temp)
-
-Boussinesq buoyancy coupling expressed as a body force: the temperature
-component `temp` of the state drives the velocity component `grav` (the gravity
-direction), scaled by the Richardson number `Ri`. This is what makes a `{3,4}`
-velocity+temperature operator a Boussinesq operator — the coupling is a force,
-not part of the advection.
-
-Forward: `out[grav] += Ri·u[temp]`; the (continuous and discrete) adjoint is its
-transpose, `out[temp] += Ri·u[grav]`.
-"""
-struct BuoyancyForce{T}
-      Ri::T
-    grav::Int
-    temp::Int
-end
-
-(f::BuoyancyForce)(out, u, ::Forward) = (out[f.grav] .+= f.Ri .* u[f.temp]; out)
-(f::BuoyancyForce)(out, u, ::Union{AdjointContinuous, AdjointDiscrete}) =
-    (out[f.temp] .+= f.Ri .* u[f.grav]; out)

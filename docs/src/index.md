@@ -13,7 +13,7 @@ for Navier-Stokes solvers targeting wall-bounded flows.  It defines:
 - **continuous phase shifts**, inner products, norms;
 - **concrete Cartesian NSE and LNSE operators** (3-D and 2-D),
   with forward, continuous-adjoint, and discrete-adjoint modes; and
-- a `construct_equations` factory that wires all of the above together into a
+- a `ProjectedNSE` constructor that wires all of the above together into a
   ready-to-use `ProjectedNSE` callable.
 
 Downstream packages (e.g. *ChannelFlow.jl*) only need to supply a concrete grid
@@ -34,7 +34,7 @@ Pkg.add(url = "https://github.com/Davide-Lasagna-s-Lab/NSEBase.jl")
 using NSEBase
 
 # grid is provided by a downstream package (e.g. ChannelFlow.jl)
-obj = construct_equations(grid, Re, (U, nothing, nothing); flags = FFTW.MEASURE)
+obj = ProjectedNSE(grid, Re, (U, nothing, nothing), Cartesian3DNSE; flags = FFTW.MEASURE)
 
 # Galerkin basis and a random coefficient vector
 a   = ProjectedField(grid, randn(ComplexF64, M, Nk), modes)

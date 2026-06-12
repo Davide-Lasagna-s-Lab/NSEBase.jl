@@ -29,9 +29,9 @@ export FarazmandWeight
 export AdvectionForm, Advective, Divergence, Rotational
 export AbstractNSE, CartesianNSE
 export Cartesian2DNSE, Cartesian2D3CNSE, Cartesian3DNSE
+export CylindricalNSE, Cylindrical3DNSE
 export Mode, NonLinear, Forward, AdjointContinuous, AdjointDiscrete
-export NoForce, CompoundForcing, BuoyancyForce
-export construct_equations
+export NoForce, CompoundForcing
 export ProjectedNSE
 
 include("notimplementederror.jl")
@@ -56,6 +56,8 @@ include("equations/cartesian/nse.jl")
 include("equations/cartesian/advection_2d.jl")
 include("equations/cartesian/advection_2d3c.jl")
 include("equations/cartesian/advection_3d.jl")
+include("equations/cylindrical/nse.jl")
+include("equations/cylindrical/advection_3d.jl")
 include("equations/projectednse.jl")
 
 end

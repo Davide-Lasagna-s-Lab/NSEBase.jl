@@ -3,10 +3,7 @@
 # Organised by role: nonlinear, then linearised (forward), then continuous
 # adjoint, then discrete adjoint; within each role, by advection form.
 #
-# The advective form is generic over NCOMP (NCOMP=3 is plain velocity; NCOMP=4
-# also advects a scalar — the Boussinesq temperature — since (u·∇)θ has the same
-# structure as (u·∇)uᵢ). The divergence/rotational forms are velocity-only
-# (NCOMP=3): rotational is `ω×u`, which has no scalar analogue.
+# This file is the 3D velocity case (`CartesianNSE{3,3}`).
 
 
 # ------------------------------------------------------------------ #
@@ -43,14 +40,14 @@ end
 # ================================================================== #
 # NONLINEAR                                                          #
 # ================================================================== #
-# advective: N_i = u_j ∂_j u_i, generic over NCOMP.
-function advection!(out, u, eq::CartesianNSE{3, NCOMP}, ::Advective) where {NCOMP}
+# advective: N_i = u_j ∂_j u_i.
+function advection!(out, u, eq::CartesianNSE{3, 3}, ::Advective)
     dudx = eq.scache[1]; dudy = eq.scache[2]; dudz = eq.scache[3]
     U    = eq.pcache[1]; dUdx = eq.pcache[2]; dUdy = eq.pcache[3]; dUdz = eq.pcache[4]
 
     ddx!(dudx, u); ddy!(dudy, u); ddz!(dudz, u)
     eq.plans(U, u); eq.plans(dUdx, dudx); eq.plans(dUdy, dudy); eq.plans(dUdz, dudz)
-    for n in 1:NCOMP
+    for n in 1:3
         @. dUdx[n] = -U[1]*dUdx[n] - U[2]*dUdy[n] - U[3]*dUdz[n]
     end
     eq.plans(out, dUdx, add=true)
@@ -99,7 +96,7 @@ end
 # LINEARISED (forward)                                              #
 # ================================================================== #
 # --- base-flow setup (shared by every linearised mode) ---
-function lnse_setup!(u, eq::CartesianNSE{3, NCOMP}, ::Advective) where {NCOMP}
+function lnse_setup!(u, eq::CartesianNSE{3, 3}, ::Advective)
     dudx = eq.scache[1]; dudy = eq.scache[2]; dudz = eq.scache[3]
     U    = eq.pcache[1]; dUdy = eq.pcache[3]; dUdz = eq.pcache[4]
     ddx!(dudx, u); ddy!(dudy, u); ddz!(dudz, u)
@@ -121,8 +118,8 @@ function lnse_setup!(u, eq::CartesianNSE{3, 3}, ::Rotational)
 end
 
 # --- forward advection ---
-# advective: L(v)_i = (U·∇)v_i + (v·∇)U_i, generic over NCOMP.
-function linearised_advection!(out, v, eq::CartesianNSE{3, NCOMP}, ::Advective) where {NCOMP}
+# advective: L(v)_i = (U·∇)v_i + (v·∇)U_i.
+function linearised_advection!(out, v, eq::CartesianNSE{3, 3}, ::Advective)
     dudx = eq.scache[1]; dvdx = eq.scache[2]; dvdy = eq.scache[3]; dvdz = eq.scache[4]
     U    = eq.pcache[1]; dUdx = eq.pcache[2]; dUdy = eq.pcache[3]; dUdz = eq.pcache[4]
     V    = eq.pcache[5]; dVdx = eq.pcache[6]; dVdy = eq.pcache[7]; dVdz = eq.pcache[8]
@@ -130,7 +127,7 @@ function linearised_advection!(out, v, eq::CartesianNSE{3, NCOMP}, ::Advective) 
     ddx!(dvdx, v); ddy!(dvdy, v); ddz!(dvdz, v)
     eq.plans(V, v); eq.plans(dUdx, dudx)
     eq.plans(dVdx, dvdx); eq.plans(dVdy, dvdy); eq.plans(dVdz, dvdz)
-    for n in 1:NCOMP
+    for n in 1:3
         @. dVdx[n]  = -U[1]*dVdx[n] - U[2]*dVdy[n] - U[3]*dVdz[n]
         @. dVdx[n] -=  V[1]*dUdx[n] + V[2]*dUdy[n] + V[3]*dUdz[n]
     end
@@ -183,9 +180,8 @@ end
 # ================================================================== #
 # CONTINUOUS ADJOINT                                                 #
 # ================================================================== #
-# advective: +(U·∇)w − Σ_i w_i ∇U_i. The cross-gradient sum runs over all NCOMP
-# components but only contributes to the NDIM velocity adjoint components.
-function adjoint_advection!(out, v, eq::CartesianNSE{3, NCOMP}, ::Advective, ::AdjointContinuous) where {NCOMP}
+# advective: +(U·∇)w − Σ_i w_i ∇U_i.
+function adjoint_advection!(out, v, eq::CartesianNSE{3, 3}, ::Advective, ::AdjointContinuous)
     dudx = eq.scache[1]; dvdx = eq.scache[2]; dvdy = eq.scache[3]; dvdz = eq.scache[4]
     U    = eq.pcache[1]; dUdx = eq.pcache[2]; dUdy = eq.pcache[3]; dUdz = eq.pcache[4]
     V    = eq.pcache[5]; dVdx = eq.pcache[6]; dVdy = eq.pcache[7]; dVdz = eq.pcache[8]
@@ -193,11 +189,11 @@ function adjoint_advection!(out, v, eq::CartesianNSE{3, NCOMP}, ::Advective, ::A
     ddx!(dvdx, v); ddy!(dvdy, v); ddz!(dvdz, v)
     eq.plans(V, v); eq.plans(dUdx, dudx)
     eq.plans(dVdx, dvdx); eq.plans(dVdy, dvdy); eq.plans(dVdz, dvdz)
-    for n in 1:NCOMP
+    for n in 1:3
         @. dVdx[n] = U[1]*dVdx[n] + U[2]*dVdy[n] + U[3]*dVdz[n]
     end
     dVdz .= 0
-    for i in 1:NCOMP
+    for i in 1:3
         @. dVdz[1] -= V[i]*dUdx[i]
         @. dVdz[2] -= V[i]*dUdy[i]
         @. dVdz[3] -= V[i]*dUdz[i]
@@ -240,13 +236,13 @@ adjoint_advection!(out, v, eq::CartesianNSE{3, 3}, ::Rotational, ::AdjointContin
 # ================================================================== #
 # DISCRETE ADJOINT (advective only; div/rot are a future addition)  #
 # ================================================================== #
-function adjoint_advection!(out, v, eq::CartesianNSE{3, NCOMP}, ::Advective, ::AdjointDiscrete) where {NCOMP}
+function adjoint_advection!(out, v, eq::CartesianNSE{3, 3}, ::Advective, ::AdjointDiscrete)
     dudx = eq.scache[1]; u1v = eq.scache[2]; u2v = eq.scache[3]; u3v = eq.scache[4]
     U    = eq.pcache[1]; dUdx = eq.pcache[2]; dUdy = eq.pcache[3]; dUdz = eq.pcache[4]
     V    = eq.pcache[5]; U1V = eq.pcache[6]; U2V = eq.pcache[7]; U3V = eq.pcache[8]
 
     eq.plans(V, v)
-    for n in 1:NCOMP
+    for n in 1:3
         @. U1V[n] = U[1]*V[n]
         @. U2V[n] = U[2]*V[n]
         @. U3V[n] = U[3]*V[n]
@@ -254,13 +250,13 @@ function adjoint_advection!(out, v, eq::CartesianNSE{3, NCOMP}, ::Advective, ::A
     eq.plans(u1v, U1V); eq.plans(u2v, U2V); eq.plans(u3v, U3V)
 
     eq.plans(dUdx, dudx)
-    for n in 1:NCOMP
+    for n in 1:3
         out[n] .-= ddx!(dudx[1], u1v[n], adjoint=true) .+
                    ddy!(dudx[2], u2v[n], adjoint=true) .+
                    ddz!(dudx[3], u3v[n], adjoint=true)
     end
     U1V .= 0
-    for n in 1:NCOMP
+    for n in 1:3
         @. U1V[1] -= V[n]*dUdx[n]
         @. U1V[2] -= V[n]*dUdy[n]
         @. U1V[3] -= V[n]*dUdz[n]

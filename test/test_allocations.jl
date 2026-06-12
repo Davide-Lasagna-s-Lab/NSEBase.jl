@@ -371,7 +371,7 @@ end
         (; g) = alloc_polynomial_fixture()
         base = (zeros(size(g, 1)), nothing)
 
-        @test allocs_after_warmup(() -> construct_equations(g, 100.0, base, Cartesian2DNSE; flags=FFTW.ESTIMATE, dealias=false)) > 0
+        @test allocs_after_warmup(() -> ProjectedNSE(g, 100.0, base, Cartesian2DNSE; flags=FFTW.ESTIMATE, dealias=false)) > 0
     end
 
     @testset "src/equations/cartesian/nse.jl" begin
@@ -404,7 +404,7 @@ end
     @testset "src/equations/projectednse.jl" begin
         (; g, modes, a, b) = alloc_projected_2d_fixture()
         base = (zeros(size(g, 1)), nothing)
-        eq = construct_equations(g, 100.0, base, Cartesian2DNSE; flags=FFTW.ESTIMATE, dealias=true)
+        eq = ProjectedNSE(g, 100.0, base, Cartesian2DNSE; flags=FFTW.ESTIMATE, dealias=true)
 
         @test allocs_after_warmup(() -> ProjectedNSE(g, 2, eq.nl, eq.ln, base)) > 0
         if VERSION >= v"1.11"

@@ -19,8 +19,8 @@ full spectral `VectorField`s) with expand/project steps so that the combined
 operator maps `ProjectedField → ProjectedField` without exposing the full
 spectral representation to the caller.
 
-Use [`construct_equations`](@ref) to build a `ProjectedNSE` with correctly
-sized caches and FFTW plans rather than constructing it directly.
+Use `ProjectedNSE(grid, Re, base, op_type; kwargs...)` to build this wrapper
+with correctly sized NSE operators, caches, and FFTW plans.
 
 # Fields
 - `nl`: nonlinear NSE operator; called as `nl(t, u, N_u)`
@@ -97,50 +97,42 @@ end
 
 
 # ------------------------------------------------------------------ #
-# construct_equations factory                                        #
+# Constructor                                                        #
 # ------------------------------------------------------------------ #
-# The operator type itself selects the formulation. `construct_equations` asks
-# the operator type for its component count, builds the requested linearised
-# operator on the large cache pool, then asks the type to rebuild a nonlinear
-# operator sharing those plans and caches.
-
-operator_ncomponents(::Type{OP}) where {OP<:AbstractNSE} =
-    throw(ArgumentError("operator_ncomponents is not implemented for $OP"))
-
-default_linearised_mode(::Type{OP}) where {OP<:AbstractNSE} = AdjointDiscrete()
-
-shared_nonlinear_operator(::Type{OP}, visc, form, ln, force) where {OP<:AbstractNSE} =
-    throw(ArgumentError("shared nonlinear construction is not implemented for $OP"))
+# The operator type itself selects the formulation. The constructor builds the
+# requested linearised operator on the large cache pool, then rebuilds the same
+# operator type from that instance with `mode=NonLinear()` so the nonlinear and
+# linearised operators share plans and caches.
 
 """
-    construct_equations(grid, Re, base, op_type=Cartesian3DNSE;
-                        visc=1/Re, form=Advective(), mode=AdjointDiscrete(),
-                        force=NoForce(), flags=FFTW.EXHAUSTIVE, dealias=true)
+    ProjectedNSE(grid, Re, base, op_type;
+                 visc=1/Re, form=Advective(), adjoint_mode=AdjointDiscrete(),
+                 force=NoForce(), flags=FFTW.EXHAUSTIVE, dealias=true)
 
-Build a [`ProjectedNSE`](@ref) for an NSE operator type. The operator type fixes
-the component count and coordinate system. The nonlinear and linearised
-operators share one cache pool (sized for the linearised operator).
+Build a projected NSE wrapper for an NSE operator type. The operator type fixes
+the component count and coordinate system. The nonlinear and linearised operators
+share one cache pool (sized for the linearised operator).
 
-`form` selects the advection form; `mode` the adjoint flavour of the linearised
-operator; `visc` the Laplacian coefficient (scalar `ν=1/Re`, or an `NCOMP`-tuple
-for a per-component diffusivity). `base` is the laminar base flow, one entry per
-component (or `nothing`), passed to [`add_base_flow!`](@ref).
+`form` selects the advection form; `adjoint_mode` selects the adjoint flavour of
+the linearised operator; `visc` the Laplacian coefficient. `base` is the laminar
+base flow, one entry per component (or `nothing`), passed to
+[`add_base_flow!`](@ref).
 """
-function construct_equations(grid::AbstractGrid{T}, Re, base,
-                             op_type::Type{<:AbstractNSE}=Cartesian3DNSE;
-                             visc                =inv(convert(T, Re)),
-                             form::AdvectionForm =Advective(),
-                             mode::Mode          =default_linearised_mode(op_type),
-                             force               =NoForce(),
-                             flags               =FFTW.EXHAUSTIVE,
-                             dealias             =true) where {T}
-    mode isa LinearisedMode ||
-        throw(ArgumentError("projected linearised operator has to use a linearised mode"))
+function ProjectedNSE(grid::AbstractGrid{T}, Re, base,
+                      op_type::Type{<:AbstractNSE};
+                      visc                =inv(convert(T, Re)),
+                      form::AdvectionForm =Rotational(),
+                      adjoint_mode::Mode  =AdjointDiscrete(),
+                      force               =NoForce(),
+                      flags               =FFTW.EXHAUSTIVE,
+                      dealias             =true) where {T}
+    adjoint_mode isa AdjointMode ||
+        throw(ArgumentError("ProjectedNSE adjoint_mode has to be an adjoint mode"))
     # build the linearised operator (allocates the larger, shared cache pool),
     # then build the nonlinear operator sharing its plans and caches.
-    ln = op_type(grid, Re; mode=mode, visc=visc, form=form,
+    ln = op_type(grid, Re; mode=adjoint_mode, visc=visc, form=form,
                  force=force, flags=flags, dealias=dealias)
-    nl = shared_nonlinear_operator(op_type, visc, form, ln, force)
-    NCOMP = operator_ncomponents(op_type)
+    nl = op_type(ln; mode=NonLinear(), visc=visc, form=form, force=force)
+    NCOMP = length(first(ln.scache))
     return ProjectedNSE(grid, NCOMP, nl, ln, base)
 end

@@ -72,10 +72,8 @@ const AdjointMode = Union{AdjointContinuous, AdjointDiscrete}
 #   Divergence   N_i = ∂_j (u_i u_j)
 #   Rotational   N   = ω × u  (+ ∇(½|u|²) dropped)
 #
-# The divergence form also applies to passively-advected scalars because
-# ∂_j u_j = 0. The rotational form applies only to velocity self-advection;
-# scalar / out-of-plane components fall back to divergence treatment inside the
-# rotational advection helper.
+# The rotational form applies only to velocity self-advection. In the 2D-3C
+# case, the out-of-plane component is still transported conservatively.
 """
     AdvectionForm
 
@@ -102,7 +100,7 @@ Conservative form of the advection term, `N_i = ∂_j(u_i u_j)`. The velocity is
 transformed to physical space once, the quadratic products are formed there and
 transformed back, and the divergence is taken with the cheap spectral / FD
 derivatives. Fewer transforms than [`Advective`](@ref); valid for
-divergence-free fields and for passively-advected scalars.
+divergence-free fields.
 """
 struct Divergence <: AdvectionForm end
 
@@ -112,7 +110,7 @@ struct Divergence <: AdvectionForm end
 Rotational (Lamb) form of the advection term, `N = ω × u`, using the identity
 `(u·∇)u = ω × u + ∇(½|u|²)` and dropping the gradient term (removed by the
 projection). Fewer transforms than [`Advective`](@ref). Applies to the velocity
-self-advection block only; scalar / out-of-plane components use the divergence
-treatment.
+self-advection block only; the 2D-3C out-of-plane component uses conservative
+transport.
 """
 struct Rotational <: AdvectionForm end

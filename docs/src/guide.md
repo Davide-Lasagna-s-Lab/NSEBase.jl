@@ -248,9 +248,10 @@ Each operator is parameterised on a `MODE <: Mode` tag and an advection
 
 ---
 
-## `construct_equations` and `ProjectedNSE`
+## `ProjectedNSE`
 
-`construct_equations` is the recommended entry point for building a solver.  It:
+`ProjectedNSE(grid, Re, base, op_type; kwargs...)` is the recommended entry
+point for building a solver. It:
 
 1. Allocates two shared scratch pools — `scache` (spectral) and `pcache`
    (physical), sized for the linearised operator.

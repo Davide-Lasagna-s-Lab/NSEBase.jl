@@ -24,7 +24,7 @@ using NSEBase
 
 # A concrete grid is provided by a downstream package, e.g. ChannelFlow.jl.
 # Assuming `grid` is already constructed and `U` holds the laminar base flow:
-obj = construct_equations(grid, Re, (U, nothing, nothing); flags = FFTW.MEASURE)
+obj = ProjectedNSE(grid, Re, (U, nothing, nothing), Cartesian3DNSE; flags = FFTW.MEASURE)
 
 # Evaluate the nonlinear NSE residual projected onto a Galerkin basis
 a   = ProjectedField(grid, randn(ComplexF64, M, Nk), modes)
