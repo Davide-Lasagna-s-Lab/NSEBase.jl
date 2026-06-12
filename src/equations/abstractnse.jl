@@ -56,14 +56,10 @@ function (eq::AbstractNSE{Forward, FORM})(::Real, v, out) where {FORM}
     return out
 end
 
-adjoint_diffusion_flag(::AdjointContinuous) = false
-adjoint_diffusion_flag(::AdjointDiscrete) = true
-
 function (eq::AbstractNSE{MODE, FORM})(::Real, v, out) where {MODE<:AdjointMode, FORM}
-    mode = MODE()
-    diffusion!(out, v, eq; adjoint=adjoint_diffusion_flag(mode))
-    adjoint_advection!(out, v, eq, FORM(), mode)
-    eq.force(out, v, mode)
+    diffusion!(out, v, eq; adjoint=MODE() isa AdjointDiscrete ? true : false)
+    adjoint_advection!(out, v, eq, FORM(), MODE())
+    eq.force(out, v, MODE())
     return out
 end
 
