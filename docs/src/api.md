@@ -106,6 +106,7 @@ add_base_flow!
 ```@docs
 CartesianPrimitive3D
 CartesianPrimitive2D
+CartesianPrimitive2D3C
 PolarPrimitive
 ncomp
 cache_length
@@ -117,10 +118,16 @@ construct_equations
 ## Operators
 
 ```@docs
+AbstractNSE
+AbstractLNSE
+CartesianPrimitiveNSE
+CartesianPrimitiveLNSE
 CartesianPrimitive3DNSE
 CartesianPrimitive3DLNSE
 CartesianPrimitive2DNSE
 CartesianPrimitive2DLNSE
+CartesianPrimitive2D3CNSE
+CartesianPrimitive2D3CLNSE
 ProjectedNSE
 ```
 

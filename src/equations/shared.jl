@@ -132,7 +132,8 @@ linearised_operator(::PolarPrimitive, ::M) where {M}     = throw(error("polar pr
 
 """
     construct_equations(grid::AbstractGrid, Re, base, formulation=CartesianPrimitive3D();
-                        force=NoForce(), mode=AdjointDiscrete(), flags=FFTW.EXHAUSTIVE,
+                        force=NoForce(), mode=AdjointDiscrete(),
+                        form=Advective(), flags=FFTW.EXHAUSTIVE,
                         dealias=true)
 
 Construct a [`ProjectedNSE`](@ref) from a grid, Reynolds number, and NSE
@@ -152,6 +153,10 @@ formulation tag, pre-allocating all operator caches and FFTW plans.
   Defaults to [`NoForce`](@ref).
 - `mode`: adjoint mode; must be [`AdjointDiscrete`](@ref) or
   [`AdjointContinuous`](@ref). Defaults to `AdjointDiscrete()`.
+- `form`: advection form tag. Defaults to [`Advective`](@ref). The bundled
+  velocity-only Cartesian formulations support [`Advective`](@ref),
+  [`Divergence`](@ref), and [`Rotational`](@ref); unsupported formulations
+  accept only the default advective form.
 - `flags`: FFTW planner flags, e.g. `FFTW.MEASURE` or `FFTW.ESTIMATE` to
   reduce plan-construction time during development. Defaults to `FFTW.EXHAUSTIVE`.
 - `dealias`: if `true`, physical-space caches use the 3/2-rule padded grid.
@@ -181,39 +186,41 @@ function construct_equations(grid::AbstractGrid{T},
                       formulation=CartesianPrimitive3D();
                             force=NoForce(),
                              mode=AdjointDiscrete(),
-                            flags=FFTW.EXHAUSTIVE,
-                          dealias=true) where {T}
-    mode isa Union{AdjointContinuous, AdjointDiscrete} || throw(ArgumentError("linearised operator has to operate in adjoint mode"))
-    plans = FFTPlans(grid; flags=flags)
-    scache = [VectorField([FTField(grid)                  for _ in 1:ncomp(formulation)]...) for _ in 1:cache_length(formulation, FTField)]
-    pcache = [VectorField([  Field(grid; dealias=dealias) for _ in 1:ncomp(formulation)]...) for _ in 1:cache_length(formulation, Field)]
-    nl = nonlinear_operator(formulation)(T(Re), plans, scache, pcache, force)
-    ln = linearised_operator(formulation, mode)(T(Re), plans, scache, pcache, force)
-    return ProjectedNSE(grid, ncomp(formulation), nl, ln, base)
-end
-
-"""
-    construct_equations(grid, Re, base, ::CartesianPrimitive3D; form=Advective(), kwargs...)
-
-Three-component Cartesian build with a selectable advection [`AdvectionForm`](@ref).
-The `form` is shared by the nonlinear and linearised operators (which share their
-cache pool). Passing the `CartesianPrimitive3D()` tag explicitly is what enables
-the `form` keyword; the default keeps the advective form. The discrete-adjoint
-mode supports the advective form only (divergence/rotational are Phase B).
-"""
-function construct_equations(grid::AbstractGrid{T},
-                               Re,
-                             base,
-                                 ::CartesianPrimitive3D;
                              form::AdvectionForm=Advective(),
-                            force=NoForce(),
-                             mode=AdjointDiscrete(),
                             flags=FFTW.EXHAUSTIVE,
                           dealias=true) where {T}
     mode isa Union{AdjointContinuous, AdjointDiscrete} || throw(ArgumentError("linearised operator has to operate in adjoint mode"))
     plans          = FFTPlans(grid; flags=flags)
-    scache, pcache = alloc_caches(grid, 3, 4, 8; dealias=dealias)
-    nl = CartesianPrimitive3DNSE{typeof(form)}(T(Re), plans, scache, pcache, force)
-    ln = CartesianPrimitive3DLNSE{typeof(mode), typeof(form)}(T(Re), plans, scache, pcache, force)
-    return ProjectedNSE(grid, 3, nl, ln, base)
+    scache, pcache = alloc_caches(grid, ncomp(formulation),
+                                  cache_length(formulation, FTField),
+                                  cache_length(formulation, Field);
+                                  dealias=dealias)
+    nl = _construct_nonlinear_operator(formulation, typeof(form), T(Re), plans, scache, pcache, force)
+    ln = _construct_linearised_operator(formulation, mode, typeof(form), T(Re), plans, scache, pcache, force)
+    return ProjectedNSE(grid, ncomp(formulation), nl, ln, base)
 end
+
+function _construct_nonlinear_operator(formulation, ::Type{FORM}, Re, plans, scache, pcache, force) where {FORM<:AdvectionForm}
+    FORM === Advective && return nonlinear_operator(formulation)(Re, plans, scache, pcache, force)
+    throw(ArgumentError("$(typeof(formulation)) does not support advection form $(FORM)"))
+end
+
+function _construct_linearised_operator(formulation, mode, ::Type{FORM}, Re, plans, scache, pcache, force) where {FORM<:AdvectionForm}
+    FORM === Advective && return linearised_operator(formulation, mode)(Re, plans, scache, pcache, force)
+    throw(ArgumentError("$(typeof(formulation)) does not support advection form $(FORM)"))
+end
+
+_construct_nonlinear_operator( ::CartesianPrimitive3D, ::Type{FORM}, Re, plans, scache, pcache, force) where {FORM<:AdvectionForm} =
+    CartesianPrimitive3DNSE{FORM}(Re, plans, scache, pcache, force)
+_construct_linearised_operator(::CartesianPrimitive3D, mode, ::Type{FORM}, Re, plans, scache, pcache, force) where {FORM<:AdvectionForm} =
+    CartesianPrimitive3DLNSE{typeof(mode), FORM}(Re, plans, scache, pcache, force)
+
+_construct_nonlinear_operator( ::CartesianPrimitive2D, ::Type{FORM}, Re, plans, scache, pcache, force) where {FORM<:AdvectionForm} =
+    CartesianPrimitive2DNSE{FORM}(Re, plans, scache, pcache, force)
+_construct_linearised_operator(::CartesianPrimitive2D, mode, ::Type{FORM}, Re, plans, scache, pcache, force) where {FORM<:AdvectionForm} =
+    CartesianPrimitive2DLNSE{typeof(mode), FORM}(Re, plans, scache, pcache, force)
+
+_construct_nonlinear_operator( ::CartesianPrimitive2D3C, ::Type{FORM}, Re, plans, scache, pcache, force) where {FORM<:AdvectionForm} =
+    CartesianPrimitive2D3CNSE{FORM}(Re, plans, scache, pcache, force)
+_construct_linearised_operator(::CartesianPrimitive2D3C, mode, ::Type{FORM}, Re, plans, scache, pcache, force) where {FORM<:AdvectionForm} =
+    CartesianPrimitive2D3CLNSE{typeof(mode), FORM}(Re, plans, scache, pcache, force)

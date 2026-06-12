@@ -224,15 +224,19 @@ Downstream grids must implement `growto` to support de-aliasing.
 
 ## NSE formulations
 
-NSEBase includes two complete Cartesian primitive-variable formulations:
+NSEBase includes three velocity-only Cartesian primitive-variable formulations.
+They are implemented by the generic operator families
+`CartesianPrimitiveNSE{NDIM,NCOMP}` and `CartesianPrimitiveLNSE{NDIM,NCOMP}`,
+with the older concrete names kept as compatibility aliases:
 
 | Tag struct | Components | Operators |
 |-----------|-----------|----------|
-| `CartesianPrimitive3D()` | u, v, w (3 components) | `CartesianPrimitive3DNSE`, `CartesianPrimitive3DLNSE{MODE}` |
 | `CartesianPrimitive2D()` | u, v (2 components) | `CartesianPrimitive2DNSE`, `CartesianPrimitive2DLNSE{MODE}` |
+| `CartesianPrimitive2D3C()` | u, v, w on a 2D grid | `CartesianPrimitive2D3CNSE`, `CartesianPrimitive2D3CLNSE{MODE}` |
+| `CartesianPrimitive3D()` | u, v, w (3 components) | `CartesianPrimitive3DNSE`, `CartesianPrimitive3DLNSE{MODE}` |
 
-Each linearised operator `CartesianPrimitive3DLNSE{MODE}` is parameterised on a
-`MODE <: Mode` tag:
+Each linearised operator `CartesianPrimitiveLNSE{NDIM,NCOMP,MODE,FORM}` is
+parameterised on a `MODE <: Mode` tag and an advection `FORM <: AdvectionForm`:
 
 | `MODE` | Operator computed |
 |--------|------------------|
