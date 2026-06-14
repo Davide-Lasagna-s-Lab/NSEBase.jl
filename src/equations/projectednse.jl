@@ -29,8 +29,8 @@ with correctly sized NSE operators, caches, and FFTW plans.
 - `cache1`, `cache2`: pre-allocated full spectral `VectorField` workspaces
 """
 struct ProjectedNSE{EQ, LEQ, B, N, S1, S2}
-        nl::EQ
-        ln::LEQ
+        nl::EQ  # TODO: these have to be abstractnse objects.. tighten the interface
+        ln::LEQ # TODO: these have to be abstractnse objects.. tighten the interface
       base::B
     cache1::VectorField{N, S1}
     cache2::VectorField{N, S2}
@@ -121,7 +121,7 @@ base flow, one entry per component (or `nothing`), passed to
 function ProjectedNSE(grid::AbstractGrid{T}, Re, base,
                       op_type::Type{<:AbstractNSE};
                       visc                =inv(convert(T, Re)),
-                      form::AdvectionForm =Rotational(),
+                      form::AdvectionForm =Advective(),
                       adjoint_mode::Mode  =AdjointDiscrete(),
                       force               =NoForce(),
                       flags               =FFTW.EXHAUSTIVE,
@@ -133,6 +133,5 @@ function ProjectedNSE(grid::AbstractGrid{T}, Re, base,
     ln = op_type(grid, Re; mode=adjoint_mode, visc=visc, form=form,
                  force=force, flags=flags, dealias=dealias)
     nl = op_type(ln; mode=NonLinear(), visc=visc, form=form, force=force)
-    NCOMP = length(first(ln.scache))
-    return ProjectedNSE(grid, NCOMP, nl, ln, base)
+    return ProjectedNSE(grid, length(first(ln.scache)), nl, ln, base)
 end

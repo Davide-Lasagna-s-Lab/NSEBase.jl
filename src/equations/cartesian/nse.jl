@@ -43,13 +43,14 @@ mutable struct CartesianNSE{NDIM, NCOMP, MODE<:Mode, FORM<:AdvectionForm, V, FFT
         new{NDIM, NCOMP, MODE, FORM, V, FFT, S, P, BF}(visc, plans, scache, pcache, force)
 end
 
-function CartesianNSE{NDIM, NCOMP}(g::AbstractGrid{T}, Re;
-                                            mode::Mode          =NonLinear(),
-                                            visc                =inv(convert(T, Re)),
-                                            form::AdvectionForm =Advective(),
-                                            force               =NoForce(),
-                                            flags               =FFTW.EXHAUSTIVE,
-                                            dealias             =true) where {NDIM, NCOMP, T}
+function CartesianNSE{NDIM, NCOMP}(g::AbstractGrid{T}, 
+                                   Re::Number;
+                                   mode::Mode          =NonLinear(),
+                                   visc                =inv(convert(T, Re)),
+                                   form::AdvectionForm =Advective(),
+                                   force               =NoForce(),
+                                   flags               =FFTW.EXHAUSTIVE,
+                                   dealias             =true) where {NDIM, NCOMP, T}
     ((NDIM == 2 && (NCOMP == 2 || NCOMP == 3)) || (NDIM == 3 && NCOMP == 3)) ||
         throw(ArgumentError("unsupported Cartesian dimensions: NDIM=$NDIM, NCOMP=$NCOMP"))
     # The nonlinear operator needs fewer scratch fields than a linearised one
