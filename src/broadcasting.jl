@@ -51,6 +51,43 @@ find_field(::Any, rest)               = find_field(rest)
 find_field(x)                         = x
 find_field(::Tuple{})                 = nothing
 
+
+"""
+    copyto!(dest::Union{FTField, Field}, bc::Broadcast.Broadcasted{ArrayStyle{Union{FTField, Field}}}) -> dest
+
+Copy the result of an `FTField` or `Field` broadcast expression into `dest`.
+
+Lowers the broadcast expression to the parent data of the `FTField` or `Field`
+such that the correct broadcast machinery is used (such as when using CUDA).
+"""
+function Base.copyto!(dest::Union{FTField, Field}, bc::Broadcast.Broadcasted{Broadcast.ArrayStyle{F}}) where {F<:Union{FTField, Field}}
+    copyto!(parent(dest), unpack_data(bc))
+    return dest
+end
+
+"""
+    unpack_data(bc) -> Broadcasted or scalar
+
+Replace every `FTField` or `Field` node in the broadcast argument tree `bc` with
+its parent data, leaving scalars and other array types unchanged.
+"""
+@inline unpack_data(bc::Broadcast.Broadcasted) = Broadcast.Broadcasted(bc.f, _unpack_data(bc.args))
+@inline unpack_data(x::FTField)                = parent(x)
+@inline unpack_data(x::Field)                  = parent(x)
+@inline unpack_data(x::Any)                    = x
+
+"""
+    _unpack_data(args::Tuple) -> Tuple
+
+Recursively apply [`unpack_data`](@ref) to every element of the argument tuple,
+returning a new tuple of the same length with `FTField` or `Field` nodes replaced
+by their parent data.
+"""
+@inline _unpack_data(args::Tuple)              = (unpack_data(args[1]), _unpack_data(Base.tail(args))...)
+@inline _unpack_data(args::Tuple{Any})         = (unpack_data(args[1]),)
+@inline _unpack_data(::Tuple{})                = ()
+
+
 """
     copy(bc::Broadcast.Broadcasted{ArrayStyle{VectorField{N}}}) -> VectorField
 
@@ -97,6 +134,7 @@ function Base.copyto!(dest::VectorField{N}, bc::Broadcast.Broadcasted{<:Broadcas
     end
     return dest
 end
+Base.fill!(dest::Union{FTField, Field}, x) = (fill!(parent(dest), x); return dest)
 
 """
     unpack(bc, n) -> Broadcasted or scalar
@@ -113,7 +151,7 @@ new `Broadcast.Broadcasted` value that can be materialised into a scalar field.
     _unpack(n, args::Tuple) -> Tuple
 
 Recursively apply [`unpack`](@ref) to every element of the argument tuple,
-returning a new tuple of the same length with VectorField nodes replaced by
+returning a new tuple of the same length with `VectorField` nodes replaced by
 their `n`-th components.
 """
 @inline _unpack(n, args::Tuple) = (unpack(args[1], n), _unpack(n, Base.tail(args))...)
