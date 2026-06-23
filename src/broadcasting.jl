@@ -24,7 +24,7 @@ Union of all concrete field types that share a common BroadcastStyle override:
 Used internally by the broadcasting hooks so that a single `BroadcastStyle`
 registration covers all field types.
 """
-const FieldType = Union{FTField,Field,VectorField,ProjectedField}
+const FieldType = Union{FTField, Field, VectorField, ProjectedField}
 
 # Register a distinct BroadcastStyle for every FieldType subtype.  This is
 # necessary so that Julia's broadcast fusion knows to call our custom `copy` and
@@ -60,7 +60,7 @@ Copy the result of an `FTField` or `Field` broadcast expression into `dest`.
 Lowers the broadcast expression to the parent data of the `FTField` or `Field`
 such that the correct broadcast machinery is used (such as when using CUDA).
 """
-function Base.copyto!(dest::Union{FTField, Field}, bc::Broadcast.Broadcasted{Broadcast.ArrayStyle{F}}) where {F<:Union{FTField, Field}}
+function Base.copyto!(dest::FieldType, bc::Broadcast.Broadcasted{Broadcast.ArrayStyle{F}}) where {F<:FieldType}
     copyto!(parent(dest), unpack_data(bc))
     return dest
 end
@@ -72,8 +72,7 @@ Replace every `FTField` or `Field` node in the broadcast argument tree `bc` with
 its parent data, leaving scalars and other array types unchanged.
 """
 @inline unpack_data(bc::Broadcast.Broadcasted) = Broadcast.Broadcasted(bc.f, _unpack_data(bc.args))
-@inline unpack_data(x::FTField)                = parent(x)
-@inline unpack_data(x::Field)                  = parent(x)
+@inline unpack_data(x::FieldType)              = parent(x)
 @inline unpack_data(x::Any)                    = x
 
 """
@@ -128,13 +127,16 @@ Special case: scalar (0-dimensional) broadcast assignment, e.g. `q .= 0.0`.
 Fills every component of `dest` with the scalar value, avoiding the unpack
 path which would fail for a 0-D broadcasted expression with no field arguments.
 """
-function Base.copyto!(dest::VectorField{N}, bc::Broadcast.Broadcasted{<:Broadcast.AbstractArrayStyle{0}}) where {N}
+Base.copyto!(dest::VectorField{N}, bc::Broadcast.Broadcasted{<:Broadcast.AbstractArrayStyle{0}}) where {N} =
+    fill!(dest, bc.args[1][])
+
+Base.fill!(dest::FieldType, x) = (fill!(parent(dest), x); return dest)
+function Base.fill!(dest::VectorField{N}, x) where {N}
     for n in 1:N
-        fill!(dest[n], bc.args[1][])
+        fill!(dest[n], x)
     end
     return dest
 end
-Base.fill!(dest::Union{FTField, Field}, x) = (fill!(parent(dest), x); return dest)
 
 """
     unpack(bc, n) -> Broadcasted or scalar
