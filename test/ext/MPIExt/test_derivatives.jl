@@ -14,7 +14,8 @@ import FDGrids
 import LinearAlgebra
 import MPI
 import NSEBase
-import Test
+
+using Test
 
 MPI.Initialized() || MPI.Init()
 
@@ -59,7 +60,7 @@ plans = NSEBase.FFTPlans(g; dealias=false, flags=NSEBase.FFTW.ESTIMATE)
 u_phys = NSEBase.Field(g, u_fun)
 u      = NSEBase.FTField(g); plans(u, u_phys)
 
-Test.@testset "staged ddy! matches analytic du/dy" begin
+@testset "staged ddy! matches analytic du/dy                                  " begin
     out = NSEBase.FTField(g)
     requests = NSEBase.init_requests!(u)
     NSEBase.init_ddy!(out, u)
@@ -69,10 +70,10 @@ Test.@testset "staged ddy! matches analytic du/dy" begin
     expected = NSEBase.FTField(g)
     plans(expected, NSEBase.Field(g, dudy_fun))
 
-    Test.@test parent(out) ≈ parent(expected) rtol=1e-6
+    @test parent(out) ≈ parent(expected) rtol=1e-6
 end
 
-Test.@testset "staged VectorField derivative uses per-component halo requests" begin
+@testset "staged VectorField derivative uses per-component halo requests      " begin
     q        = NSEBase.VectorField(g, NSEBase.FTField; N=2)
     expected = NSEBase.VectorField(g, NSEBase.FTField; N=2)
     out      = NSEBase.VectorField(g, NSEBase.FTField; N=2)
@@ -87,13 +88,13 @@ Test.@testset "staged VectorField derivative uses per-component halo requests" b
     NSEBase.wait_requests!(requests)
     NSEBase.complete_ddy!(out, q)
 
-    Test.@test parent(out[1]) ≈ parent(expected[1]) rtol=1e-6
-    Test.@test parent(out[2]) ≈ parent(expected[2]) rtol=1e-6
+    @test parent(out[1]) ≈ parent(expected[1]) rtol=1e-6
+    @test parent(out[2]) ≈ parent(expected[2]) rtol=1e-6
 end
 
 sd(sym) = NSEBase.physical_to_storage_dim(NSEBase.grid(u), Val(sym))
 
-Test.@testset "interior_dd! + wait + boundary_dd! covers the FD direction" begin
+@testset "interior_dd! + wait + boundary_dd! covers the FD direction          " begin
     out = NSEBase.FTField(g)
     requests = NSEBase.init_requests!(u)
     MPIExt.interior_dd!(out, u, sd(:y))
@@ -102,31 +103,31 @@ Test.@testset "interior_dd! + wait + boundary_dd! covers the FD direction" begin
 
     expected = NSEBase.FTField(g)
     plans(expected, NSEBase.Field(g, dudy_fun))
-    Test.@test parent(out) ≈ parent(expected) rtol=1e-6
+    @test parent(out) ≈ parent(expected) rtol=1e-6
 end
 
-Test.@testset "dd! along an FFT direction is spectral (no halo needed)" begin
+@testset "dd! along an FFT direction is spectral (no halo needed)             " begin
     out = NSEBase.FTField(g)
     MPIExt.interior_dd!(out, u, sd(:x))
     # Boundary work is a no-op for FFT directions; the result must already match.
     expected = NSEBase.FTField(g)
     plans(expected, NSEBase.Field(g, dudx_fun))
-    Test.@test parent(out) ≈ parent(expected) rtol=1e-6
+    @test parent(out) ≈ parent(expected) rtol=1e-6
 
     out_z = NSEBase.FTField(g)
     MPIExt.interior_dd!(out_z, u, sd(:z))
     expected_z = NSEBase.FTField(g)
     plans(expected_z, NSEBase.Field(g, dudz_fun))
-    Test.@test parent(out_z) ≈ parent(expected_z) rtol=1e-6
+    @test parent(out_z) ≈ parent(expected_z) rtol=1e-6
 
     out_t = NSEBase.FTField(g)
     MPIExt.interior_dd!(out_t, u, sd(:t))
     expected_t = NSEBase.FTField(g)
     plans(expected_t, NSEBase.Field(g, dudt_fun))
-    Test.@test parent(out_t) ≈ parent(expected_t) rtol=1e-6
+    @test parent(out_t) ≈ parent(expected_t) rtol=1e-6
 end
 
-Test.@testset "interior_laplacian! + boundary_laplacian! matches analytic Laplacian" begin
+@testset "interior_laplacian! + boundary_laplacian! matches analytic Laplacian" begin
     out = NSEBase.FTField(g)
     requests = NSEBase.init_requests!(u)
     MPIExt.interior_laplacian!(out, u)
@@ -135,10 +136,10 @@ Test.@testset "interior_laplacian! + boundary_laplacian! matches analytic Laplac
 
     expected = NSEBase.FTField(g)
     plans(expected, NSEBase.Field(g, lapl_fun))
-    Test.@test parent(out) ≈ parent(expected) rtol=1e-6
+    @test parent(out) ≈ parent(expected) rtol=1e-6
 end
 
-Test.@testset "NSEBase.laplacian!(out, u) agrees with the explicit form" begin
+@testset "NSEBase.laplacian!(out, u) agrees with the explicit form            " begin
     out_a = NSEBase.FTField(g)
     out_b = NSEBase.FTField(g)
 
@@ -150,7 +151,7 @@ Test.@testset "NSEBase.laplacian!(out, u) agrees with the explicit form" begin
     # 2-arg overload — auto-exchange.
     NSEBase.laplacian!(out_b, u)
 
-    Test.@test parent(out_a) ≈ parent(out_b)
+    @test parent(out_a) ≈ parent(out_b)
 end
 
 MPI.free(base_comm)

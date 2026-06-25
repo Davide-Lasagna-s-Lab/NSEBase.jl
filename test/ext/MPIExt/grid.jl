@@ -77,14 +77,13 @@ Base.size(g::MockChannelGrid{S}) where {S} = NSEBase.to_storage_order(S, g)
     MockChannelGrid(Ny, Nx, Nz, Nt; T=Float64, stencil_width=3)
 
 Build a `MockChannelGrid` with a uniform wall-normal mesh on `[-1, 1]`,
-quadrature weights from `FDGrids.quadweights`, and `FDGrids.DiffMatrix`
+quadrature weights from `FDGrids.grid`, and `FDGrids.DiffMatrix`
 finite-difference operators.
 """
 function MockChannelGrid(Ny::Int, Nx::Int, Nz::Int, Nt::Int;
                          T::Type=Float64, stencil_width::Int=3,
                          α::Real=2π, β::Real=2π)
-    y  = collect(range(T(-1), T(1); length=Ny))
-    ws = FDGrids.quadweights(y, 3)
+    y, ws = FDGrids.grid(Ny, T(-1), T(1), FDGrids.MappedGrid(T(1)))
     D₁ = FDGrids.DiffMatrix(y, stencil_width, 1)
     D₂ = FDGrids.DiffMatrix(y, stencil_width, 2)
     return MockChannelGrid{(Nx, Ny, Nz, Nt), T}(y, ws, D₁, D₂, α, β)

@@ -11,7 +11,8 @@ import LinearAlgebra
 import MPI
 import NSEBase
 import Random
-import Test
+
+using Test
 
 MPI.Initialized() || MPI.Init()
 
@@ -52,13 +53,13 @@ for n in 1:NCOMP
     parent(u[n]) .= reshape(flat, size(parent(u[n])))
 end
 
-Test.@testset "project! coefficients are rank-consistent" begin
+@testset "project! coefficients are rank-consistent                           " begin
     a_local = NSEBase.project!(similar(basis), u)
 
     # Pull rank 0's coefficients and compare to each rank's local copy.
     a_root = Vector{ComplexF64}(vec(parent(a_local)))
     MPI.Bcast!(a_root, 0, MPIExt.comm(g))
-    Test.@test vec(parent(a_local)) ≈ a_root
+    @test vec(parent(a_local)) ≈ a_root
 end
 
 MPI.free(base_comm)

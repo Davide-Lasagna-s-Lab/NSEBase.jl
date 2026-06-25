@@ -9,7 +9,8 @@
 import HaloArrays
 import MPI
 import NSEBase
-import Test
+
+using Test
 
 MPI.Initialized() || MPI.Init()
 
@@ -27,31 +28,31 @@ g = MPIExt.distributed(MockChannelGrid(Ny, Nx, Nz, Nt), base_comm;
 
 Ny_local = Ny ÷ nranks
 
-Test.@testset "Field allocation: shape + storage" begin
+@testset "Field allocation: shape + storage                                   " begin
     u = NSEBase.Field(g)
-    Test.@test parent(u) isa HaloArrays.HaloArray
-    Test.@test size(u) == size(g)
-    Test.@test size(u, 1) == Ny_local
-    Test.@test all(parent(u) .== 0)
+    @test parent(u) isa HaloArrays.HaloArray
+    @test size(u) == size(g)
+    @test size(u, 1) == Ny_local
+    @test all(parent(u) .== 0)
 end
 
-Test.@testset "Field allocation with dealias=true grows FFT dimensions" begin
+@testset "Field allocation with dealias=true grows FFT dimensions             " begin
     u  = NSEBase.Field(g; dealias=false)
     ud = NSEBase.Field(g; dealias=true)
-    Test.@test size(ud, 1) == size(u, 1)            # wall-normal unchanged
-    Test.@test size(ud, 2) >= size(u, 2)            # x grew (3/2-rule)
-    Test.@test size(ud, 3) >= size(u, 3)            # z grew
-    Test.@test size(ud, 4) >= size(u, 4)            # t grew
+    @test size(ud, 1) == size(u, 1)            # wall-normal unchanged
+    @test size(ud, 2) >= size(u, 2)            # x grew (3/2-rule)
+    @test size(ud, 3) >= size(u, 3)            # z grew
+    @test size(ud, 4) >= size(u, 4)            # t grew
 end
 
-Test.@testset "Field(g, func) evaluates func only at this rank's coords" begin
+@testset "Field(g, func) evaluates func only at this rank's coords            " begin
     f(y, x, z, t) = y + 10 * x  # depends on local coords
     u = NSEBase.Field(g, f)
 
     y, x, z, t = NSEBase.points(g)
     expected = @. f(y, x, z, t)
     # `parent(u)` exposes only the interior on HaloArray storage.
-    Test.@test parent(u) ≈ expected
+    @test parent(u) ≈ expected
 end
 
 MPI.free(base_comm)

@@ -11,7 +11,8 @@
 import HaloArrays
 import MPI
 import NSEBase
-import Test
+
+using Test
 
 MPI.Initialized() || MPI.Init()
 
@@ -36,7 +37,7 @@ function build_seeded_field(g, dealias)
     return u
 end
 
-Test.@testset "FFTPlans round-trip on halo-backed FTField" begin
+@testset "FFTPlans round-trip on halo-backed FTField                          " begin
     plans = NSEBase.FFTPlans(g; dealias=false, flags=NSEBase.FFTW.ESTIMATE)
 
     u    = build_seeded_field(g, false)
@@ -46,10 +47,10 @@ Test.@testset "FFTPlans round-trip on halo-backed FTField" begin
     plans(uhat, u)
     plans(v, uhat)
 
-    Test.@test parent(v) ≈ parent(u)
+    @test parent(v) ≈ parent(u)
 end
 
-Test.@testset "Allocating FFT / IFFT helpers match FFTPlans" begin
+@testset "Allocating FFT / IFFT helpers match FFTPlans                        " begin
     u = build_seeded_field(g, false)
 
     plans = NSEBase.FFTPlans(g; dealias=false, flags=NSEBase.FFTW.ESTIMATE)
@@ -57,13 +58,13 @@ Test.@testset "Allocating FFT / IFFT helpers match FFTPlans" begin
     plans(uhat_planned, u)
 
     uhat_alloc = NSEBase.FFT(u)
-    Test.@test parent(uhat_alloc) ≈ parent(uhat_planned)
+    @test parent(uhat_alloc) ≈ parent(uhat_planned)
 
     v_alloc = NSEBase.IFFT(uhat_alloc)
-    Test.@test parent(v_alloc) ≈ parent(u)
+    @test parent(v_alloc) ≈ parent(u)
 end
 
-Test.@testset "Dealiased FFTPlans round-trip preserves the spectral field" begin
+@testset "Dealiased FFTPlans round-trip preserves the spectral field          " begin
     plans_lo = NSEBase.FFTPlans(g; dealias=false, flags=NSEBase.FFTW.ESTIMATE)
     plans_hi = NSEBase.FFTPlans(g; dealias=true,  flags=NSEBase.FFTW.ESTIMATE)
 
@@ -79,7 +80,7 @@ Test.@testset "Dealiased FFTPlans round-trip preserves the spectral field" begin
     uhat_back = NSEBase.FTField(g)
     plans_hi(uhat_back, ud)
 
-    Test.@test parent(uhat_back) ≈ parent(uhat)
+    @test parent(uhat_back) ≈ parent(uhat)
 end
 
 MPI.free(base_comm)

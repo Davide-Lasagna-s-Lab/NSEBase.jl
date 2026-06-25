@@ -8,7 +8,8 @@
 import HaloArrays
 import MPI
 import NSEBase
-import Test
+
+using Test
 
 MPI.Initialized() || MPI.Init()
 
@@ -25,18 +26,18 @@ g_parent = MockChannelGrid(Ny, Nx, Nz, Nt)
 g_halo   = MPIExt.distributed(g_parent, base_comm;
                                      decomposed_physical_dims=(:y,), nprocesses=(nranks,), nhalo=(NHALO,))
 
-Test.@testset "FTField on decomposed grid is HaloArray-backed" begin
+@testset "FTField on decomposed grid is HaloArray-backed                      " begin
     uhat = NSEBase.FTField(g_halo)
-    Test.@test parent(uhat) isa HaloArrays.HaloArray
-    Test.@test size(uhat) == NSEBase.transform_size(g_halo)
-    Test.@test HaloArrays.nhalo(parent(uhat)) == MPIExt.nhalo(g_halo)
-    Test.@test all(parent(uhat) .== 0)
+    @test parent(uhat) isa HaloArrays.HaloArray
+    @test size(uhat) == NSEBase.transform_size(g_halo)
+    @test HaloArrays.nhalo(parent(uhat)) == MPIExt.nhalo(g_halo)
+    @test all(parent(uhat) .== 0)
 end
 
-Test.@testset "FTField via convert preserves storage policy" begin
+@testset "FTField via convert preserves storage policy                        " begin
     uhat = NSEBase.FTField(g_halo)
     uhat32 = similar(uhat, ComplexF32)
-    Test.@test parent(uhat32) isa HaloArrays.HaloArray
+    @test parent(uhat32) isa HaloArrays.HaloArray
 end
 
 MPI.free(base_comm)
