@@ -9,10 +9,11 @@
 #     `global_size`
 #   - `growto` and `convert` round-trip preserving comm/dims/halo widths
 
-import MPI
-import NSEBase
-
 using Test
+
+import MPI
+
+using NSEBase
 
 MPI.Initialized() || MPI.Init()
 
@@ -26,40 +27,41 @@ const NHALO = 1
 
 base_comm = MPI.Comm_dup(MPI.COMM_WORLD)
 g_parent = MockChannelGrid(Ny, Nx, Nz, Nt)
-g        = MPIExt.distributed(g_parent, base_comm;
-                                     decomposed_physical_dims=(:y,), nprocesses=(nranks,), nhalo=(NHALO,))
+g        = distributed(g_parent, base_comm;
+                        decomposed_physical_dims=(:y,), nprocesses=(nranks,), nhalo=(NHALO,))
 
 Ny_local = Ny ÷ nranks
 y_offset = rank * Ny_local
 
 @testset "distributed: required kwargs and validation                         " begin
     # Missing required kwargs.
-    @test_throws UndefKeywordError MPIExt.distributed(g_parent, base_comm)
-    @test_throws UndefKeywordError MPIExt.distributed(
-        g_parent, base_comm; decomposed_physical_dims=(:y,))
+    @test_throws UndefKeywordError distributed(g_parent, base_comm)
+    @test_throws UndefKeywordError distributed(
+        g_parent, base_comm; decomposed_physical_dims=(:y,)
+    )
 
     # `prod(nprocesses)` must equal `Comm_size(comm)`.
-    @test_throws ArgumentError MPIExt.distributed(
+    @test_throws ArgumentError distributed(
         g_parent, base_comm;
         decomposed_physical_dims=(:y,),
         nprocesses=(nranks * 2,), nhalo=(NHALO,))
 
     # Decomposed direction must be spatial inhomogeneous; `:x` is
     # FFT-transformed in the channel layout.
-    @test_throws ArgumentError MPIExt.distributed(
+    @test_throws ArgumentError distributed(
         g_parent, base_comm;
         decomposed_physical_dims=(:x,),
         nprocesses=(nranks,), nhalo=(NHALO,))
 
     # Duplicate decomposed_physical_dims entries are rejected.
-    @test_throws ArgumentError MPIExt.distributed(
+    @test_throws ArgumentError distributed(
         g_parent, base_comm;
         decomposed_physical_dims=(:y, :y),
         nprocesses=(1, nranks), nhalo=(NHALO, NHALO))
 
     # Decomposed dimensions always allocate HaloArray-backed fields, so their
     # halo widths must be positive.
-    @test_throws ArgumentError MPIExt.distributed(
+    @test_throws ArgumentError distributed(
         g_parent, base_comm;
         decomposed_physical_dims=(:y,),
         nprocesses=(nranks,), nhalo=(0,))
@@ -69,7 +71,7 @@ y_offset = rank * Ny_local
     topologized_comm = MPI.Cart_create(base_comm, (nranks,);
                                        periodic=(false,), reorder=false)
     try
-        @test_throws ArgumentError MPIExt.distributed(
+        @test_throws ArgumentError distributed(
             g_parent, topologized_comm;
             decomposed_physical_dims=(:y,),
             nprocesses=(nranks,), nhalo=(NHALO,))
@@ -82,8 +84,8 @@ if nranks > 1
     @testset "distributed: rejects non-divisible parent size                      " begin
         # Ny + 1 across nranks (>1) does not divide evenly.
         bad_parent = MockChannelGrid(Ny + 1, Nx, Nz, Nt)
-        @test_throws ArgumentError MPIExt.distributed(bad_parent, base_comm;
-                                                                   decomposed_physical_dims=(:y,), nprocesses=(nranks,), nhalo=(1,))
+        @test_throws ArgumentError distributed(bad_parent, base_comm;
+                                                decomposed_physical_dims=(:y,), nprocesses=(nranks,), nhalo=(1,))
     end
 end
 

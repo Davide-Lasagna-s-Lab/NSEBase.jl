@@ -147,7 +147,7 @@ function NSEBase.growto(g::MockChannelGrid{S, T},
 end
 
 # ------------------------------------------------------------------ #
-# MPIExt parent-grid contract                                 #
+# MPIExt parent-grid contract                                        #
 # ------------------------------------------------------------------ #
 #
 # `distributed(parent, comm; decomposed_physical_dims, nprocesses, nhalo)` forwards
@@ -156,10 +156,10 @@ end
 # a finite-difference direction here; the FFT directions never call this
 # hook.
 
-function MPIExt.derivative_matrix(g           ::MockChannelGrid,
-                                         storage_dim ::Integer,
-                                         ::Val{ORDER},
-                                         ::Val{ADJ} = Val(false)) where {ORDER, ADJ}
+function NSEBase.derivative_matrix(g::MockChannelGrid,
+                         storage_dim::Integer,
+                                    ::Val{ORDER},
+                                    ::Val{ADJ} = Val(false)) where {ORDER, ADJ}
     storage_dim == 1 ||
         throw(ArgumentError("MockChannelGrid: derivative_matrix is only defined for storage dim 1"))
     A = ORDER == 1 ? g.D₁ :

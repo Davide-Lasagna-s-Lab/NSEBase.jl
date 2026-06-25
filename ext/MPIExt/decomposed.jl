@@ -23,7 +23,7 @@
 # Internal helpers and derivative kernels always work with `Int` storage dims.
 #
 # The only method the parent grid must add beyond the standard NSEBase interface
-# is `MPIExt.derivative_matrix(parent, stor_dim::Int, ::Val{ORDER}, ::Val{ADJ})`.
+# is `NSEBase.derivative_matrix(parent, stor_dim::Int, ::Val{ORDER}, ::Val{ADJ})`.
 
 # ------------------------------------------------------------------ #
 # Private helpers                                                    #
@@ -157,7 +157,7 @@ dg = distributed(g, MPI.COMM_WORLD;
                  nhalo=(1,))
 ```
 """
-function distributed(                       g::NSEBase.AbstractGrid{T, D, AXES, FFT_DIMS_ORDER},
+function NSEBase.distributed(               g::NSEBase.AbstractGrid{T, D, AXES, FFT_DIMS_ORDER},
                                          comm::COMM;
                      decomposed_physical_dims::NTuple{K, Symbol},
                                    nprocesses::NTuple{K, Int},
@@ -509,14 +509,14 @@ dimension `stor_dim`, in its forward (`ADJ=false`) or adjoint
 
 Downstream single-domain grid types implement this on `parent(g)`:
 ```
-MPIExt.derivative_matrix(::ParentType, stor_dim::Int, ::Val{ORDER}, ::Val{ADJ})
+NSEBase.derivative_matrix(::ParentType, stor_dim::Int, ::Val{ORDER}, ::Val{ADJ})
 ```
 """
-derivative_matrix(g           ::DecomposedGrid,
-                  stor_dim    ::Int,
-                  ::Val{ORDER},
-                  ::Val{ADJ}=Val(false)) where {ORDER, ADJ} =
-    derivative_matrix(g.parent, stor_dim, Val(ORDER), Val(ADJ))
+NSEBase.derivative_matrix(g::DecomposedGrid,
+                   stor_dim::Int,
+                           ::Val{ORDER},
+                           ::Val{ADJ}=Val(false)) where {ORDER, ADJ} =
+    NSEBase.derivative_matrix(g.parent, stor_dim, Val(ORDER), Val(ADJ))
 
 # Neighbour predicates. Periodic directions always have neighbours;
 # non-periodic ones do not at the first/last rank.

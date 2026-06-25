@@ -168,7 +168,7 @@ NSEBase.complete_laplacian!(out::DecomposedSpectralField, u::DecomposedSpectralF
                            ranges;
                            adjoint::Bool = false,
                            accumulate::Val{B} = Val(false)) where {STORAGE_DIM, ORDER, B}
-    A = derivative_matrix(g, STORAGE_DIM, Val(ORDER), Val(adjoint))
+    A = NSEBase.derivative_matrix(g, STORAGE_DIM, Val(ORDER), Val(adjoint))
     g_first = global_first_index(g, STORAGE_DIM)
     for rng in ranges
         isempty(rng) && continue

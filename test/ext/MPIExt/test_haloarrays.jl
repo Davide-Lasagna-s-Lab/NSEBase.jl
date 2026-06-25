@@ -5,11 +5,12 @@
 #   - init_requests! on Field, FTField, VectorField
 #   - wait_requests! on MPI MultiRequest batches and nested tuples
 
+using Test
+
 import HaloArrays
 import MPI
-import NSEBase
 
-using Test
+using NSEBase
 
 MPI.Initialized() || MPI.Init()
 
@@ -23,8 +24,8 @@ const NHALO = 1
 
 base_comm = MPI.Comm_dup(MPI.COMM_WORLD)
 g_parent = MockChannelGrid(Ny, Nx, Nz, Nt)
-g        = MPIExt.distributed(g_parent, base_comm;
-                                     decomposed_physical_dims=(:y,), nprocesses=(nranks,), nhalo=(NHALO,))
+g        = distributed(g_parent, base_comm;
+                        decomposed_physical_dims=(:y,), nprocesses=(nranks,), nhalo=(NHALO,))
 
 @testset "Field allocation picks HaloArray storage when nhalo > 0             " begin
     u = NSEBase.Field(g)

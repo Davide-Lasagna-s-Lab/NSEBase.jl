@@ -10,12 +10,13 @@
 #     analytic Laplacian after halo exchange
 #   - the 2-arg `NSEBase.laplacian!` auto-exchange form agrees
 
+using Test
+
 import FDGrids
 import LinearAlgebra
 import MPI
-import NSEBase
 
-using Test
+using NSEBase
 
 MPI.Initialized() || MPI.Init()
 
@@ -52,8 +53,8 @@ base_comm = MPI.Comm_dup(MPI.COMM_WORLD)
 # coefficients at integer wavenumbers) and z has period 2π/5.8 to match
 # `cos(4π*x)` and `cos(5.8*z)` factors in the analytic test field.
 g_parent = MockChannelGrid(Ny, Nx, Nz, Nt; stencil_width=5, α=2π, β=5.8)
-g = MPIExt.distributed(g_parent, base_comm;
-                              decomposed_physical_dims=(:y,), nprocesses=(nranks,), nhalo=(NHALO,))
+g = distributed(g_parent, base_comm;
+                decomposed_physical_dims=(:y,), nprocesses=(nranks,), nhalo=(NHALO,))
 
 # Pre-build FFT plans and reusable physical/spectral fields.
 plans = NSEBase.FFTPlans(g; dealias=false, flags=NSEBase.FFTW.ESTIMATE)

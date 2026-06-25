@@ -57,4 +57,10 @@ include("equations/cartesianprimitive_2d.jl")
 include("equations/projectednse.jl")
 include("equations/shared.jl")
 
+# dummy function definition for MPI extension
+export distributed
+
+function derivative_matrix end
+function distributed end
+
 end

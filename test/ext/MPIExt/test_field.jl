@@ -6,11 +6,12 @@
 #   - allocate `HaloArrays.HaloArray` storage
 #   - evaluate `func` only at this rank's owned collocation points
 
+using Test
+
 import HaloArrays
 import MPI
-import NSEBase
 
-using Test
+using NSEBase
 
 MPI.Initialized() || MPI.Init()
 
@@ -23,8 +24,8 @@ const Ny = 16; const Nx = 7; const Nz = 9; const Nt = 5
 const NHALO = 1
 
 base_comm = MPI.Comm_dup(MPI.COMM_WORLD)
-g = MPIExt.distributed(MockChannelGrid(Ny, Nx, Nz, Nt), base_comm;
-                              decomposed_physical_dims=(:y,), nprocesses=(nranks,), nhalo=(NHALO,))
+g = distributed(MockChannelGrid(Ny, Nx, Nz, Nt), base_comm;
+                decomposed_physical_dims=(:y,), nprocesses=(nranks,), nhalo=(NHALO,))
 
 Ny_local = Ny ÷ nranks
 

@@ -8,11 +8,12 @@
 #     halo-inclusive convention
 #   - dealiased plans transform the padded parent allocation correctly
 
+using Test
+
 import HaloArrays
 import MPI
-import NSEBase
 
-using Test
+using NSEBase
 
 MPI.Initialized() || MPI.Init()
 
@@ -25,8 +26,8 @@ const Ny = 16; const Nx = 7; const Nz = 9; const Nt = 5
 const NHALO = 1
 
 base_comm = MPI.Comm_dup(MPI.COMM_WORLD)
-g = MPIExt.distributed(MockChannelGrid(Ny, Nx, Nz, Nt), base_comm;
-                              decomposed_physical_dims=(:y,), nprocesses=(nranks,), nhalo=(NHALO,))
+g = distributed(MockChannelGrid(Ny, Nx, Nz, Nt), base_comm;
+                decomposed_physical_dims=(:y,), nprocesses=(nranks,), nhalo=(NHALO,))
 
 # Build a non-trivial physical-space field whose interior values are seeded
 # deterministically per rank, then transform forward and back.

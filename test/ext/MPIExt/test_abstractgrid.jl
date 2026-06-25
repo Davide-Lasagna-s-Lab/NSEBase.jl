@@ -6,11 +6,14 @@
 # user-facing accessor exported by abstractgrid.jl gets at least one
 # assertion.
 
+using Test
+
 import LinearAlgebra
 import MPI
-import NSEBase
+import FDGrids
+import HaloArrays
 
-using Test
+using NSEBase
 
 MPI.Initialized() || MPI.Init()
 
@@ -28,8 +31,8 @@ const NHALO = 1
 base_comm = MPI.Comm_dup(MPI.COMM_WORLD)
 
 g_parent = MockChannelGrid(Ny, Nx, Nz, Nt)
-g        = MPIExt.distributed(g_parent, base_comm;
-                                     decomposed_physical_dims=(:y,), nprocesses=(nranks,), nhalo=(NHALO,))
+g        = distributed(g_parent, base_comm;
+                        decomposed_physical_dims=(:y,), nprocesses=(nranks,), nhalo=(NHALO,))
 
 Ny_local = Ny ÷ nranks
 y_offset = rank * Ny_local
@@ -100,17 +103,17 @@ end
     y_sd = NSEBase.storage_dim(g, :y)
     x_sd = NSEBase.storage_dim(g, :x)
 
-    D1 = MPIExt.derivative_matrix(g, y_sd, Val(1))
-    D2 = MPIExt.derivative_matrix(g, y_sd, Val(2))
+    D1 = NSEBase.derivative_matrix(g, y_sd, Val(1))
+    D2 = NSEBase.derivative_matrix(g, y_sd, Val(2))
     @test D1 === g_parent.D₁
     @test D2 === g_parent.D₂
 
     # Adjoint flag is forwarded.
-    D1_adj = MPIExt.derivative_matrix(g, y_sd, Val(1), Val(true))
+    D1_adj = NSEBase.derivative_matrix(g, y_sd, Val(1), Val(true))
     @test D1_adj == LinearAlgebra.adjoint(g_parent.D₁)
 
     # FFT directions have no parent FD operator; the parent throws.
-    @test_throws ArgumentError MPIExt.derivative_matrix(g, x_sd, Val(1))
+    @test_throws ArgumentError NSEBase.derivative_matrix(g, x_sd, Val(1))
 end
 
 @testset "local_size names the per-rank interior size                         " begin

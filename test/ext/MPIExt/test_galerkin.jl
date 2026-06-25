@@ -7,12 +7,13 @@
 # runs end-to-end and produces identical coefficients on every rank
 # (the Allreduce step is what guarantees rank-consistency).
 
+using Test
+
 import LinearAlgebra
 import MPI
-import NSEBase
 import Random
 
-using Test
+using NSEBase
 
 MPI.Initialized() || MPI.Init()
 
@@ -27,9 +28,8 @@ const NMODES = 2
 const NCOMP = 2
 
 base_comm = MPI.Comm_dup(MPI.COMM_WORLD)
-g = MPIExt.distributed(MockChannelGrid(Ny, Nx, Nz, Nt), base_comm;
-                              decomposed_physical_dims=(:y,),
-                              nprocesses=(nranks,), nhalo=(NHALO,))
+g = distributed(MockChannelGrid(Ny, Nx, Nz, Nt), base_comm;
+                decomposed_physical_dims=(:y,), nprocesses=(nranks,), nhalo=(NHALO,))
 
 Ny_local = Ny ÷ nranks
 
