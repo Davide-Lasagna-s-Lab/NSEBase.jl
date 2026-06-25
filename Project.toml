@@ -21,7 +21,6 @@ NSEBaseMPIExt = ["FDGrids", "HaloArrays", "MPI"]
 
 
 [compat]
-FDGrids = "0.3.2"
 FFTW = "1.8"
 HaloArrays = "0.1, 0.2"
 JLD2 = "0.4, 0.5, 0.6"
