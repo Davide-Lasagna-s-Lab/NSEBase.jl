@@ -1,4 +1,4 @@
-module MPIExt
+module MPIIntermediateExt
 
 try
     # try loading the required packages for the full extension
