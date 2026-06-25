@@ -26,7 +26,7 @@
 # is `MPIExt.derivative_matrix(parent, stor_dim::Int, ::Val{ORDER}, ::Val{ADJ})`.
 
 # ------------------------------------------------------------------ #
-# Private helpers                                                     #
+# Private helpers                                                    #
 # ------------------------------------------------------------------ #
 
 function _check_plain_intracommunicator(comm::MPI.Comm)
@@ -80,13 +80,14 @@ struct DecomposedGrid{T,
                       S,
                       GP<:NSEBase.AbstractGrid{T, D, AXES, FFT_DIMS_ORDER},
                       W,
-                      P} <: NSEBase.AbstractGrid{T, D, AXES, FFT_DIMS_ORDER}
+                      P,
+                      COMM} <: NSEBase.AbstractGrid{T, D, AXES, FFT_DIMS_ORDER}
     # The single-domain (serial) grid this wrapper exposes as decomposed.
     parent     :: GP
     # Full-Cartesian MPI communicator built by `distributed(...)` (one Cart
     # direction per storage dim, with rank 1 on non-decomposed dims). This
     # is the shape `HaloArrays` requires, and the comm returned by `comm(g)`.
-    comm       :: MPI.Comm
+    comm       :: COMM
     # Per-rank quadrature weights, sliced from the parent at construction.
     # `weights(g)` is called inside hot loops (projection, dot products), so
     # lazy `getindex` slicing here would allocate per call.
@@ -157,13 +158,13 @@ dg = distributed(g, MPI.COMM_WORLD;
 ```
 """
 function distributed(                       g::NSEBase.AbstractGrid{T, D, AXES, FFT_DIMS_ORDER},
-                                         comm::MPI.Comm;
+                                         comm::COMM;
                      decomposed_physical_dims::NTuple{K, Symbol},
                                    nprocesses::NTuple{K, Int},
-                                        nhalo::NTuple{K, Int}) where {T, D, AXES, FFT_DIMS_ORDER, K}
-    #///////////////////////////////////////////////////////////////////////#
+                                        nhalo::NTuple{K, Int}) where {T, D, AXES, FFT_DIMS_ORDER, K, COMM<:MPI.Comm}
+    # --------------------------------------------------------------------- #
     # Validation
-    #///////////////////////////////////////////////////////////////////////#
+    # --------------------------------------------------------------------- #
 
     # Validate the decomposed-direction labels and translate to storage
     # dims once for the `Decomposed{DIMS}` type-param payload. Time is
@@ -196,9 +197,9 @@ function distributed(                       g::NSEBase.AbstractGrid{T, D, AXES, 
     end
 
 
-    #///////////////////////////////////////////////////////////////////////#
+    # --------------------------------------------------------------------- #
     # Storage-order decomposition metadata
-    #///////////////////////////////////////////////////////////////////////#
+    # --------------------------------------------------------------------- #
 
     # Build D-length tuples for HaloArrays and the Cart communicator.
     # For each storage dim d, find its position in decomposed_storage_dims;
@@ -213,9 +214,9 @@ function distributed(                       g::NSEBase.AbstractGrid{T, D, AXES, 
     end
 
 
-    #///////////////////////////////////////////////////////////////////////#
+    # --------------------------------------------------------------------- #
     # Cartesian communicator
-    #///////////////////////////////////////////////////////////////////////#
+    # --------------------------------------------------------------------- #
 
     # `reorder=false` keeps every rank's identity stable; `periodic=false`
     # in every dim because decomposed directions are wall-normal (non-periodic).
@@ -225,18 +226,18 @@ function distributed(                       g::NSEBase.AbstractGrid{T, D, AXES, 
                                      reorder=false)
 
 
-    #///////////////////////////////////////////////////////////////////////#
+    # --------------------------------------------------------------------- #
     # Local interior size
-    #///////////////////////////////////////////////////////////////////////#
+    # --------------------------------------------------------------------- #
 
     # Per-rank interior size in storage order: decomposed dims shrink,
     # others keep the parent size.
     local_size = ntuple(d -> size(g, d) ÷ nprocesses_full[d], Val(D))
 
 
-    #///////////////////////////////////////////////////////////////////////#
+    # --------------------------------------------------------------------- #
     # Per-rank field precomputation
-    #///////////////////////////////////////////////////////////////////////#
+    # --------------------------------------------------------------------- #
 
     # Precompute the two per-rank fields stored on `DecomposedGrid`:
     # quadrature weights and inhomogeneous coordinate vectors. Both are read
@@ -246,20 +247,21 @@ function distributed(                       g::NSEBase.AbstractGrid{T, D, AXES, 
     local_weights    = _local_weights(g, cart)
     local_inh_points = _local_inhomogeneous_points(g, cart)
 
-    #///////////////////////////////////////////////////////////////////////#
+    # --------------------------------------------------------------------- #
     # Wrapper construction
-    #///////////////////////////////////////////////////////////////////////#
+    # --------------------------------------------------------------------- #
 
     return DecomposedGrid{T, D, AXES, FFT_DIMS_ORDER,
                            decomposed_storage_dims, nhalo_full, local_size, typeof(g),
                            typeof(local_weights),
-                           typeof(local_inh_points)}(g, full_cart_comm,
-                                                     local_weights,
-                                                     local_inh_points)
+                           typeof(local_inh_points),
+                           COMM}(g, full_cart_comm,
+                                 local_weights,
+                                 local_inh_points)
 end
 
 # ------------------------------------------------------------------ #
-# Accessors                                                           #
+# Accessors                                                          #
 # ------------------------------------------------------------------ #
 
 """
@@ -412,7 +414,7 @@ function NSEBase.growto(g::DecomposedGrid{T, D, AXES, FFT_DIMS_ORDER, DDIMS, NHA
     # storage dims, which `growto` does not touch — reuse the caches as-is.
     return DecomposedGrid{T, D, AXES, FFT_DIMS_ORDER,
                            DDIMS, NHALO, new_local_size, typeof(new_parent),
-                           typeof(g.weights), typeof(g.inh_points)}(
+                           typeof(g.weights), typeof(g.inh_points), typeof(g.comm)}(
         new_parent, g.comm, g.weights, g.inh_points)
 end
 
@@ -435,12 +437,12 @@ function Base.convert(::Type{T}, g::DecomposedGrid{T0, D, AXES, FFT_DIMS_ORDER, 
     new_weights = T.(g.weights)
     new_inh_points = map(v -> T.(v), g.inh_points)
     return DecomposedGrid{T, D, AXES, FFT_DIMS_ORDER, DDIMS, NHALO, S, typeof(new_parent),
-                          typeof(new_weights), typeof(new_inh_points)}(
+                          typeof(new_weights), typeof(new_inh_points), typeof(g.comm)}(
         new_parent, g.comm, new_weights, new_inh_points)
 end
 
 # ------------------------------------------------------------------ #
-# MPIExt decomposed-grid interface                             #
+# MPIExt decomposed-grid interface                                   #
 # ------------------------------------------------------------------ #
 
 """
@@ -530,7 +532,7 @@ _has_lower_neighbor(g::DecomposedGrid, stor_dim::Int) = _has_neighbor(g, stor_di
 _has_upper_neighbor(g::DecomposedGrid, stor_dim::Int) = _has_neighbor(g, stor_dim,  1)
 
 # ------------------------------------------------------------------ #
-# Public per-rank topology / range accessors                          #
+# Public per-rank topology / range accessors                         #
 # ------------------------------------------------------------------ #
 
 """
@@ -654,7 +656,7 @@ local_interior_range(g::DecomposedGrid, ::Val{N}) where {N} = local_interior_ran
 local_boundary_ranges(g::DecomposedGrid, ::Val{N}) where {N} = local_boundary_ranges(g, N)
 
 # ------------------------------------------------------------------ #
-# Slicing helpers                                                     #
+# Slicing helpers                                                    #
 # ------------------------------------------------------------------ #
 
 @inline _broadcast_axis(v, d::Int, ::Val{D}) where {D} =
