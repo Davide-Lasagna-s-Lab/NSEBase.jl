@@ -18,8 +18,7 @@ MPI = "da04e1cc-30fd-572f-bb4f-1f8673147195"
 
 [extensions]
 MPIExt = ["MPI", "FDGrids", "HaloArrays"]
-MPIIntermediateExt = "MPI"
-
+MPIIntermediateExt = ["MPI", "FDGrids"]
 
 [compat]
 FDGrids = "≥0.3.2"

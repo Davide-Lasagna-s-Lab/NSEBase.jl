@@ -157,6 +157,7 @@ dg = distributed(g, MPI.COMM_WORLD;
                  nhalo=(1,))
 ```
 """
+# TODO: nhalo should be implicit from the stencil width of the DiffMatrix's
 function NSEBase.distributed(               g::NSEBase.AbstractGrid{T, D, AXES, FFT_DIMS_ORDER},
                                          comm::COMM;
                      decomposed_physical_dims::NTuple{K, Symbol},
