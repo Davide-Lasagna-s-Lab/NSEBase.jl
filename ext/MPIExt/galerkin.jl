@@ -11,22 +11,31 @@ Each rank holds only a local slab of the inhomogeneous dimension, so
 recovering the correct global projection.
 """
 function NSEBase.project!(a::DecomposedProjectedField,
-                          u::DecomposedFTVectorField)
+                          u::DecomposedFTVectorField{N}) where {N}
 
     fill!(parent(a), zero(eltype(a)))
-    for i in eachindex(u)
+    for n in 1:N
         NSEBase._project_component!(parent(a),
-                                    parent(u[i]),
-                                    NSEBase.modes(a)[i],
+                                    parent(u[n]),
+                                    NSEBase.modes(a)[n],
                                     NSEBase.weights(NSEBase.grid(u)),
                                     Val(NSEBase.fft_storage_dims(NSEBase.grid(u))))
     end
 
-    # Sum the per-rank partial projections into the global modal coefficients.
+    # Sum the per-rank partial projections into the global modal coefficients
     # TODO: check speed against constructing a buffer manually
     MPI.Allreduce!(parent(a), MPI.SUM, comm(NSEBase.grid(u)))
     return a
 end
+
+"""
+    NSEBase.project(u::DecomposedFTVectorField, modes) -> ProjectedField
+
+Allocate a `NSEBase.ProjectedField` over `modes` and project a decomposed `u`
+onto it. See [`project!`](@ref) for the in-place form.
+"""
+NSEBase.project(u::DecomposedFTVectorField, modes) =
+    NSEBase.project!(NSEBase.ProjectedField(NSEBase.grid(u), modes), u)
 
 # `expand!` does not need an MPI override: it reads from `a` (which is already
 # globally consistent after `project!`) and writes to `u` locally.

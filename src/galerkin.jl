@@ -125,9 +125,9 @@ function project!(a::ProjectedField{G},
                   u::VectorField{N, <:FTField{G}},
                    ::LoopGalerkin=LoopGalerkin()) where {N, G<:AbstractGrid{T}} where {T}
     #  sanitize the input
-    fill!(parent(a),zero(eltype(a)))
-    @inbounds for i in 1:N
-        _project_component!(parent(a), parent(u[i]), modes(a)[i], weights(grid(u)), Val(fft_storage_dims(grid(u))))
+    fill!(parent(a), zero(eltype(a)))
+    @inbounds for n in 1:N
+        _project_component!(parent(a), parent(u[n]), modes(a)[n], weights(grid(u)), Val(fft_storage_dims(grid(u))))
     end
     return a
 end
@@ -269,7 +269,7 @@ end
 function expand!(u::VectorField{N, <:FTField{G}},
                  a::ProjectedField{G},
                  ::GemmGalerkin) where {N, G<:AbstractGrid{T}} where {T}
-    u .= zero(Complex{T})
+    u      .= zero(Complex{T})
     g       = grid(a)
     inh_sz  = map(d -> size(g, d), inhomogeneous_storage_dims(g))
     Ninh    = prod(inh_sz)
