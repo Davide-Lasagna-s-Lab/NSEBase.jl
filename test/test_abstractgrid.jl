@@ -19,7 +19,7 @@
 #   - Required-interface fall-throughs (`points`, `weights`,
 #     `wavenumber_scale`, `growto`, `convert`) throw `NotImplementedError`.
 
-@testset verbose=true "AbstractGrid interface               " begin
+@testset "AbstractGrid interface                                              " begin
 
     # A minimal struct with no concrete implementations.  Used to verify the
     # fall-through methods throw `NotImplementedError`.

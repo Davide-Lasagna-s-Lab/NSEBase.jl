@@ -1,4 +1,4 @@
-@testset verbose=true "WaveNumberVector conversion                                         " begin
+@testset "WaveNumberVector conversion                                         " begin
     @testset "indexing                      " begin
         k = WaveNumberVector(2, -1, 0)
         @test k[1] == 2

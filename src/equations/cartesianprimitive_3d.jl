@@ -18,24 +18,10 @@
 # Construct via [`construct_equations`](@ref) rather than directly to ensure
 # cache and plan sizes are consistent.
 #
-# Halo-exchange pattern
-# ---------------------
-# All call methods follow the init/interior/overlap/wait/boundary split:
-#
-#   requests = init_requests!(u)
-#   interior_*(out, u); ...          ← interior rows, independent of halo
-#   <overlap work: FFT plans, etc.>  ← runs while MPI halos are in flight
-#   wait_requests!(requests)
-#   boundary_*(out, u); ...          ← boundary rows that need halo data
-#
-# For serial grids: init_requests! returns nothing, wait_requests!(nothing)
-# is a no-op, interior_* does the full computation, boundary_* is a no-op —
-# zero extra allocations. MPIExt overrides all four for DecomposedGrid
-# fields, achieving communication–computation overlap without any Task objects.
-#
-# NOTE: on a single node this overlap measures no faster than a blocking swap
-# (benchmarks/mpi_overlap.jl); it is kept pending a multi-node benchmark. See
-# https://github.com/Davide-Lasagna-s-Lab/NSEBase.jl/issues/21 before changing it.
+# NOTE: on a single node an overlap measures no faster than a blocking swap
+# (benchmarks/mpi_overlap.jl); it is not included in this implementation. See
+# https://github.com/Davide-Lasagna-s-Lab/NSEBase.jl/issues/21 for a discussion
+# on its efficacy.
 
 
 # ----------------------- #
@@ -126,19 +112,14 @@ function (eq::CartesianPrimitive3DNSE)(::Real,
     dudx = eq.scache[1]; dudy = eq.scache[2]; dudz = eq.scache[3]
     U    = eq.pcache[1]; dUdx = eq.pcache[2]; dUdy = eq.pcache[3]; dUdz = eq.pcache[4]
 
-    requests = init_requests!(u)
-    init_laplacian!(out, u)
-    init_ddx!(dudx, u)
-    init_ddy!(dudy, u)
-    init_ddz!(dudz, u)
-    eq.plans(U, u)
-    wait_requests!(requests)
-    complete_laplacian!(out, u)
-    complete_ddx!(dudx, u)
-    complete_ddy!(dudy, u)
-    complete_ddz!(dudz, u)
+    laplacian!(out, u)
     out .*= 1/eq.Re
 
+    ddx!(dudx, u)
+    ddy!(dudy, u)
+    ddz!(dudz, u)
+
+    eq.plans(U, u)
     eq.plans(dUdx, dudx); eq.plans(dUdy, dudy); eq.plans(dUdz, dudz)
     for n in 1:3
         @. dUdx[n] = -U[1]*dUdx[n] - U[2]*dUdy[n] - U[3]*dUdz[n]
@@ -161,15 +142,11 @@ function (eq::CartesianPrimitive3DLNSE)(::Real,
     dudx = eq.scache[1]; dudy = eq.scache[2]; dudz = eq.scache[3]
     U    = eq.pcache[1]; dUdy = eq.pcache[3]; dUdz = eq.pcache[4]
 
-    requests = init_requests!(u)
-    init_ddx!(dudx, u)
-    init_ddy!(dudy, u)
-    init_ddz!(dudz, u)
+    ddx!(dudx, u)
+    ddy!(dudy, u)
+    ddz!(dudz, u)
+
     eq.plans(U, u)
-    wait_requests!(requests)
-    complete_ddx!(dudx, u)
-    complete_ddy!(dudy, u)
-    complete_ddz!(dudz, u)
     eq.plans(dUdy, dudy); eq.plans(dUdz, dudz)
 
     eq(0, v, out)
@@ -184,19 +161,14 @@ function (eq::CartesianPrimitive3DLNSE{Forward})(::Real,
     U    = eq.pcache[1]; dUdx = eq.pcache[2]; dUdy = eq.pcache[3]; dUdz = eq.pcache[4]
     V    = eq.pcache[5]; dVdx = eq.pcache[6]; dVdy = eq.pcache[7]; dVdz = eq.pcache[8]
 
-    requests = init_requests!(v)
-    init_laplacian!(out, v)
-    init_ddx!(dvdx, v)
-    init_ddy!(dvdy, v)
-    init_ddz!(dvdz, v)
-    eq.plans(V, v)
-    wait_requests!(requests)
-    complete_laplacian!(out, v)
-    complete_ddx!(dvdx, v)
-    complete_ddy!(dvdy, v)
-    complete_ddz!(dvdz, v)
+    laplacian!(out, v)
     out .*= 1/eq.Re
 
+    ddx!(dvdx, v)
+    ddy!(dvdy, v)
+    ddz!(dvdz, v)
+
+    eq.plans(V, v)
     eq.plans(dUdx, dudx)
     eq.plans(dVdx, dvdx); eq.plans(dVdy, dvdy); eq.plans(dVdz, dvdz)
     for n in 1:3
@@ -217,18 +189,14 @@ function (eq::CartesianPrimitive3DLNSE{AdjointContinuous})(::Real,
     U    = eq.pcache[1]; dUdx = eq.pcache[2]; dUdy = eq.pcache[3]; dUdz = eq.pcache[4]
     V    = eq.pcache[5]; dVdx = eq.pcache[6]; dVdy = eq.pcache[7]; dVdz = eq.pcache[8]
 
-    requests = init_requests!(v)
-    init_laplacian!(out, v)
-    init_ddx!(dvdx, v)
-    init_ddy!(dvdy, v)
-    init_ddz!(dvdz, v)
-    eq.plans(V, v)
-    wait_requests!(requests)
-    complete_laplacian!(out, v)
-    complete_ddx!(dvdx, v)
-    complete_ddy!(dvdy, v)
-    complete_ddz!(dvdz, v)
+    laplacian!(out, v)
     out .*= 1/eq.Re
+
+    ddx!(dvdx, v)
+    ddy!(dvdy, v)
+    ddz!(dvdz, v)
+
+    eq.plans(V, v)
     eq.plans(dUdx, dudx)
     eq.plans(dVdx, dvdx); eq.plans(dVdy, dvdy); eq.plans(dVdz, dvdz)
     for n in 1:3
@@ -254,13 +222,10 @@ function (eq::CartesianPrimitive3DLNSE{AdjointDiscrete})(::Real,
     U    = eq.pcache[1]; dUdx = eq.pcache[2]; dUdy = eq.pcache[3]; dUdz = eq.pcache[4]
     V    = eq.pcache[5]; U1V  = eq.pcache[6]; U2V  = eq.pcache[7]; U3V  = eq.pcache[8]
 
-    requests = init_requests!(v)
-    init_laplacian!(out, v; adjoint=true)
-    eq.plans(V, v)
-    wait_requests!(requests)
-    complete_laplacian!(out, v; adjoint=true)
+    laplacian!(out, v; adjoint=true)
     out .*= 1/eq.Re
 
+    eq.plans(V, v)
     for n in 1:3
         @. U1V[n] = U[1]*V[n]
         @. U2V[n] = U[2]*V[n]
@@ -270,16 +235,9 @@ function (eq::CartesianPrimitive3DLNSE{AdjointDiscrete})(::Real,
 
     eq.plans(dUdx, dudx)
     for n in 1:3
-        r1 = init_requests!(u1v[n])
-        r2 = init_requests!(u2v[n])
-        r3 = init_requests!(u3v[n])
-        init_ddx!(dudx[1], u1v[n]; adjoint=true)
-        init_ddy!(dudx[2], u2v[n]; adjoint=true)
-        init_ddz!(dudx[3], u3v[n]; adjoint=true)
-        wait_requests!(r1); wait_requests!(r2); wait_requests!(r3)
-        complete_ddx!(dudx[1], u1v[n]; adjoint=true)
-        complete_ddy!(dudx[2], u2v[n]; adjoint=true)
-        complete_ddz!(dudx[3], u3v[n]; adjoint=true)
+        ddx!(dudx[1], u1v[n]; adjoint=true)
+        ddy!(dudx[2], u2v[n]; adjoint=true)
+        ddz!(dudx[3], u3v[n]; adjoint=true)
         out[n] .-= dudx[1] .+ dudx[2] .+ dudx[3]
     end
     U1V .= 0

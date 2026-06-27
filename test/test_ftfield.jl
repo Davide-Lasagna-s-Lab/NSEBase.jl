@@ -7,7 +7,7 @@
 #   - Setting coefficients through a `WaveNumberVector` preserves the same
 #     Hermitian invariants.
 
-@testset verbose=true "FTField contract                    " begin
+@testset "FTField contract                                                    " begin
 
     @testset "constructor normalises mean and Hermitian mirror pairs            " begin
         Ny, Nx, Nz = 3, 8, 5

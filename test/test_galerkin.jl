@@ -48,7 +48,7 @@ function _expected_expand(a::ProjectedField, modes)
     return out
 end
 
-@testset verbose=true "Galerkin projection and expansion                                   " begin
+@testset "Galerkin projection and expansion                                   " begin
     @testset "explicit formulas" begin
         Ny, Nx, Nm, Nc = 3, 5, 2, 2
         Nk = (Nx >> 1) + 1

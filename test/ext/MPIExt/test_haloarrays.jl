@@ -51,18 +51,18 @@ end
     u    = NSEBase.Field(g)
     uhat = NSEBase.FTField(g)
 
-    reqs_u    = NSEBase.init_requests!(u)
-    reqs_uhat = NSEBase.init_requests!(uhat)
+    reqs_u    = MPIExt.init_requests!(u)
+    reqs_uhat = MPIExt.init_requests!(uhat)
 
-    @test NSEBase.wait_requests!(reqs_u) === nothing
-    @test NSEBase.wait_requests!(reqs_uhat) === nothing
+    @test MPIExt.wait_requests!(reqs_u) === nothing
+    @test MPIExt.wait_requests!(reqs_uhat) === nothing
 end
 
 @testset "init_requests! on VectorField returns nested request tuple          " begin
     q = NSEBase.VectorField(g, NSEBase.FTField; N=2)
-    reqs = NSEBase.init_requests!(q)
+    reqs = MPIExt.init_requests!(q)
     @test reqs isa Tuple && length(reqs) == 2
-    @test NSEBase.wait_requests!(reqs) === nothing
+    @test MPIExt.wait_requests!(reqs) === nothing
 end
 
 if nranks > 1
@@ -74,8 +74,8 @@ if nranks > 1
         fill!(parent(a), 0)  # zero the dense storage, including halo cells
         a .= Float64(rank + 1)
 
-        reqs = NSEBase.init_requests!(u)
-        NSEBase.wait_requests!(reqs)
+        reqs = MPIExt.init_requests!(u)
+        MPIExt.wait_requests!(reqs)
 
         # `HaloArray` scalar indexing accepts halo indices such as 0 and n+1, but
         # `view` follows Julia's ordinary array bounds.  Inspect whole halo planes

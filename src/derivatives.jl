@@ -69,6 +69,17 @@ function dd!(out::F, u::F, ::Val{STORAGE_DIM};
     STORAGE_DIM ∉ FFT_DIMS_ORDER &&
         throw(NotImplementedError(grid(u), Val(STORAGE_DIM)))
 
+    return _spectral_dd!(out, u, Val(STORAGE_DIM); adjoint=adjoint)
+end
+
+function _spectral_dd!(out::F,
+                         u::F,
+                          ::Val{STORAGE_DIM};
+                   adjoint::Bool=false) where {
+        STORAGE_DIM, T, D, AXES, FFT_DIMS_ORDER,
+        G<:AbstractGrid{T, D, AXES, FFT_DIMS_ORDER},
+        F<:Union{FTField{G}, ProjectedField{G}}}
+
     scale = wavenumber_scale(grid(u), STORAGE_DIM)
     coeff = adjoint ? -im * T(scale) : im * T(scale)
     Nd    = size(u, STORAGE_DIM)
@@ -160,56 +171,3 @@ function laplacian!(out::FTField{G}, u::FTField{G}; kwargs...) where {G}
 end
 laplacian!(out::VectorField{N}, u::VectorField{N}; kwargs...) where {N} =
     (for n in 1:N; laplacian!(out[n], u[n]; kwargs...); end; return out)
-
-"""
-    init_requests!(u)
-
-Return the halo-exchange request handle(s) for `u`, initiating a non-blocking
-exchange if needed.
-
-For serial (non-decomposed) grids this is a no-op that returns `nothing`.
-MPIExt overrides this for `DecomposedGrid` fields to post non-blocking
-MPI communication; the returned handle is passed to the three-argument forms of
-`ddx!`, `ddy!`, `laplacian!`, etc. so that interior work can proceed while the
-halo is in flight.
-"""
-# ------------------------------------------------------------------ #
-# init_requests! / wait_requests! / init_* / complete_*              #
-# ------------------------------------------------------------------ #
-#
-# Equations are written as:
-#
-#   requests = init_requests!(u)
-#   init_laplacian!(out, u); init_ddx!(dudx, u); ...
-#   <other work that doesn't need halo data — overlaps with MPI>
-#   wait_requests!(requests)
-#   complete_laplacian!(out, u); complete_ddx!(dudx, u); ...
-#
-# For serial grids: init_requests! returns nothing, wait_requests! is a
-# no-op, init_* does the full computation, complete_* is a no-op.
-# MPIExt overrides all four families for DecomposedGrid fields so
-# that interior rows are computed while MPI halos are in flight.
-#
-# NOTE (overlap effectiveness): single-node benchmarking shows this split gives
-# no speedup over a plain blocking halo swap (and an async progress thread is
-# strictly worse) — there is little shared-memory comm latency to hide. The
-# split is kept because it is no worse, and may still pay off on a multi-node
-# cluster with real network latency, which has NOT yet been benchmarked. Do not
-# add the complexity of progress polling / threads, or remove the split, without
-# multi-node data. See https://github.com/Davide-Lasagna-s-Lab/NSEBase.jl/issues/21
-
-init_requests!(u) = nothing
-wait_requests!(::Nothing) = nothing
-
-init_ddx!(out, u; kwargs...) = ddx!(out, u; kwargs...)
-init_ddy!(out, u; kwargs...) = ddy!(out, u; kwargs...)
-init_ddz!(out, u; kwargs...) = ddz!(out, u; kwargs...)
-init_ddt!(out, u; kwargs...) = ddt!(out, u; kwargs...)
-
-complete_ddx!(out, u; kwargs...) = out
-complete_ddy!(out, u; kwargs...) = out
-complete_ddz!(out, u; kwargs...) = out
-complete_ddt!(out, u; kwargs...) = out
-
-init_laplacian!(out, u; kwargs...) = laplacian!(out, u; kwargs...)
-complete_laplacian!(out, u; kwargs...) = out

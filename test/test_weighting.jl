@@ -7,7 +7,7 @@
 #   where σⱼ are the scales in `FFT_DIMS_ORDER` order and kⱼ is the signed
 #   integer wavenumber along the j-th homogeneous dimension.
 
-@testset verbose=true "FarazmandWeight                     " begin
+@testset "FarazmandWeight                                                     " begin
 
     @testset "constructors and scale storage" begin
         # Grid form: pulls scales from `wavenumber_scale(g, ORDER[k])`.

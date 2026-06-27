@@ -63,10 +63,7 @@ u      = NSEBase.FTField(g); plans(u, u_phys)
 
 @testset "staged ddy! matches analytic du/dy                                  " begin
     out = NSEBase.FTField(g)
-    requests = NSEBase.init_requests!(u)
-    NSEBase.init_ddy!(out, u)
-    NSEBase.wait_requests!(requests)
-    NSEBase.complete_ddy!(out, u)
+    NSEBase.ddy!(out, u)
 
     expected = NSEBase.FTField(g)
     plans(expected, NSEBase.Field(g, dudy_fun))
@@ -84,10 +81,7 @@ end
     plans(expected[1], NSEBase.Field(g, dudy_fun))
     plans(expected[2], NSEBase.Field(g, (y, x, z, t) -> 2dudy_fun(y, x, z, t)))
 
-    requests = NSEBase.init_requests!(q)
-    NSEBase.init_ddy!(out, q)
-    NSEBase.wait_requests!(requests)
-    NSEBase.complete_ddy!(out, q)
+    NSEBase.ddy!(out, q)
 
     @test parent(out[1]) ≈ parent(expected[1]) rtol=1e-6
     @test parent(out[2]) ≈ parent(expected[2]) rtol=1e-6
@@ -97,9 +91,9 @@ sd(sym) = NSEBase.physical_to_storage_dim(NSEBase.grid(u), Val(sym))
 
 @testset "interior_dd! + wait + boundary_dd! covers the FD direction          " begin
     out = NSEBase.FTField(g)
-    requests = NSEBase.init_requests!(u)
+    requests = MPIExt.init_requests!(u)
     MPIExt.interior_dd!(out, u, sd(:y))
-    NSEBase.wait_requests!(requests)
+    MPIExt.wait_requests!(requests)
     MPIExt.boundary_dd!(out, u, sd(:y))
 
     expected = NSEBase.FTField(g)
@@ -109,20 +103,19 @@ end
 
 @testset "dd! along an FFT direction is spectral (no halo needed)             " begin
     out = NSEBase.FTField(g)
-    MPIExt.interior_dd!(out, u, sd(:x))
-    # Boundary work is a no-op for FFT directions; the result must already match.
+    NSEBase.dd!(out, u, sd(:x))
     expected = NSEBase.FTField(g)
     plans(expected, NSEBase.Field(g, dudx_fun))
     @test parent(out) ≈ parent(expected) rtol=1e-6
 
     out_z = NSEBase.FTField(g)
-    MPIExt.interior_dd!(out_z, u, sd(:z))
+    NSEBase.dd!(out_z, u, sd(:z))
     expected_z = NSEBase.FTField(g)
     plans(expected_z, NSEBase.Field(g, dudz_fun))
     @test parent(out_z) ≈ parent(expected_z) rtol=1e-6
 
     out_t = NSEBase.FTField(g)
-    MPIExt.interior_dd!(out_t, u, sd(:t))
+    NSEBase.dd!(out_t, u, sd(:t))
     expected_t = NSEBase.FTField(g)
     plans(expected_t, NSEBase.Field(g, dudt_fun))
     @test parent(out_t) ≈ parent(expected_t) rtol=1e-6
@@ -130,9 +123,9 @@ end
 
 @testset "interior_laplacian! + boundary_laplacian! matches analytic Laplacian" begin
     out = NSEBase.FTField(g)
-    requests = NSEBase.init_requests!(u)
+    requests = MPIExt.init_requests!(u)
     MPIExt.interior_laplacian!(out, u)
-    NSEBase.wait_requests!(requests)
+    MPIExt.wait_requests!(requests)
     MPIExt.boundary_laplacian!(out, u)
 
     expected = NSEBase.FTField(g)
@@ -144,9 +137,9 @@ end
     out_a = NSEBase.FTField(g)
     out_b = NSEBase.FTField(g)
 
-    requests = NSEBase.init_requests!(u)
+    requests = MPIExt.init_requests!(u)
     MPIExt.interior_laplacian!(out_a, u)
-    NSEBase.wait_requests!(requests)
+    MPIExt.wait_requests!(requests)
     MPIExt.boundary_laplacian!(out_a, u)
 
     # 2-arg overload — auto-exchange.

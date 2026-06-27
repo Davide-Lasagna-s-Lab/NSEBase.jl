@@ -7,7 +7,7 @@
 #     not its modes or its grid; `load_field(g, modes, path)` rebuilds the
 #     ProjectedField from those three components.
 
-@testset verbose=true "IO                                  " begin
+@testset "IO                                                                  " begin
 
     # Use a unique temp directory so parallel test runs do not race on the
     # same JLD2 file names.

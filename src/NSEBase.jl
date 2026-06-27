@@ -22,11 +22,8 @@ export add_base_flow!
 export FFTPlans, FFT, IFFT
 export ProjectedField, modes, project!, project, expand!, expand
 export LoopGalerkin, GemmGalerkin
-export dd!, ddx!, ddy!, ddz!, ddt!, init_requests!, wait_requests!
-export init_ddx!, complete_ddx!, init_ddy!, complete_ddy!
-export init_ddz!, complete_ddz!, init_ddt!, complete_ddt!
+export dd!, ddx!, ddy!, ddz!, ddt!
 export inhomogeneous_laplacian!, add_homogeneous_laplacian!, laplacian!
-export init_laplacian!, complete_laplacian!
 export shift!, shift, normdiff, minnormdiff
 export save_grid, load_grid, save_field, load_field
 export FarazmandWeight

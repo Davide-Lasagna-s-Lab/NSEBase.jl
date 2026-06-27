@@ -25,6 +25,8 @@
 # A driver at the bottom of this file runs both launches for you when invoked as
 #   julia --project=test benchmarks/mpi_overlap.jl --driver N
 
+throw(error("This script is broken - needs updating for newer interface"))
+
 import FDGrids, HaloArrays, MPI, NSEBase, Printf
 
 # ----- driver: spawn both mpiexec launches, then exit ----------------------- #

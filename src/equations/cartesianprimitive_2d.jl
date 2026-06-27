@@ -10,12 +10,6 @@
 #   CartesianPrimitive2DLNSE{Forward}          — forward linearised operator
 #   CartesianPrimitive2DLNSE{AdjointContinuous}— continuous adjoint
 #   CartesianPrimitive2DLNSE{AdjointDiscrete}  — discrete adjoint
-#
-# init_requests!(u) returns nothing for serial grids; init_* computes the full
-# serial derivative/laplacian and complete_* is a no-op. For decomposed grids
-# MPIExt overrides the same hooks with an interior → wait → boundary
-# split. Both paths share this source; see cartesianprimitive_3d.jl for full
-# notes.
 
 
 # ----------------------- #
@@ -95,17 +89,13 @@ function (eq::CartesianPrimitive2DNSE)(::Real,
     dudx = eq.scache[1]; dudy = eq.scache[2]
     U    = eq.pcache[1]; dUdx = eq.pcache[2]; dUdy = eq.pcache[3]
 
-    requests = init_requests!(u)
-    init_laplacian!(out, u)
-    init_ddx!(dudx, u)
-    init_ddy!(dudy, u)
-    eq.plans(U, u)
-    wait_requests!(requests)
-    complete_laplacian!(out, u)
-    complete_ddx!(dudx, u)
-    complete_ddy!(dudy, u)
+    laplacian!(out, u)
     out .*= 1/eq.Re
 
+    ddx!(dudx, u)
+    ddy!(dudy, u)
+
+    eq.plans(U, u)
     eq.plans(dUdx, dudx); eq.plans(dUdy, dudy)
     for n in 1:2
         @. dUdx[n] = -U[1]*dUdx[n] - U[2]*dUdy[n]
@@ -128,13 +118,10 @@ function (eq::CartesianPrimitive2DLNSE)(::Real,
     dudx = eq.scache[1]; dudy = eq.scache[2]
     U    = eq.pcache[1]; dUdy = eq.pcache[3]
 
-    requests = init_requests!(u)
-    init_ddx!(dudx, u)
-    init_ddy!(dudy, u)
+    ddx!(dudx, u)
+    ddy!(dudy, u)
+
     eq.plans(U, u)
-    wait_requests!(requests)
-    complete_ddx!(dudx, u)
-    complete_ddy!(dudy, u)
     eq.plans(dUdy, dudy)
 
     eq(0, v, out)
@@ -149,17 +136,13 @@ function (eq::CartesianPrimitive2DLNSE{Forward})(::Real,
     U    = eq.pcache[1]; dUdx = eq.pcache[2]; dUdy = eq.pcache[3]
     V    = eq.pcache[4]; dVdx = eq.pcache[5]; dVdy = eq.pcache[6]
 
-    requests = init_requests!(v)
-    init_laplacian!(out, v)
-    init_ddx!(dvdx, v)
-    init_ddy!(dvdy, v)
-    eq.plans(V, v)
-    wait_requests!(requests)
-    complete_laplacian!(out, v)
-    complete_ddx!(dvdx, v)
-    complete_ddy!(dvdy, v)
+    laplacian!(out, v)
     out .*= 1/eq.Re
 
+    ddx!(dvdx, v)
+    ddy!(dvdy, v)
+
+    eq.plans(V, v)
     eq.plans(dUdx, dudx)
     eq.plans(dVdx, dvdx); eq.plans(dVdy, dvdy)
     for n in 1:2
@@ -180,16 +163,13 @@ function (eq::CartesianPrimitive2DLNSE{AdjointContinuous})(::Real,
     U    = eq.pcache[1]; dUdx = eq.pcache[2]; dUdy = eq.pcache[3]
     V    = eq.pcache[4]; dVdx = eq.pcache[5]; dVdy = eq.pcache[6]
 
-    requests = init_requests!(v)
-    init_laplacian!(out, v)
-    init_ddx!(dvdx, v)
-    init_ddy!(dvdy, v)
-    eq.plans(V, v)
-    wait_requests!(requests)
-    complete_laplacian!(out, v)
-    complete_ddx!(dvdx, v)
-    complete_ddy!(dvdy, v)
+    laplacian!(out, v)
     out .*= 1/eq.Re
+
+    ddx!(dvdx, v)
+    ddy!(dvdy, v)
+
+    eq.plans(V, v)
     eq.plans(dUdx, dudx)
     eq.plans(dVdx, dvdx); eq.plans(dVdy, dvdy)
     for n in 1:2
@@ -214,13 +194,10 @@ function (eq::CartesianPrimitive2DLNSE{AdjointDiscrete})(::Real,
     U    = eq.pcache[1]; dUdx = eq.pcache[2]; dUdy = eq.pcache[3]
     V    = eq.pcache[4]; U1V  = eq.pcache[5]; U2V  = eq.pcache[6]
 
-    requests = init_requests!(v)
-    init_laplacian!(out, v; adjoint=true)
-    eq.plans(V, v)
-    wait_requests!(requests)
-    complete_laplacian!(out, v; adjoint=true)
+    laplacian!(out, v; adjoint=true)
     out .*= 1/eq.Re
 
+    eq.plans(V, v)
     for n in 1:2
         @. U1V[n] = U[1]*V[n]
         @. U2V[n] = U[2]*V[n]
@@ -229,13 +206,8 @@ function (eq::CartesianPrimitive2DLNSE{AdjointDiscrete})(::Real,
 
     eq.plans(dUdx, dudx)
     for n in 1:2
-        r1 = init_requests!(u1v[n])
-        r2 = init_requests!(u2v[n])
-        init_ddx!(dudx[1], u1v[n]; adjoint=true)
-        init_ddy!(dudx[2], u2v[n]; adjoint=true)
-        wait_requests!(r1); wait_requests!(r2)
-        complete_ddx!(dudx[1], u1v[n]; adjoint=true)
-        complete_ddy!(dudx[2], u2v[n]; adjoint=true)
+        ddx!(dudx[1], u1v[n]; adjoint=true)
+        ddy!(dudx[2], u2v[n]; adjoint=true)
         out[n] .-= dudx[1] .+ dudx[2]
     end
     U1V .= 0
