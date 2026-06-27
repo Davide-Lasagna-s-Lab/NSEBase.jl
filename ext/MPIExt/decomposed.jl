@@ -83,22 +83,24 @@ struct DecomposedGrid{T,
                       P,
                       COMM} <: NSEBase.AbstractGrid{T, D, AXES, FFT_DIMS_ORDER}
     # The single-domain (serial) grid this wrapper exposes as decomposed.
-    parent     :: GP
+    parent         :: GP
     # Full-Cartesian MPI communicator built by `distributed(...)` (one Cart
     # direction per storage dim, with rank 1 on non-decomposed dims). This
     # is the shape `HaloArrays` requires, and the comm returned by `comm(g)`.
-    comm       :: COMM
+    comm           :: COMM
     # Per-rank quadrature weights, sliced from the parent at construction.
     # `weights(g)` is called inside hot loops (projection, dot products), so
     # lazy `getindex` slicing here would allocate per call.
-    weights    :: W
+    weights        :: W
     # Per-rank coordinate vectors along each inhomogeneous storage dim, in
     # `NSEBase.inhomogeneous_storage_dims(g)` order. The k-th entry is a `Vector`
     # representing storage dim `inhomogeneous_storage_dims(g)[k]`. Cached for the
     # same reason as `weights`: `points(g)` is called every time a Field is
     # initialised by broadcasting, and re-slicing the parent's stored
     # coordinate vector per call would allocate.
-    inh_points :: P
+    inh_points     :: P
+    # Tasks that keep track of threads spawned to do boundary derivative work.
+    boundary_tasks :: Vector{Task}
 end
 
 """
@@ -248,6 +250,15 @@ function NSEBase.distributed(               g::NSEBase.AbstractGrid{T, D, AXES, 
     local_weights    = _local_weights(g, cart)
     local_inh_points = _local_inhomogeneous_points(g, cart)
 
+
+    # --------------------------------------------------------------------- #
+    # Boundary task pre-allocation
+    # --------------------------------------------------------------------- #
+    noop = Threads.@spawn nothing
+    wait(noop)
+    boundary_tasks = fill(noop, decomposed_storage_dims+1)
+
+
     # --------------------------------------------------------------------- #
     # Wrapper construction
     # --------------------------------------------------------------------- #
@@ -258,7 +269,8 @@ function NSEBase.distributed(               g::NSEBase.AbstractGrid{T, D, AXES, 
                            typeof(local_inh_points),
                            COMM}(g, full_cart_comm,
                                  local_weights,
-                                 local_inh_points)
+                                 local_inh_points,
+                                 boundary_tasks)
 end
 
 # ------------------------------------------------------------------ #
