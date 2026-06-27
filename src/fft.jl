@@ -162,7 +162,7 @@ _fft_data(u::Union{Field, FTField}) = _fft_data(parent(u))
 
 Forward in-place transform: physical array `u` → spectral array `û`.
 
-## Arguments
+# Arguments
 - `û`: output spectral array
 - `u`: input physical array (never modified)
 - `add`: add the transform result into `û` rather than overwriting it. Useful
@@ -246,7 +246,7 @@ end
 
 Backward in-place transform: spectral array `û` → physical array `u`.
 
-## Arguments
+# Arguments
 - `u`: output physical array
 - `û`: input spectral array
 - `preserve_input`: FFTW's C2R (brfft) transform is permitted to overwrite its
