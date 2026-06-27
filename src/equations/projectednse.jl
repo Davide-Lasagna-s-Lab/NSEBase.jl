@@ -69,6 +69,8 @@ function (eq::ProjectedNSE)(out::ProjectedField,
 end
 
 # TODO: TOM, this interface with a second unused argument does not make much sense to me. It needs better documentation
+# ! this is to avoid re-computing parts of the cache which can be re-used for the gradient part of the computation.
+# ! Note that this is only really used in the optimisation where L-BFGS always calls this method after the one above
 """
     (eq::ProjectedNSE)(out::ProjectedField, ::ProjectedField, b::ProjectedField) -> out
 
