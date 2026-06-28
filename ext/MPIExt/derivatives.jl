@@ -19,21 +19,44 @@ wait_requests!(tokens::Tuple) = (foreach(wait_requests!, tokens); nothing)
 # ------------------------------------------------------------------ #
 # laplacian! — 2-arg blocking override for decomposed grids          #
 # ------------------------------------------------------------------ #
+"""
+    NSEBase.laplacian!(out::DecomposedFTField,
+                         u::DecomposedFTField;
+                   adjoint::Bool=false) -> DecomposedFTField
+
+Compute the full Laplacian of the distributed FTField `u` in-place,
+storing the result in `out`.
+
+The computation is split between the interior part of the decomposed
+field which does not depend on the halo swap between processes, and
+the boundary computations that can only be completed after the halo
+swaps have completed.
+"""
 function NSEBase.laplacian!(out::DecomposedFTField,
-                              u::DecomposedFTField; kwargs...)
+                              u::DecomposedFTField;
+                        adjoint::Bool=false)
     # start comm
     requests = init_requests!(u)
 
     # do interior work
-    interior_laplacian!(out, u; kwargs...)
+    interior_laplacian!(out, u; adjoint=adjoint)
 
     # do boundary work once halo swap has concluded
     wait_requests!(requests)
-    boundary_laplacian!(out, u; kwargs...)
+    boundary_laplacian!(out, u; adjoint=adjoint)
 
     return out
 end
 
+"""
+    interior_laplacian!(out::DecomposedFTField,
+                          u::DecomposedFTField;
+                    adjoint::Bool=false) -> DecomposedFTField
+
+Compute the Laplacian operator on the parts of the distributed field
+`u` that do not depend on data from the halo regions of the underlying
+arrays.
+"""
 function interior_laplacian!(out::DecomposedFTField,
                                u::DecomposedFTField;
                          adjoint::Bool=false)
@@ -64,6 +87,16 @@ function interior_laplacian!(out::DecomposedFTField,
     return out
 end
 
+"""
+    boundary_laplacian!(out::DecomposedFTField,
+                          u::DecomposedFTField;
+                    adjoint::Bool=false) -> DecomposedFTField
+
+Compute the remaining parts of the Laplacian of the distributed field
+`u` that depend on the data in the halo regions of the underlying arrays.
+This function should only be called after `wait_requests!(requests)` has
+completed.
+"""
 function boundary_laplacian!(out::DecomposedFTField,
                                u::DecomposedFTField;
                          adjoint::Bool=false)
@@ -71,7 +104,7 @@ function boundary_laplacian!(out::DecomposedFTField,
     for sd in NSEBase.spatial_inhomogeneous_storage_dims(g)
         _dd_over!(out, u, g, Val(sd), Val(2),
                   local_boundary_ranges(g, sd);
-                  adjoint = adjoint, accumulate = Val(true))
+                  adjoint=adjoint, accumulate=Val(true))
     end
     return out
 end
@@ -84,9 +117,14 @@ end
     dd!(out::DecomposedFTField,
           u::DecomposedFTField,
            ::Val{STORAGE_DIM};
-        kwargs...) -> DecomposedFTField
+    adjoint::Bool=false) -> DecomposedFTField
 
-TODO: this docstring
+In-place derivative of the distributed field `u` along the storage
+dimension encoded by `Val(STORAGE_DIM)`.
+
+For `STORAGE_DIM ∉ DDIMS` the code falls back to the standard
+derivative method [`dd!`](@ref) which uses the default non-distributed
+routines for the derivative computation.
 """
 function NSEBase.dd!(out::F,
                        u::F,
@@ -94,10 +132,17 @@ function NSEBase.dd!(out::F,
                  adjoint::Bool=false) where {
     STORAGE_DIM, FFT_DIMS_ORDER, DDIMS, T, D, AXES,
     G<:DecomposedGrid{T, D, AXES, FFT_DIMS_ORDER, DDIMS},
-    F<:Union{NSEBase.FTField{G}, NSEBase.ProjectedField{G}}}
+    F<:Union{NSEBase.FTField{G}, NSEBase.ProjectedField{G}}} # ! can I get rid of the ProjectedField part?
 
-    STORAGE_DIM ∈ DDIMS ? _distributed_dd!(out, u, Val(STORAGE_DIM); adjoint=adjoint) :
-                     NSEBase._spectral_dd!(out, u, Val(STORAGE_DIM), adjoint=adjoint)
+    if STORAGE_DIM ∈ DDIMS
+        _distributed_dd!(out, u, Val(STORAGE_DIM); adjoint=adjoint)
+    else
+        if STORAGE_DIM ∈ FFT_DIMS_ORDER
+            NSEBase._spectral_dd!(out, u, Val(STORAGE_DIM); adjoint=adjoint)
+        else
+            NSEBase.inhomogeneous_dd!(out, u, Val(STORAGE_DIM); adjoint=adjoint)
+        end
+    end
 
     return out
 end
@@ -108,7 +153,8 @@ end
                         ::Val{STORAGE_DIM};
                     adjoint=false) -> DecomposedFTField
 
-TODO: this docstring
+Compute the derivative of a distributed field `u` along one of
+decomposed storage dimensions, i.e. `STORAGE_DIM ∈ DDIMS`.
 """
 function _distributed_dd!(out::Union{DecomposedFTField, DecomposedField},
                             u::Union{DecomposedFTField, DecomposedField},
@@ -127,27 +173,63 @@ function _distributed_dd!(out::Union{DecomposedFTField, DecomposedField},
     return out
 end
 
+"""
+    interior_dd!(out::DecomposedFTField,
+                   u::DecomposedFTField,
+                    ::Val{STORAGE_DIM};
+             adjoint::Bool=false) -> DecomposedFTField
 
+Compute the derivative of the parts of the distributed field `u` along
+the storage dimension `STORAGE_DIM` that do not depend on data from
+the halo regions of the underlying arrays.
+"""
 interior_dd!(out::DecomposedFTField,
                u::DecomposedFTField,
                 ::Val{STORAGE_DIM};
          adjoint::Bool=false) where {STORAGE_DIM} =
     _dd_over!(out, u, NSEBase.grid(u), Val(STORAGE_DIM), Val(1),
               (local_interior_range(NSEBase.grid(u), STORAGE_DIM),);
-              adjoint = adjoint)
+              adjoint=adjoint)
 
+"""
+    boundary_laplacian!(out::DecomposedFTField,
+                          u::DecomposedFTField,
+                           ::Val{STORAGE_DIM};
+                    adjoint::Bool=false) -> DecomposedFTField
+
+Compute the remaining parts of the derivative of the distributed field
+`u` that depend on the data in the halo regions of the underlying arrays.
+This function should only be called after `wait_requests!(requests)` has
+completed.
+"""
 boundary_dd!(out::DecomposedFTField,
                u::DecomposedFTField,
                 ::Val{STORAGE_DIM};
          adjoint::Bool=false) where {STORAGE_DIM} =
     _dd_over!(out, u, NSEBase.grid(u), Val(STORAGE_DIM), Val(1),
               local_boundary_ranges(NSEBase.grid(u), STORAGE_DIM);
-              adjoint = adjoint)
+              adjoint=adjoint)
 
 
 # ------------------------------------------------------------------ #
 # _dd_over! — FD kernel                                              #
 # ------------------------------------------------------------------ #
+"""
+    _dd_over!(out, u, g::DecomposedGrid, ::Val{STORAGE_DIM}, ::Val{ORDER},
+              ranges; adjoint::Bool=false, accumulate::Val=Val(false))
+
+Compute the derivative of a distributed field `u` in-place along the
+storage dimension `STORAGE_DIM ∈ DDIMS` and assign the
+result to `out`.
+
+Only a slice of the [`DiffMatrix`](@ref) is used for the computation,
+corresponding to `range`, determined by both the particular part of the
+overal decomposed field this is being computed on, as well as the particular
+parts of the field locally that want to be computed.
+
+Optionally, by setting `accumulate=Val(true)` the result can be accumulated
+into `out`, instead of overwritting it with the result.
+"""
 @inline function _dd_over!(out, u, g::DecomposedGrid, ::Val{STORAGE_DIM}, ::Val{ORDER},
                            ranges;
                            adjoint::Bool=false,
