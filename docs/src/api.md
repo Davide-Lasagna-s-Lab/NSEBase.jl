@@ -20,6 +20,7 @@ growto
 points
 wavenumber_scale
 weights
+distributed (requires MPI)
 ```
 
 ## Wavenumber indexing
