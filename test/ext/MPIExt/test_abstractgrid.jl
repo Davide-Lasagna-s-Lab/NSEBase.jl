@@ -15,6 +15,8 @@ import HaloArrays
 
 using NSEBase
 
+const MPIExt = Base.get_extension(NSEBase, :MPIExt)
+
 MPI.Initialized() || MPI.Init()
 
 include("grid.jl")

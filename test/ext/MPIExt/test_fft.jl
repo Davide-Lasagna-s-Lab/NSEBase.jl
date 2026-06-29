@@ -13,7 +13,8 @@ using Test
 import HaloArrays
 import MPI
 
-using NSEBase
+using NSEBase,
+      FDGrids
 
 MPI.Initialized() || MPI.Init()
 

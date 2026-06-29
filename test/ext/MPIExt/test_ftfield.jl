@@ -10,7 +10,10 @@ using Test
 import HaloArrays
 import MPI
 
-using NSEBase
+using NSEBase,
+      FDGrids
+
+const MPIExt = Base.get_extension(NSEBase, :MPIExt)
 
 MPI.Initialized() || MPI.Init()
 

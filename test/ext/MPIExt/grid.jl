@@ -19,10 +19,6 @@ import LinearAlgebra
 import MPI
 import NSEBase
 
-const MPIExt = Base.get_extension(NSEBase, :MPIExt)
-MPIExt === nothing &&
-    error("MPIExt did not load; import FDGrids, HaloArrays, MPI, and NSEBase before including grid.jl")
-
 # Physical-coordinate layout for the mock channel grid. The y direction lives
 # on storage dim 1, matching the production ChannelGrid convention; x, z, t
 # follow on storage dims 2, 3, 4.
@@ -179,7 +175,7 @@ end
                      stencil_width=3) -> DecomposedGrid
 
 Build a `MockChannelGrid` and wrap it with
-`MPIExt.distributed(...)` along the wall-normal `:y` direction.
+`NSEBase.distributed(...)` along the wall-normal `:y` direction.
 """
 function distributed_mock(Ny::Int, Nx::Int, Nz::Int, Nt::Int, comm;
                           nhalo = (1,),
@@ -192,7 +188,7 @@ function distributed_mock(Ny::Int, Nx::Int, Nz::Int, Nt::Int, comm;
     nhalo_tuple = nhalo isa Integer ?
         ntuple(_ -> Int(nhalo), length(decomposed_physical_dims)) :
         nhalo
-    return MPIExt.distributed(parent, comm;
+    return NSEBase.distributed(parent, comm;
                                      decomposed_physical_dims = decomposed_physical_dims,
                                      nprocesses = nprocesses,
                                      nhalo = nhalo_tuple)
