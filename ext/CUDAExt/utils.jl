@@ -1,0 +1,58 @@
+# General utilities useful throughout the module.
+
+"""
+    NSEBase.show_tuning_info(show_info::Bool)
+
+Toggle extra information when performing kernel tuning for Galerkin methods
+and dot product of `ProjectedField`.
+"""
+NSEBase.show_tuning_info(show_info::Bool) = TUNING_INFO[] = show_info
+
+"""
+    _get_launch_params(kernel_f, kernel_args...) -> Int32
+
+Query global `LAUNCH_PARAMS` for number of threads to use for the CUDA
+kernel `kernel_f` with the arguments `kernel_args`.
+
+If a key in `LAUNCH_PARAMS` exists with the specific types of the kernel
+arguments, i.e. `map(typeof, kernel_args)`, then the associated value is
+returned. If the key does not exist then the optimal threads for `kernel_f`
+are determined via [`CUDA.launch_configuration`](@ref), see 
+https://cuda.juliagpu.org/stable/lib/cudadrv/#CUDACore.launch_configuration
+for more details.
+"""
+function _get_launch_params(kernel_f::F, kernel_args...) where {F}
+    key = (F, map(typeof, kernel_args))
+    get!(LAUNCH_PARAMS, key) do
+        kernel = @cuda launch=false kernel_f(kernel_args...)
+        Int32(CUDA.launch_configuration(kernel.fun).threads)
+    end
+end
+
+"""
+    reset_launch_params!()
+
+Clear the `LAUNCH_PARAMS` variable. Useful when benchmarking different
+methods explicitly, or after moving to a different GPU with different
+performance characteristics.
+"""
+NSEBase.reset_launch_params!() = empty!(LAUNCH_PARAMS)
+
+"""
+    _linear_to_cart(idx::Int32, sz::NTuple{D, Int32}) -> CartesianIndex{D}
+
+Convert a linear index `idx` to the corresponding `CartesianIndex` for a
+multidimensional array with a size of `sz`.
+"""
+@inline @generated function _linear_to_cart(idx::Int32, sz::NTuple{D, Int32}) where {D}
+    return quote
+        rem = idx - 1i32
+        $(ntuple(d -> d < D ? quote
+            $(Symbol(:i_, d)) = rem % sz[$d] + 1i32
+            rem = rem ÷ sz[$d]
+        end : quote
+            $(Symbol(:i_, D)) = rem + 1i32
+        end, Val(D))...)
+        return CartesianIndex($(ntuple(d -> Symbol(:i_, d), Val(D))...))
+    end
+end

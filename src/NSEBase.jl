@@ -66,4 +66,8 @@ export distributed
 function derivative_matrix end
 function distributed end
 
+# dummy function definition for CUDA extension
+function show_tuning_info end
+function reset_launch_params! end
+
 end
