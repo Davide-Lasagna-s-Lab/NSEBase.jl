@@ -35,9 +35,12 @@ include("test_io.jl")
 # Integration tests for the bundled equations module.
 include("test_operators.jl")
 
+# Allocation tests — check that no unexpected allocations occur
+include("test_allocations.jl")
+
 # Extension integration tests. These launch MPI subprocesses so each test file
 # runs with the requested Cartesian communicator size.
 include("ext/MPIExt/runtests.jl")
 
-# Allocation tests — check that no unexpected allocations occur
-include("test_allocations.jl")
+# Extension integration tests for CUDA specialisations
+include("ext/CUDAExt/runtests.jl")
