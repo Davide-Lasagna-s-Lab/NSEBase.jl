@@ -1,4 +1,4 @@
-@testset "GPU fields                                                          " begin
+@testset "CUDA fields                                                         " begin
     # use this grid over all these tests
     gd = CUDA.cu(g)
 

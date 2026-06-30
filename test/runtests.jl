@@ -9,6 +9,8 @@ using NSEBase
 # inhomogeneous and one rfft dimension), `test_grids.jl` defines
 # `TripleGrid` (a 3-D grid with one inhomogeneous, one rfft and one signed
 # FFT dimension) for tests that need multiple homogeneous directions.
+include("fake.jl")
+include("test_grids.jl")
 include("mock_channel_grid.jl")
 
 # Generic interface / utility tests — exercise every public function in

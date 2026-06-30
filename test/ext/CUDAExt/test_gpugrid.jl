@@ -1,4 +1,4 @@
-@testset "GPU grid                                                            " begin
+@testset "CUDA grid                                                           " begin
     gd = CUDA.cu(g)
 
     @test gd isa CUDAExt.GPUGrid{Float32}
