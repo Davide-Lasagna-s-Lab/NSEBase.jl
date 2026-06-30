@@ -1,7 +1,7 @@
 # ------------------------------------------------------------------ #
 # GPUGrid - Generic wrapper for grid stored on device                #
 # ------------------------------------------------------------------ #
-#
+# 
 # `GPUGrid` is a utility type that wraps an `AbstractGrid` which has already
 # been moved onto device via `Adapt.adapt_structure`. This special type
 # facilitates simpler dispatch for fields that use this grid such that CUDA
@@ -14,9 +14,16 @@
 # !     - Adapt.adapt_structure(to, g::AbstractGrid)
 
 """
-    GPUGrid{}
+    GPUGrid{T, D, AXES, FFT_DIMS_ORDER, GP} <:
+        AbstractGrid{T, D, AXES, FFT_DIMS_ORDER}
 
-TODO: this docstring
+Generic wrapper for an instance of an [`AbstractGrid`](@ref) that lives on
+the device.
+
+This wrapper is very lightweight, only defining the necessary parts of the
+[`AbstractGrid`](@ref) interface for correct dispatch in hot loops. Otherwise,
+this wrapper type allows the simpler definition of specialised constructors
+and methods for the various fields, plans, and operators.
 """
 struct GPUGrid{T,
                D,
@@ -45,3 +52,5 @@ Base.parent(g::GPUGrid) = g.parent
 Base.size(g::GPUGrid) = size(parent(g))
 NSEBase.weights(g::GPUGrid) = NSEBase.weights(parent(g))
 NSEBase.wavenumber_scale(g::GPUGrid, dim::Int) = NSEBase.wavenumber_scale(parent(g), dim)
+
+# ! is it a good idea to define constant aliases to fields that live on the device for dispatch?

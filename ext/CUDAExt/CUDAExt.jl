@@ -30,7 +30,7 @@ include("gpugrid.jl")
 include("gpufields.jl")
 include("fft.jl")
 include("derivatives.jl")
-include("galerkin.jl")
 include("dot.jl")
+include("galerkin.jl")
 
 end
