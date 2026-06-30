@@ -4,10 +4,11 @@ using CUDA,
       Adapt,
       LinearAlgebra
 
+import CUDA: i32
+import Adapt: adapt_structure
+
 import NSEBase,
        FDGrids
-
-import CUDA: i32
 
 # make sure CUDA is functional
 __init__() = @assert CUDA.functional(true)

@@ -9,8 +9,8 @@
 # query that does not depend on the per-rank partition straight back to the
 # parent.
 #
-#   ChannelGrid           — single-domain grid the user already has
-#   distributed(g, comm; ...)  — returns a DecomposedGrid wrapping it
+#   ChannelGrid               - single-domain grid the user already has
+#   distributed(g, comm; ...) - returns a DecomposedGrid wrapping it
 #
 # Per-rank queries (`size`, `points`, `weights`, `local_size`) slice the
 # parent's data along the decomposition axes based on the rank's Cartesian

@@ -13,11 +13,8 @@
 # subject is always
 # `distributed(g, comm; decomposed_physical_dims=(:y,), nprocesses=..., nhalo=...)`.
 
-import FDGrids
-import HaloArrays
-import LinearAlgebra
-import MPI
-import NSEBase
+import FDGrids,
+       Adapt
 
 # Physical-coordinate layout for the mock channel grid. The y direction lives
 # on storage dim 1, matching the production ChannelGrid convention; x, z, t
@@ -43,10 +40,10 @@ Fields:
 - `D₁`, `D₂`: wall-normal first- and second-derivative `FDGrids.DiffMatrix`
 - `α`, `β`: streamwise and spanwise wavenumber scales
 """
-struct MockChannelGrid{S, T, D1<:AbstractMatrix{T}, D2<:AbstractMatrix{T}} <:
+struct MockChannelGrid{S, T, D1<:AbstractMatrix{T}, D2<:AbstractMatrix{T}, V<:AbstractVector{T}} <:
        NSEBase.AbstractGrid{T, 4, MOCK_AXES, MOCK_FFT_ORDER}
-    y  :: Vector{T}
-    ws :: Vector{T}
+    y  :: V
+    ws :: V
     D₁ :: D1
     D₂ :: D2
     α  :: T
@@ -60,8 +57,8 @@ struct MockChannelGrid{S, T, D1<:AbstractMatrix{T}, D2<:AbstractMatrix{T}} <:
             throw(ArgumentError("y/ws length must equal Ny"))
         size(D₁) == size(D₂) == (Ny, Ny) ||
             throw(ArgumentError("derivative matrices must be Ny x Ny"))
-        return new{S, T, typeof(D₁), typeof(D₂)}(
-            Vector{T}(y), Vector{T}(ws), D₁, D₂, T(α), T(β))
+        return new{S, T, typeof(D₁), typeof(D₂), typeof(y)}(
+            y, ws, D₁, D₂, T(α), T(β))
     end
 end
 
@@ -119,8 +116,8 @@ NSEBase.weights(g::MockChannelGrid) = g.ws
 # Wavenumber scales for the three FFT-transformed directions. NSEBase
 # expects storage-dim integers here.
 NSEBase.wavenumber_scale(g::MockChannelGrid, storage_dim::Int) =
-    storage_dim == MOCK_AXES[1] ? g.α :     # x -> dim 2
-    storage_dim == MOCK_AXES[3] ? g.β :     # z -> dim 3
+    storage_dim == MOCK_AXES[1] ? g.α :               # x -> dim 2
+    storage_dim == MOCK_AXES[3] ? g.β :               # z -> dim 3
     storage_dim == MOCK_AXES[4] ? one(eltype(g.y)) :  # t -> dim 4 (period 2π)
     throw(ArgumentError("MockChannelGrid: dim $storage_dim is not an FFT dim"))
 
@@ -165,31 +162,51 @@ function NSEBase.derivative_matrix(g::MockChannelGrid,
 end
 
 # ------------------------------------------------------------------ #
-# Test helpers                                                        #
+# CUDAExt adapt method                                               #
+# ------------------------------------------------------------------ #
+# ! this doesn't work since the type parameters aren't properly propogated into the function definition
+# Adapt.@adapt_structure(MockChannelGrid{S, T} where {S, T})
+# eval(@macroexpand(Adapt.@adapt_structure(MockChannelGrid{S, T} where {S, T})))
+
+function Adapt.adapt_structure(to, g::MockChannelGrid{S, T}) where {S, T}
+    y  = Adapt.adapt_structure(to, g.y)
+    ws = Adapt.adapt_structure(to, g.ws)
+    D₁ = Adapt.adapt_structure(to, g.D₁)
+    D₂ = Adapt.adapt_structure(to, g.D₂)
+    return MockChannelGrid{S, T}(y, ws, D₁, D₂, g.α, g.β)
+end
+
+# ------------------------------------------------------------------ #
+# Test helpers                                                       #
 # ------------------------------------------------------------------ #
 
-"""
-    distributed_mock(Ny, Nx, Nz, Nt, comm; nhalo=(1,), T=Float64,
-                     decomposed_physical_dims=(:y,),
-                     nprocesses=(MPI.Comm_size(comm),),
-                     stencil_width=3) -> DecomposedGrid
+# import HaloArrays
+# import LinearAlgebra
+# import MPI
+# import NSEBase
 
-Build a `MockChannelGrid` and wrap it with
-`NSEBase.distributed(...)` along the wall-normal `:y` direction.
-"""
-function distributed_mock(Ny::Int, Nx::Int, Nz::Int, Nt::Int, comm;
-                          nhalo = (1,),
-                          T::Type = Float64,
-                          decomposed_physical_dims = (:y,),
-                          nprocesses = (MPI.Comm_size(comm),),
-                          stencil_width::Int = 3)
-    parent = MockChannelGrid(Ny, Nx, Nz, Nt;
-                             T=T, stencil_width=stencil_width)
-    nhalo_tuple = nhalo isa Integer ?
-        ntuple(_ -> Int(nhalo), length(decomposed_physical_dims)) :
-        nhalo
-    return NSEBase.distributed(parent, comm;
-                                     decomposed_physical_dims = decomposed_physical_dims,
-                                     nprocesses = nprocesses,
-                                     nhalo = nhalo_tuple)
-end
+# """
+#     distributed_mock(Ny, Nx, Nz, Nt, comm; nhalo=(1,), T=Float64,
+#                      decomposed_physical_dims=(:y,),
+#                      nprocesses=(MPI.Comm_size(comm),),
+#                      stencil_width=3) -> DecomposedGrid
+
+# Build a `MockChannelGrid` and wrap it with
+# `NSEBase.distributed(...)` along the wall-normal `:y` direction.
+# """
+# function distributed_mock(Ny::Int, Nx::Int, Nz::Int, Nt::Int, comm;
+#                           nhalo = (1,),
+#                           T::Type = Float64,
+#                           decomposed_physical_dims = (:y,),
+#                           nprocesses = (MPI.Comm_size(comm),),
+#                           stencil_width::Int = 3)
+#     parent = MockChannelGrid(Ny, Nx, Nz, Nt;
+#                              T=T, stencil_width=stencil_width)
+#     nhalo_tuple = nhalo isa Integer ?
+#         ntuple(_ -> Int(nhalo), length(decomposed_physical_dims)) :
+#         nhalo
+#     return NSEBase.distributed(parent, comm;
+#                                      decomposed_physical_dims = decomposed_physical_dims,
+#                                      nprocesses = nprocesses,
+#                                      nhalo = nhalo_tuple)
+# end

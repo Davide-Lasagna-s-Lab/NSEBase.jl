@@ -14,6 +14,10 @@ end
 
 const CUDAExt = Base.get_extension(NSEBase, :CUDAExt)
 
+# construct mock grid used in tests
+Nx = 15; Ny = 16; Nz = 15; Nt = 15;
+g = MockChannelGrid(Ny, Nx, Nz, Nt)
+
 if cuda_available()
     include("test_utils.jl")
     include("test_gpugrid.jl")

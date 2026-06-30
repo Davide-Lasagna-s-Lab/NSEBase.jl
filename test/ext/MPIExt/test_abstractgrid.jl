@@ -19,7 +19,7 @@ const MPIExt = Base.get_extension(NSEBase, :MPIExt)
 
 MPI.Initialized() || MPI.Init()
 
-include("grid.jl")
+include("../../mock_channel_grid.jl")
 
 # -- common setup -----------------------------------------------------------
 nranks = MPI.Comm_size(MPI.COMM_WORLD)
