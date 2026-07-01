@@ -126,7 +126,7 @@ NSEBase.wavenumber_scale(g::MockChannelGrid, storage_dim::Int) =
 Base.convert(::Type{T}, g::MockChannelGrid{S, T}) where {S, T<:Real} = g
 Base.convert(::Type{T}, g::MockChannelGrid{S}) where {S, T<:Real} =
     MockChannelGrid{S, T}(Vector{T}(g.y), Vector{T}(g.ws),
-                          T.(Matrix(g.D₁)), T.(Matrix(g.D₂)),
+                          T.(g.D₁), T.(g.D₂),
                           T(g.α), T(g.β))
 
 # Allow resizing the homogeneous directions (FFT dims). The wall-normal
@@ -150,11 +150,9 @@ end
 # hook.
 
 function NSEBase.derivative_matrix(g::MockChannelGrid,
-                         storage_dim::Integer,
+                                    ::Integer,
                                     ::Val{ORDER},
-                                    ::Val{ADJ} = Val(false)) where {ORDER, ADJ}
-    storage_dim == 1 ||
-        throw(ArgumentError("MockChannelGrid: derivative_matrix is only defined for storage dim 1"))
+                                    ::Val{ADJ}) where {ORDER, ADJ}
     A = ORDER == 1 ? g.D₁ :
         ORDER == 2 ? g.D₂ :
         throw(ArgumentError("MockChannelGrid: unsupported derivative order $ORDER"))

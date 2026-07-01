@@ -5,7 +5,7 @@
 # `NSEBase.add_homogeneous_laplacian!` is the current production implementation.
 # The benchmark is intentionally limited to the homogeneous Laplacian
 # contribution because the full laplacian! also calls the downstream
-# grid-specific inhomogeneous_laplacian!.
+# grid-specific _inhomogeneous_laplacian!.
 #
 # Run from the repo root:
 #

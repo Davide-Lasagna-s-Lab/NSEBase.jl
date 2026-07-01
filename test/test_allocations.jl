@@ -331,12 +331,12 @@ end
         @test allocs_after_warmup(() -> ddt!(out, u)) == 0
         @test allocs_after_warmup(() -> NSEBase.dd!(out, u, Val(2))) == 0
         @test allocs_after_warmup(() -> NSEBase.dd!(qout, q, Val(2))) == 0
-        # inhomogeneous_laplacian! and laplacian! also go through mul! on PolynomialGrid.
+        # _inhomogeneous_laplacian! and laplacian! also go through mul! on PolynomialGrid.
         if VERSION >= v"1.11"
-            @test allocs_after_warmup(() -> NSEBase.inhomogeneous_laplacian!(out, u)) == 0
+            @test allocs_after_warmup(() -> NSEBase._inhomogeneous_laplacian!(out, u)) == 0
         end
-        @test allocs_after_warmup(() -> NSEBase.add_homogeneous_laplacian!(out, u)) == 0
-        @test allocs_after_warmup(() -> NSEBase.add_homogeneous_laplacian!(qout, q)) == 0
+        @test allocs_after_warmup(() -> NSEBase._add_homogeneous_laplacian!(out, u)) == 0
+        @test allocs_after_warmup(() -> NSEBase._add_homogeneous_laplacian!(qout, q)) == 0
         if VERSION >= v"1.11"
             @test allocs_after_warmup(() -> NSEBase.laplacian!(out, u)) == 0
             @test allocs_after_warmup(() -> NSEBase.laplacian!(qout, q)) == 0

@@ -24,8 +24,8 @@ if cuda_available()
     include("test_gpufields.jl")
     include("test_fft.jl")
     include("test_derivatives.jl")
-    include("test_galerkin.jl")
     include("test_dot.jl")
+    include("test_galerkin.jl")
 else
     @warn "Skipping GPU tests - CUDA not functional"
     @test_broken false

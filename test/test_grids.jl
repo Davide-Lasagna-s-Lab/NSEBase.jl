@@ -71,21 +71,24 @@ end
 # They differentiate polynomials of degree < Ny exactly at the grid points,
 # which lets tests compare `ddx_2!` and `laplacian!` against analytic
 # derivatives without depending on ChannelFlow's Chebyshev grid.
-struct PolynomialGrid <: AbstractGrid{Float64, 2, (2, 1, nothing, nothing), (2,)}
-    y  :: Vector{Float64}
-    Nx :: Int
-    Lx :: Float64
-    D1 :: Matrix{Float64}
-    D2 :: Matrix{Float64}
-    ws :: Vector{Float64}
+struct LagrangeDerivativeMatrix
+    mat::Matrix{Float64}
 end
 
-function PolynomialGrid(y::AbstractVector{<:Real}, Nx::Integer, Lx::Real=2π)
-    yv = Float64.(collect(y))
-    D1 = _lagrange_derivative_matrix(yv)
-    D2 = D1 * D1
-    return PolynomialGrid(yv, Int(Nx), Float64(Lx), D1, D2, ones(length(yv)))
+LinearAlgebra.adjoint(D::LagrangeDerivativeMatrix) = LagrangeDerivativeMatrix(D.mat')
+
+Base.:(*)(D1::LagrangeDerivativeMatrix, D2::LagrangeDerivativeMatrix) =
+    LagrangeDerivativeMatrix(D1.mat*D2.mat)
+
+function LinearAlgebra.mul!(out, D::LagrangeDerivativeMatrix, u, ::Val, ::Val{ADD}=Val(false)) where {ADD}
+    for j in axes(u, 2)
+        @views mul!(out[:, j], D, u[:, j], Val(ADD))
+    end
+    return out
 end
+
+@inline LinearAlgebra.mul!(out, D::LagrangeDerivativeMatrix, u, ::Val{true})  = mul!(out, D.mat, u, 1, 1)
+@inline LinearAlgebra.mul!(out, D::LagrangeDerivativeMatrix, u, ::Val{false}) = mul!(out, D.mat, u)
 
 function _lagrange_derivative_matrix(x::AbstractVector{<:Real})
     N = length(x)
@@ -101,7 +104,23 @@ function _lagrange_derivative_matrix(x::AbstractVector{<:Real})
     for i in 1:N
         D[i, i] = -sum(D[i, j] for j in 1:N if j != i)
     end
-    return D
+    return LagrangeDerivativeMatrix(D)
+end
+
+struct PolynomialGrid <: AbstractGrid{Float64, 2, (2, 1, nothing, nothing), (2,)}
+    y   :: Vector{Float64}
+    Nx  :: Int
+    Lx  :: Float64
+    D1  :: LagrangeDerivativeMatrix
+    D2  :: LagrangeDerivativeMatrix
+    ws  :: Vector{Float64}
+end
+
+function PolynomialGrid(y::AbstractVector{<:Real}, Nx::Integer, Lx::Real=2π)
+    yv = Float64.(collect(y))
+    D1 = _lagrange_derivative_matrix(yv)
+    D2 = D1 * D1
+    return PolynomialGrid(yv, Int(Nx), Float64(Lx), D1, D2, ones(length(yv)))
 end
 
 Base.size(g::PolynomialGrid)                         = (length(g.y), g.Nx)
@@ -116,19 +135,13 @@ NSEBase.points(g::PolynomialGrid; dealias=false) = begin
     return (y, x)
 end
 
-function NSEBase.dd!(out::FTField{PolynomialGrid},
-                     u::FTField{PolynomialGrid},
-                     ::Val{1};
-                     adjoint::Bool=false)
-    LinearAlgebra.mul!(parent(out), adjoint ? grid(u).D1' : grid(u).D1, parent(u))
-    return out
-end
-
-function NSEBase.inhomogeneous_laplacian!(out::FTField{PolynomialGrid},
-                                          u::FTField{PolynomialGrid};
-                                          adjoint::Bool=false)
-    LinearAlgebra.mul!(parent(out), adjoint ? grid(u).D2' : grid(u).D2, parent(u))
-    return out
+function NSEBase.derivative_matrix(g::PolynomialGrid,
+                                    ::Int,
+                                    ::Val{ORDER},
+                                    ::Val) where {ORDER}
+    ORDER == 1 && return g.D1
+    ORDER == 2 && return g.D2
+    throw(ArgumentError("only orders 1 and 2 are available, got order=$ORDER"))
 end
 
 

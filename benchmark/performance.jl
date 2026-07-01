@@ -39,7 +39,7 @@ NSEBase.points(g::BenchGrid; dealias=false) = ntuple(d -> ones(size(g, d)), 4)
 
 # Minimal ddx! stub (not exercised in dot benchmark)
 NSEBase.ddx!(out, u, ::Val; kwargs...) = (out .= 0; out)
-NSEBase.inhomogeneous_laplacian!(out, u; kwargs...) = (out .= 0; out)
+NSEBase._inhomogeneous_laplacian!(out, u; kwargs...) = (out .= 0; out)
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Grid sizes  (representative channel-flow run: 63³ × 33)

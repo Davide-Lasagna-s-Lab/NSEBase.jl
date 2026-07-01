@@ -62,7 +62,7 @@ real element type `T`.  Used as a scratch buffer for de-aliased nonlinear
 products.
 
 ```julia
-u = Field(grid)                       # zero field
+u = Field(grid)                      # zero field
 u = Field(grid, (x, y) -> sin(x)*y)  # initialise from a function
 ```
 
@@ -203,16 +203,34 @@ dimensions in `FFT_DIMS_ORDER` order.  Shifts are given in **physical units**
 
 ---
 
+## FFT Transforms and Plans
+
+The main mechanism to transform between `FTField`'s and `Field`'s is via `FFT`, `IFFT`, and `FFTPlans`. Both `FFT` and `IFFT` are allocating transforms and are most useful for interactive developement and exploration. If the `growto` method is defined for a subtype of `AbstractGrid`, then fields that are built on this subtype also have access to resolution altering `FFT` and `IFFT` methods. This allow the user to pad or truncate the spectral components (homogeneous directions) of the field, useful for creating better resolved plots.
+
+```julia
+u = Field(g) # g isa AbstractGrid
+û = FFT(u)
+IFFT(û) # ≈ u
+
+û_padded  = FFT(u, target_size) # target_size isa NTuple{N, Int}
+u_refined = IFFT(u, target_size) # u_refined is subsampled in the homogeneous directions
+```
+
+*TODO: this*
+- FFTPlans for transforms in hot loops, with optional dealiasing, or customisable padded_size, and different backends (defaulting to FFTW, see GPU section for other backend)
+
+In hot loops, where operators are evaluated many times over, using `FFTPlans` is strongly preferred. Blah blah blah...
+
+---
+
 ## De-aliasing
 
 Physical-space nonlinear products are computed on a padded grid using the **3/2
 rule**: the physical-space arrays in `pcache` are allocated with `dealias=true`,
-which asks `growto(grid, target_size)` to extend each homogeneous dimension to
-`3N/2`.  NSEBase zero-pads the spectral coefficients before transforming to the
-padded grid and symmetrically truncates after transforming back, eliminating
-aliasing errors from quadratic nonlinearities.
-
-Downstream grids must implement `growto` to support de-aliasing.
+which extends each homogeneous dimension to `3N/2`.  NSEBase zero-pads the
+spectral coefficients before transforming to the padded grid and symmetrically
+truncates after transforming back, eliminating aliasing errors from quadratic
+nonlinearities.
 
 ---
 
@@ -311,3 +329,9 @@ The variable `nhalo` is used to tell the fields how much to pad the local arrays
 # GPU Accelerations
 
 *TODO: this*
+
+ - CUDA.cu() to move data to device
+ - GPUGrid and specialising of all methods and constructors for this type
+ - autotuning methods and how to control it
+ - cuFFT backend for FFTPlans
+ - resetting global kernel configuration data

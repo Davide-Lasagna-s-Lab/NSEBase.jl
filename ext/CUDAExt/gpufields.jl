@@ -1,5 +1,13 @@
 # Specialised constructors and methods for fields defined on a GPUGrid.
 
+# ! could define some default methods that just don't work for GPUGrids (such as getindex, etc.)?
+
+# useful type aliases
+const GPUFTField        = NSEBase.FTField{<:GPUGrid}
+const GPUField          = NSEBase.Field{<:GPUGrid}
+const GPUProjectedField = NSEBase.ProjectedField{<:GPUGrid}
+const GPUVectorField{N} = NSEBase.VectorField{N, <:Union{GPUFTField, GPUField}}
+
 # ------------------------- #
 # special CUDA constructors #
 # ------------------------- #
@@ -73,6 +81,3 @@ CUDA.cu(u::NSEBase.VectorField{N}) where {N} =
     NSEBase.VectorField(ntuple(n -> CUDA.cu(u[n]), Val(N))...)
 CUDA.cu(a::NSEBase.ProjectedField)           =
     NSEBase.ProjectedField(CUDA.cu(NSEBase.grid(a)), CUDA.cu(parent(a)), CUDA.cu(NSEBase.modes(a)))
-
-
-# ! could define some default methods that just don't work for GPUGrids (such as getindex, etc.)?

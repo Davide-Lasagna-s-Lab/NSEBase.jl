@@ -21,6 +21,7 @@ points
 wavenumber_scale
 weights
 distributed (requires MPI)
+CUDA.cu (requires CUDA)
 ```
 
 ## Wavenumber indexing
@@ -58,8 +59,6 @@ ddx_1!
 ddx_2!
 ddx_3!
 ddx_4!
-inhomogeneous_laplacian!
-add_homogeneous_laplacian!
 laplacian!
 ```
 

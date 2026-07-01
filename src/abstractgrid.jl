@@ -383,9 +383,9 @@ returns `Val(2)`, `physical_to_storage_dim(g, Val(:y))` returns
 @generated function physical_to_storage_dim(::AbstractGrid{<:Any, <:Any, AXES},
                                             ::Val{PHYSICAL_DIM}) where {AXES, PHYSICAL_DIM}
     idx = if PHYSICAL_DIM === :x; 1
-    elseif PHYSICAL_DIM === :y; 2
-    elseif PHYSICAL_DIM === :z; 3
-    elseif PHYSICAL_DIM === :t; 4
+      elseif PHYSICAL_DIM === :y; 2
+      elseif PHYSICAL_DIM === :z; 3
+      elseif PHYSICAL_DIM === :t; 4
     else
         msg = "physical direction must be :x, :y, :z, or :t; got $(repr(PHYSICAL_DIM))"
         return :(throw(ArgumentError($msg)))

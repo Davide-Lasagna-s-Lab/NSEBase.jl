@@ -48,9 +48,25 @@ Return the underlying grid wrapped by `g`.
 """
 Base.parent(g::GPUGrid) = g.parent
 
-
 Base.size(g::GPUGrid) = size(parent(g))
 NSEBase.weights(g::GPUGrid) = NSEBase.weights(parent(g))
 NSEBase.wavenumber_scale(g::GPUGrid, dim::Int) = NSEBase.wavenumber_scale(parent(g), dim)
 
-# ! is it a good idea to define constant aliases to fields that live on the device for dispatch?
+"""
+    derivative_matrix(g::GPUGrid, stor_dim::Int,
+                      ::Val{ORDER}, ::Val{ADJ}=Val(false))
+
+Return the FD differentiation matrix of order `ORDER` along storage
+dimension `stor_dim`, in its forward (`ADJ=false`) or adjoint
+(`ADJ=true`) form.
+
+Downstream single-domain grid types implement this on `parent(g)`:
+```
+NSEBase.derivative_matrix(::ParentType, stor_dim::Int, ::Val{ORDER}, ::Val{ADJ})
+```
+"""
+NSEBase.derivative_matrix(g::GPUGrid,
+                   stor_dim::Int,
+                           ::Val{ORDER},
+                           ::Val{ADJ}=Val(false)) where {ORDER, ADJ} =
+    NSEBase.derivative_matrix(parent(g), stor_dim, Val(ORDER), Val(ADJ))
