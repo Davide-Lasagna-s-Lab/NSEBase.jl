@@ -17,10 +17,11 @@ HaloArrays = "fb8acbf3-7450-4a92-9b90-d90d6800475e"
 MPI = "da04e1cc-30fd-572f-bb4f-1f8673147195"
 
 [extensions]
-NSEBaseMPIExt = ["FDGrids", "HaloArrays", "MPI"]
-
+MPIExt = ["MPI", "FDGrids", "HaloArrays"]
+MPIIntermediateExt = ["MPI", "FDGrids"]
 
 [compat]
+FDGrids = "≥0.3.2"
 FFTW = "1.8"
 HaloArrays = "0.1, 0.2"
 JLD2 = "0.4, 0.5, 0.6"

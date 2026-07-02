@@ -8,7 +8,7 @@
 #   - WaveNumberVector indexing maintains the same zero-mode and Hermitian
 #     symmetry invariants as FTField.
 
-@testset verbose=true "ProjectedField contract             " begin
+@testset "ProjectedField contract                                             " begin
 
     function _projected_modes(g, Nm, Ncomp=2)
         Ny, Nx, Nz = size(g)

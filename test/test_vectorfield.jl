@@ -6,7 +6,7 @@
 #   - `add_base_flow!` adds each supplied base profile only to the zero
 #     homogeneous-wavenumber slice of a spectral vector field.
 
-@testset verbose=true "VectorField contract                " begin
+@testset "VectorField contract                                                " begin
 
     @testset "array-like wrapper semantics are component-wise" begin
         Nx, Ny = 5, 8

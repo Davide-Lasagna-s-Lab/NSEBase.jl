@@ -1,6 +1,7 @@
 module NSEBase
 
 # TODO: add benchmark scripts, profile the cartesian primitive NSE and LNSE implementations
+# TODO: @enum might be a useful way to associate spatial dimensions with value types and make code more readable
 
 using LinearAlgebra, FFTW, JLD2
 
@@ -58,5 +59,11 @@ include("equations/cartesianprimitive_2d3c.jl")
 include("equations/cartesianprimitive_3d_boussinesq.jl")
 include("equations/projectednse.jl")
 include("equations/shared.jl")
+
+# dummy function definition for MPI extension
+export distributed
+
+function derivative_matrix end
+function distributed end
 
 end

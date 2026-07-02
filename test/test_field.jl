@@ -5,7 +5,7 @@
 #   - `Field(grid)` allocates the zero field on the physical grid.
 #   - `copy`, `zero`, and `similar` preserve the field wrapper and grid.
 
-@testset verbose=true "Field contract                        " begin
+@testset "Field contract                                                      " begin
     Nx, Ny = 5, 7
     g = FakeGrid(range(-1, 1, length=Nx) |> collect, Ny, 2π)
 

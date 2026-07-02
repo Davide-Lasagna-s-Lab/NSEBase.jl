@@ -71,7 +71,7 @@ function alloc_noop_force!(out, _, _)
     return out
 end
 
-@testset verbose=true "Allocation contracts              " begin
+@testset "Allocation contracts                                                " begin
 
     @testset "src/NSEBase.jl" begin
         @test isdefined(NSEBase, :AbstractGrid)

@@ -16,7 +16,7 @@
 #   - minnormdiff scans a small box of candidate shifts and returns the
 #     pair (min_diff, best_shifts) that minimises normdiff.
 
-@testset verbose=true "Norms                               " begin
+@testset "Norms                                                               " begin
 
     @testset "FTField: dot symmetry, positivity, linearity" begin
         # On FakeGrid the parent array is (Nx, (Ny>>1)+1) and weights are

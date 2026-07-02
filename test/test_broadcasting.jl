@@ -7,7 +7,7 @@
 #     vector field as a plain length-N array of field objects.
 #   - Scalar assignment broadcasts into every component of a VectorField.
 
-@testset verbose=true "Broadcasting                                  " begin
+@testset "Broadcasting                                                        " begin
 
     @testset "Field and FTField broadcasts preserve wrappers" begin
         Nx, Ny = 5, 8

@@ -2,7 +2,8 @@
 #
 # Mirror of cartesianprimitive_3d.jl for 2D flows: velocity has no spanwise w
 # component and no z-derivative terms appear.  All cache naming and operator
-# conventions follow the 3D file; refer to that file for the full design notes.
+# conventions follow the 3D file; refer to that file for the full design notes,
+# including the halo-exchange pattern used by every call method below.
 #
 # Variants provided:
 #   CartesianPrimitive2DNSE  — nonlinear NSE: out = Δu/Re − (u·∇)u + force
@@ -94,7 +95,8 @@ function (eq::CartesianPrimitive2DNSE)(::Real,
     ddx!(dudx, u)
     ddy!(dudy, u)
 
-    eq.plans(U, u); eq.plans(dUdx, dudx); eq.plans(dUdy, dudy)
+    eq.plans(U, u)
+    eq.plans(dUdx, dudx); eq.plans(dUdy, dudy)
     for n in 1:2
         @. dUdx[n] = -U[1]*dUdx[n] - U[2]*dUdy[n]
     end
@@ -116,8 +118,11 @@ function (eq::CartesianPrimitive2DLNSE)(::Real,
     dudx = eq.scache[1]; dudy = eq.scache[2]
     U    = eq.pcache[1]; dUdy = eq.pcache[3]
 
-    ddx!(dudx, u); ddy!(dudy, u)
-    eq.plans(U, u); eq.plans(dUdy, dudy)
+    ddx!(dudx, u)
+    ddy!(dudy, u)
+
+    eq.plans(U, u)
+    eq.plans(dUdy, dudy)
 
     eq(0, v, out)
     return out
@@ -134,9 +139,11 @@ function (eq::CartesianPrimitive2DLNSE{Forward})(::Real,
     laplacian!(out, v)
     out .*= 1/eq.Re
 
-    ddx!(dvdx, v); ddy!(dvdy, v)
+    ddx!(dvdx, v)
+    ddy!(dvdy, v)
 
-    eq.plans(V, v); eq.plans(dUdx, dudx)
+    eq.plans(V, v)
+    eq.plans(dUdx, dudx)
     eq.plans(dVdx, dvdx); eq.plans(dVdy, dvdy)
     for n in 1:2
         @. dVdx[n]  = -U[1]*dVdx[n] - U[2]*dVdy[n]
@@ -159,9 +166,11 @@ function (eq::CartesianPrimitive2DLNSE{AdjointContinuous})(::Real,
     laplacian!(out, v)
     out .*= 1/eq.Re
 
-    ddx!(dvdx, v); ddy!(dvdy, v)
+    ddx!(dvdx, v)
+    ddy!(dvdy, v)
 
-    eq.plans(V, v); eq.plans(dUdx, dudx)
+    eq.plans(V, v)
+    eq.plans(dUdx, dudx)
     eq.plans(dVdx, dvdx); eq.plans(dVdy, dvdy)
     for n in 1:2
         @. dVdx[n] = U[1]*dVdx[n] + U[2]*dVdy[n]
@@ -185,7 +194,7 @@ function (eq::CartesianPrimitive2DLNSE{AdjointDiscrete})(::Real,
     U    = eq.pcache[1]; dUdx = eq.pcache[2]; dUdy = eq.pcache[3]
     V    = eq.pcache[4]; U1V  = eq.pcache[5]; U2V  = eq.pcache[6]
 
-    laplacian!(out, v, adjoint=true)
+    laplacian!(out, v; adjoint=true)
     out .*= 1/eq.Re
 
     eq.plans(V, v)
@@ -197,8 +206,9 @@ function (eq::CartesianPrimitive2DLNSE{AdjointDiscrete})(::Real,
 
     eq.plans(dUdx, dudx)
     for n in 1:2
-        out[n] .-= ddx!(dudx[1], u1v[n], adjoint=true) .+
-                   ddy!(dudx[2], u2v[n], adjoint=true)
+        ddx!(dudx[1], u1v[n]; adjoint=true)
+        ddy!(dudx[2], u2v[n]; adjoint=true)
+        out[n] .-= dudx[1] .+ dudx[2]
     end
     U1V .= 0
     for n in 1:2

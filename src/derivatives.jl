@@ -54,8 +54,8 @@ wavenumber. `adjoint=false` (default) gives `+im·n·scale·u`;
 `adjoint=true` gives `-im·n·scale·u`.
 
 For an inhomogeneous storage dimension the method throws
-`NotImplementedError`. Downstream packages should extend this for each
-non-homogeneous direction.
+`NotImplementedError`. Downstream packages should extend
+[`inhomogeneous_dd!`](@ref) for each inhomogeneous direction.
 
 For `Val(nothing)` the function is a no-op.
 """
@@ -66,8 +66,25 @@ function dd!(out::F, u::F, ::Val{STORAGE_DIM};
         F<:Union{FTField{G}, ProjectedField{G}}}
 
     isnothing(STORAGE_DIM) && return out
-    STORAGE_DIM ∉ FFT_DIMS_ORDER &&
-        throw(NotImplementedError(grid(u), Val(STORAGE_DIM)))
+    STORAGE_DIM ∉ FFT_DIMS_ORDER ? inhomogeneous_dd!(out, u, Val(STORAGE_DIM); adjoint=adjoint) :
+                                       _spectral_dd!(out, u, Val(STORAGE_DIM); adjoint=adjoint)
+
+    return out
+end
+
+"""
+    _spectral_dd!(out, u, ::Val{STORAGE_DIM}; adjoint=false)
+
+In-place derivative of `u` along the storage dimension where
+`STORAGE_DIM ∈ FFT_DIMS_ORDER` using spectral methods.
+"""
+function _spectral_dd!(out::F,
+                         u::F,
+                          ::Val{STORAGE_DIM};
+                   adjoint::Bool=false) where {
+        STORAGE_DIM, T, D, AXES, FFT_DIMS_ORDER,
+        G<:AbstractGrid{T, D, AXES, FFT_DIMS_ORDER},
+        F<:Union{FTField{G}, ProjectedField{G}}}
 
     scale = wavenumber_scale(grid(u), STORAGE_DIM)
     coeff = adjoint ? -im * T(scale) : im * T(scale)
@@ -91,6 +108,9 @@ function dd!(out::F, u::F, ::Val{STORAGE_DIM};
     end
     return out
 end
+
+inhomogeneous_dd!(out, u, sd::Val; kwargs...) = throw(NotImplementedError(grid(u), sd))
+
 
 """
     add_homogeneous_laplacian!(out::FTField, u::FTField)

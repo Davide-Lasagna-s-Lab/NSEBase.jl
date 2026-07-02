@@ -18,7 +18,7 @@
 #     inhomogeneous part is identity-equivalent if the user defines it that
 #     way; FakeGrid does so (see fake.jl).
 
-@testset verbose=true "Derivatives                         " begin
+@testset "Derivatives                                                         " begin
 
     @testset "analytic field derivatives on a mixed inhomogeneous/FFT grid" begin
         # This is the NSEBase version of the analytic derivative tests that

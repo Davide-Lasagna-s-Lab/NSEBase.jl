@@ -123,9 +123,21 @@ struct FFTPlans{DEALIAS, D, T, FFT_DIMS_ORDER, PLAN, IPLAN}
     end
 end
 
-FFTPlans(g::AbstractGrid{T, <:Any, <:Any, FFT_DIMS_ORDER}; kwargs...) where {T, FFT_DIMS_ORDER} = FFTPlans(size(g), FFT_DIMS_ORDER, T; kwargs...)
-FFTPlans(u::FTField;                              kwargs...)                  = FFTPlans(grid(u); kwargs...)
-FFTPlans(u::Field;                                kwargs...)                  = FFTPlans(grid(u); kwargs...)
+FFTPlans(g::AbstractGrid{T}; kwargs...) where {T} = FFTPlans(_fft_size(g), fft_storage_dims(g), T; kwargs...)
+FFTPlans(u::FTField; kwargs...) = FFTPlans(grid(u); kwargs...)
+FFTPlans(u::Field; kwargs...) = FFTPlans(grid(u); kwargs...)
+
+"""
+    _fft_size(g::AbstractGrid) -> Dims
+
+Return the physical-array shape used to construct FFTW plans for `g`.
+
+The default is `size(g)`. Grid wrappers whose fields store extra physical
+allocation around the logical grid, such as halo cells, can extend this hook so
+the standard [`FFTPlans`](@ref) constructor plans against the actual storage
+layout.
+"""
+_fft_size(g::AbstractGrid) = size(g)
 
 """
     _fft_data(x)
@@ -150,7 +162,7 @@ _fft_data(u::Union{Field, FTField}) = _fft_data(parent(u))
 
 Forward in-place transform: physical array `u` → spectral array `û`.
 
-## Arguments
+# Arguments
 - `û`: output spectral array
 - `u`: input physical array (never modified)
 - `add`: add the transform result into `û` rather than overwriting it. Useful
@@ -234,7 +246,7 @@ end
 
 Backward in-place transform: spectral array `û` → physical array `u`.
 
-## Arguments
+# Arguments
 - `u`: output physical array
 - `û`: input spectral array
 - `preserve_input`: FFTW's C2R (brfft) transform is permitted to overwrite its

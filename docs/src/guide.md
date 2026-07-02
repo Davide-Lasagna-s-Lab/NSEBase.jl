@@ -16,16 +16,10 @@ encode all structural information about the domain:
 | `D` | Number of array dimensions |
 | `AXES` | Four-tuple `(x_dim, y_dim, z_dim, t_dim)` mapping logical Cartesian coordinates to array dimensions; use `nothing` for absent coordinates |
 | `FFT_DIMS_ORDER` | Ordered tuple of the array dimensions that are FFT-transformed; `FFT_DIMS_ORDER[1]` is **always** the rfft dimension |
-| `DECOMPOSITION` | Storage-partition tag: `Undecomposed` for a complete local domain, or `Decomposed{DIMS}` for a grid split along the storage dimensions in `DIMS` |
 
 Because these parameters are part of the type, the compiler can fully specialise
 every loop, index mapping, and generated function at compile time — there is no
 runtime dispatch and no runtime allocation in the hot paths.
-
-NSEBase records decomposition metadata but does not prescribe communication or
-halo storage. Downstream packages use [`decomposition_dims`](@ref) to inspect the
-partitioned storage dimensions and provide the corresponding distributed
-operations.
 
 ### Required methods
 
@@ -141,8 +135,8 @@ Downstream grids must implement `wavenumber_scale` for every dimension in
 
 ## Spectral derivative convention
 
-`ddx!(out, u, Val{DIM})` computes the in-place spectral derivative along array
-dimension `DIM`:
+`dd!(out, u, Val{STORAGE_DIM})` computes the in-place spectral derivative along array
+dimension `STORAGE_DIM`:
 
 ```
 out[k] = +im · n · wavenumber_scale(grid, DIM) · u[k]     (adjoint=false)
@@ -150,17 +144,17 @@ out[k] = -im · n · wavenumber_scale(grid, DIM) · u[k]     (adjoint=true)
 ```
 
 The `adjoint=true` form is the L² adjoint of the spectral derivative operator.
-`DIM` must lie in `FFT_DIMS_ORDER`; passing an inhomogeneous dimension throws
+`STORAGE_DIM` must lie in `FFT_DIMS_ORDER`; passing an inhomogeneous dimension throws
 `NotImplementedError`.
 
 Four named wrappers pick the array dimension from `AXES`:
 
 | Wrapper | Logical coordinate |
 |---------|--------------------|
-| `ddx_1!` | x (`AXES[1]`) |
-| `ddx_2!` | y (`AXES[2]`) |
-| `ddx_3!` | z (`AXES[3]`) |
-| `ddx_4!` | t (`AXES[4]`) |
+| `ddx!` | x (`AXES[1]`) |
+| `ddy!` | y (`AXES[2]`) |
+| `ddz!` | z (`AXES[3]`) |
+| `ddt!` | t (`AXES[4]`) |
 
 When the coordinate is absent (`AXES[j] === nothing`) the wrapper is a compile-time
 no-op.
@@ -174,7 +168,7 @@ The L² inner product is defined as
 ```math
 \langle u, v \rangle
   = \frac{1}{2} \sum_{\mathbf{k}} c_{k_1}\, w(\mathbf{j})\,
-    \operatorname{Re}\!\bigl(\bar{u}_{\mathbf{k},\mathbf{j}}\, v_{\mathbf{k},\mathbf{j}}\bigr),
+    \Re\bigl(\bar{u}_{\mathbf{k},\mathbf{j}}\, v_{\mathbf{k},\mathbf{j}}\bigr),
 ```
 
 where:
@@ -283,10 +277,37 @@ where `a` and `b` are `ProjectedField`s.
 
 Every hot-path operation in NSEBase is **allocation-free** at steady state.
 Cache arrays are pre-allocated once inside the operator structs and reused on
-every call.  The `@generated` loop generators (`for_each_homogeneous_index`,
-`for_each_index`) emit fully unrolled code specialised to the grid type — no
-closures, no dynamic dispatch, no heap allocations.
+every call.
 
 When writing downstream code, prefer the in-place (`!`) variants of all
 operations.  The allocating wrappers (`FFT`, `IFFT`, `shift`, `project`,
 `expand`) are convenience forms intended for interactive exploration and tests.
+
+---
+
+## MPI and Distributed Computations
+
+MPI parallelisation is supported, and can be accessed by loading [MPI.jl](https://github.com/JuliaParallel/MPI.jl) and [FDGrids.jl](https://github.com/Davide-Lasagna-s-Lab/FDGrids.jl) into the current Julia session alongside NSEBase.
+
+Using `distributed` a `DecomposedGrid` object can be constructed, which allows for the construction of `FTField`'s, `Field`'s, and whole operators that are split up over multiple MPI processes. Only decomposing over the inhomogeneous spatial directions is currently supported. 
+
+Below is an example of a decomposition of a field over the `y` direction:
+
+```julia
+comm = MPI.COMM_WORLD
+np   = MPI.Comm_size(comm)
+
+g_dist = distributed(g_parent, comm;
+                        decomposed_physical_dims=(:y,), nprocesses=(np,), nhalo=(2,))
+
+Re = 100 # Reynolds number
+op = CartesianPrimitive3DNSE(g_dist, Re)
+```
+
+The variable `nhalo` is used to tell the fields how much to pad the local arrays to accomodate data from neighbouring processes required to compute derivatives. This functionality is enabled via [HaloArrays.jl](https://github.com/Davide-Lasagna-s-Lab/HaloArrays.jl). Note that it is required to use [FDGrids.jl](https://github.com/Davide-Lasagna-s-Lab/FDGrids.jl) for the differentiation over the decomposed directions as the package implements the (somewhat fiddly) methods to compute derivatives using finite-differences with arbitrary stencil widths and thus order of accuracy. See the package for extra details.
+
+---
+
+# GPU Accelerations
+
+*TODO: this*

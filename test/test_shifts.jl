@@ -7,7 +7,7 @@
 #   in physical-coordinate units.  When all shifts are zero it must return
 #   `u` unchanged without touching memory.
 
-@testset verbose=true "Shifts                              " begin
+@testset "Shifts                                                              " begin
 
     @testset "FTField: phase factor matches the analytic shift" begin
         # Use a TripleGrid:

@@ -68,7 +68,7 @@ NSEBase._fft_data(a::FFTDataWrapper) = a.data
     end
 end
 
-@testset verbose=true "Transform utilities                                                 " begin
+@testset "Transform utilities                                                 " begin
     @testset "get_padded_size                " begin
         # single transformed dimension
         @test NSEBase.get_padded_size((4,), (1,)) == (7,)
@@ -220,7 +220,7 @@ end
     end
 end
 
-@testset verbose=true "FFTPlans execution                           " begin
+@testset "FFTPlans execution                                                  " begin
     @testset "forward transform, 1D             " begin
         N = 16
         u = randn(Float64, N)

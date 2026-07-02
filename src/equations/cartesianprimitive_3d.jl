@@ -17,6 +17,11 @@
 #
 # Construct via [`construct_equations`](@ref) rather than directly to ensure
 # cache and plan sizes are consistent.
+#
+# NOTE: on a single node an overlap measures no faster than a blocking swap
+# (benchmarks/mpi_overlap.jl); it is not included in this implementation. See
+# https://github.com/Davide-Lasagna-s-Lab/NSEBase.jl/issues/21 for a discussion
+# on its efficacy.
 
 
 # ----------------------- #
@@ -114,7 +119,8 @@ function (eq::CartesianPrimitive3DNSE)(::Real,
     ddy!(dudy, u)
     ddz!(dudz, u)
 
-    eq.plans(U, u); eq.plans(dUdx, dudx); eq.plans(dUdy, dudy); eq.plans(dUdz, dudz)
+    eq.plans(U, u)
+    eq.plans(dUdx, dudx); eq.plans(dUdy, dudy); eq.plans(dUdz, dudz)
     for n in 1:3
         @. dUdx[n] = -U[1]*dUdx[n] - U[2]*dUdy[n] - U[3]*dUdz[n]
     end
@@ -136,8 +142,12 @@ function (eq::CartesianPrimitive3DLNSE)(::Real,
     dudx = eq.scache[1]; dudy = eq.scache[2]; dudz = eq.scache[3]
     U    = eq.pcache[1]; dUdy = eq.pcache[3]; dUdz = eq.pcache[4]
 
-    ddx!(dudx, u); ddy!(dudy, u); ddz!(dudz, u)
-    eq.plans(U, u); eq.plans(dUdy, dudy); eq.plans(dUdz, dudz)
+    ddx!(dudx, u)
+    ddy!(dudy, u)
+    ddz!(dudz, u)
+
+    eq.plans(U, u)
+    eq.plans(dUdy, dudy); eq.plans(dUdz, dudz)
 
     eq(0, v, out)
     return out
@@ -154,9 +164,12 @@ function (eq::CartesianPrimitive3DLNSE{Forward})(::Real,
     laplacian!(out, v)
     out .*= 1/eq.Re
 
-    ddx!(dvdx, v); ddy!(dvdy, v); ddz!(dvdz, v)
+    ddx!(dvdx, v)
+    ddy!(dvdy, v)
+    ddz!(dvdz, v)
 
-    eq.plans(V, v); eq.plans(dUdx, dudx)
+    eq.plans(V, v)
+    eq.plans(dUdx, dudx)
     eq.plans(dVdx, dvdx); eq.plans(dVdy, dvdy); eq.plans(dVdz, dvdz)
     for n in 1:3
         @. dVdx[n]  = -U[1]*dVdx[n] - U[2]*dVdy[n] - U[3]*dVdz[n]
@@ -179,9 +192,12 @@ function (eq::CartesianPrimitive3DLNSE{AdjointContinuous})(::Real,
     laplacian!(out, v)
     out .*= 1/eq.Re
 
-    ddx!(dvdx, v); ddy!(dvdy, v); ddz!(dvdz, v)
+    ddx!(dvdx, v)
+    ddy!(dvdy, v)
+    ddz!(dvdz, v)
 
-    eq.plans(V, v); eq.plans(dUdx, dudx)
+    eq.plans(V, v)
+    eq.plans(dUdx, dudx)
     eq.plans(dVdx, dvdx); eq.plans(dVdy, dvdy); eq.plans(dVdz, dvdz)
     for n in 1:3
         @. dVdx[n] = U[1]*dVdx[n] + U[2]*dVdy[n] + U[3]*dVdz[n]
@@ -206,7 +222,7 @@ function (eq::CartesianPrimitive3DLNSE{AdjointDiscrete})(::Real,
     U    = eq.pcache[1]; dUdx = eq.pcache[2]; dUdy = eq.pcache[3]; dUdz = eq.pcache[4]
     V    = eq.pcache[5]; U1V  = eq.pcache[6]; U2V  = eq.pcache[7]; U3V  = eq.pcache[8]
 
-    laplacian!(out, v, adjoint=true)
+    laplacian!(out, v; adjoint=true)
     out .*= 1/eq.Re
 
     eq.plans(V, v)
@@ -219,9 +235,10 @@ function (eq::CartesianPrimitive3DLNSE{AdjointDiscrete})(::Real,
 
     eq.plans(dUdx, dudx)
     for n in 1:3
-        out[n] .-= ddx!(dudx[1], u1v[n], adjoint=true) .+
-                   ddy!(dudx[2], u2v[n], adjoint=true) .+
-                   ddz!(dudx[3], u3v[n], adjoint=true)
+        ddx!(dudx[1], u1v[n]; adjoint=true)
+        ddy!(dudx[2], u2v[n]; adjoint=true)
+        ddz!(dudx[3], u3v[n]; adjoint=true)
+        out[n] .-= dudx[1] .+ dudx[2] .+ dudx[3]
     end
     U1V .= 0
     for n in 1:3
