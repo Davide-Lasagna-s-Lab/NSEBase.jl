@@ -345,13 +345,14 @@ reset_expand_cache!(a::ProjectedField, u::VectorField) # -> clears the tuned met
 Alternatively, a particular kernel method can be chosen manually by passing it directly to the method call:
 
 ```julia
-method = DotAtomic(a)
+CUDAExt = Base.get_extension(NSEBase, :CUDAExt)
+method = CUDAExt.DotAtomic(a)
 dot(a, b, method)
 
 # similarly for galerkin project and expand
 ```
 
-To toggle the information output from the autotuning process use `NSEBase.show_tuning_info(true)`.
+To toggle the information output from the autotuning process use `NSEBase.show_tuning_info!(true)`. The number of samples taken during autotuning can also be controlled via the `NSEBase.set_tuning_samples!(::Int)` method.
 
 Finally, all kernels are configured before they run with the optimal number of threads given their input types. This stored for proceeding calls to the kernel such that it doesn't have to regenerated anew each time the kernel is run. To reset this global cache use `NSEBase.reset_launch_cache!()`.
 

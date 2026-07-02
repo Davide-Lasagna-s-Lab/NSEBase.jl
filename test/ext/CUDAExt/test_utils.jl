@@ -72,12 +72,22 @@
         @test CUDAExt._linear_to_cart(116i32, (5i32, 4i32, 3i32, 2i32)) == CartesianIndex(1, 4, 3, 2)
     end
 
-    @testset "show_tuning_info" begin
+    @testset "show_tuning_info!" begin
         @test CUDAExt.TUNING_INFO[] == false
-        NSEBase.show_tuning_info(true)
+        NSEBase.show_tuning_info!(true)
         @test CUDAExt.TUNING_INFO[] == true
-        NSEBase.show_tuning_info(false)
+        NSEBase.show_tuning_info!(false)
         @test CUDAExt.TUNING_INFO[] == false
+    end
+
+    @testset "set_tuning_samples!" begin
+        @test CUDAExt.TUNING_SAMPLES[] == 5
+        NSEBase.set_tuning_samples!(10)
+        @test CUDAExt.TUNING_SAMPLES[] == 10
+        NSEBase.set_tuning_samples!(1)
+        @test CUDAExt.TUNING_SAMPLES[] == 1
+        @test_throws ArgumentError NSEBase.set_tuning_samples!(0)
+        @test_throws ArgumentError NSEBase.set_tuning_samples!(-1)
     end
 
     dummy_kernel1(x, y, z) = nothing

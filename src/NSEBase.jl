@@ -60,12 +60,22 @@ include("equations/cartesianprimitive_3d_boussinesq.jl")
 include("equations/projectednse.jl")
 include("equations/shared.jl")
 
+
 # dummy function definition for MPI extension
 export distributed
+
 function distributed end
 
+
 # dummy function definition for CUDA extension
-function show_tuning_info end
+export initialise_dot!, reset_dot_cache!
+
+function show_tuning_info! end
+function set_tuning_samples! end
+
 function reset_launch_params! end
+
+function initialise_dot! end
+function reset_dot_cache! end
 
 end

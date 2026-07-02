@@ -1,12 +1,24 @@
 # General utilities useful throughout the module.
 
 """
-    NSEBase.show_tuning_info(show_info::Bool)
+    NSEBase.show_tuning_info!(show_info::Bool)
 
 Toggle extra information when performing kernel tuning for Galerkin methods
 and dot product of `ProjectedField`.
 """
-NSEBase.show_tuning_info(show_info::Bool) = TUNING_INFO[] = show_info
+NSEBase.show_tuning_info!(show_info::Bool) = (TUNING_INFO[] = show_info; return nothing)
+
+"""
+    NSEBase.set_tuning_samples!(no_of_samples::Int)
+
+Set how many benchmark samples are taken during autotuning of CUDA kernels.
+"""
+function NSEBase.set_tuning_samples!(no_of_samples::Int)
+    no_of_samples > 0 || throw(ArgumentError("number of samples must be larger than 0"))
+    TUNING_SAMPLES[] = no_of_samples
+
+    return nothing
+end
 
 """
     _get_launch_params(kernel_f, kernel_args...) -> Int32

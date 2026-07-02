@@ -20,6 +20,12 @@ some methods are executed.
 const TUNING_INFO = Ref(false)
 
 """
+How many benchmark samples to take for the purpose of tuning
+CUDA kernels.
+"""
+const TUNING_SAMPLES = Ref(5)
+
+"""
 Global state parameter storing optimal kernel threads for
 given input types.
 """
