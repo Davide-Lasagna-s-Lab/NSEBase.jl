@@ -8,16 +8,16 @@
 #
 # Downstream packages (e.g. Resolver-ChannelFlow.jl) implement a concrete grid subtype
 # by defining a small set of required methods (`size`, `points`,
-# `wavenumber_scale`, `weights`).  All other grid-aware behaviour — spectral
-# loop generation, transform sizing, base-flow injection, derivative operators —
+# `wavenumber_scale`, `weights`).  All other grid-aware behaviour - spectral
+# loop generation, transform sizing, base-flow injection, derivative operators -
 # is derived automatically from the compile-time type parameters without
 # any runtime overhead.
 #
 # The four type parameters encode:
-#   T              — real scalar type (Float64 by default)
-#   D              — number of array dimensions
-#   AXES           — 4-tuple mapping physical coordinates (x,y,z,t) to storage dims
-#   FFT_DIMS_ORDER — ordered tuple of array dimensions that are FFT-transformed;
+#   T              - real scalar type (Float64 by default)
+#   D              - number of array dimensions
+#   AXES           - 4-tuple mapping physical coordinates (x,y,z,t) to storage dims
+#   FFT_DIMS_ORDER - ordered tuple of array dimensions that are FFT-transformed;
 #                    FFT_DIMS_ORDER[1] is always the rfft dimension
 #
 # Whether a grid is domain-decomposed for distributed execution is *not* recorded
@@ -112,7 +112,7 @@ end
     spatial_inhomogeneous_storage_dims(grid::AbstractGrid) -> Tuple
 
 Return the inhomogeneous array dimensions that correspond to spatial (not
-temporal) coordinates — i.e. dimensions in `inhomogeneous_storage_dims(grid)` that
+temporal) coordinates - i.e. dimensions in `inhomogeneous_storage_dims(grid)` that
 are not the time axis `AXES[4]`.  These are the dimensions for which a
 finite-difference or collocation derivative must be applied.
 """
@@ -139,7 +139,7 @@ rfft_storage_dim(::AbstractGrid{<:Any,<:Any,<:Any,FFT_DIMS_ORDER}) where {FFT_DI
     fft_physical_dims(grid::AbstractGrid) -> Tuple{Vararg{Symbol}}
 
 Physical-coordinate symbols for the FFT-transformed storage dimensions
-of `grid`, in transform order — the `Symbol` counterpart of
+of `grid`, in transform order - the `Symbol` counterpart of
 [`fft_storage_dims`](@ref).
 
 `fft_physical_dims(g)[1]` is the physical coordinate that is rfft'd; the
@@ -152,7 +152,7 @@ fft_physical_dims(g::AbstractGrid) =
     spatial_fft_physical_dims(grid::AbstractGrid) -> Tuple{Vararg{Symbol}}
 
 Physical-coordinate symbols for the spatial FFT-transformed storage
-dimensions of `grid` — the `Symbol` counterpart of
+dimensions of `grid` - the `Symbol` counterpart of
 [`spatial_fft_storage_dims`](@ref). A transformed logical time
 coordinate is excluded.
 """
@@ -163,7 +163,7 @@ spatial_fft_physical_dims(g::AbstractGrid) =
     inhomogeneous_physical_dims(grid::AbstractGrid) -> Tuple{Vararg{Symbol}}
 
 Physical-coordinate symbols for the inhomogeneous (non-FFT) storage
-dimensions of `grid` — the `Symbol` counterpart of
+dimensions of `grid` - the `Symbol` counterpart of
 [`inhomogeneous_storage_dims`](@ref).
 """
 inhomogeneous_physical_dims(g::AbstractGrid) =
@@ -173,7 +173,7 @@ inhomogeneous_physical_dims(g::AbstractGrid) =
     spatial_inhomogeneous_physical_dims(grid::AbstractGrid) -> Tuple{Vararg{Symbol}}
 
 Physical-coordinate symbols for the spatial inhomogeneous storage
-dimensions of `grid` — the `Symbol` counterpart of
+dimensions of `grid` - the `Symbol` counterpart of
 [`spatial_inhomogeneous_storage_dims`](@ref). The time coordinate is
 excluded.
 """
@@ -184,7 +184,7 @@ spatial_inhomogeneous_physical_dims(g::AbstractGrid) =
     rfft_physical_dim(grid::AbstractGrid) -> Symbol
 
 Physical-coordinate symbol for the real-to-complex FFT storage dimension
-— the `Symbol` counterpart of [`rfft_storage_dim`](@ref). Equal to
+- the `Symbol` counterpart of [`rfft_storage_dim`](@ref). Equal to
 `fft_physical_dims(grid)[1]`.
 """
 rfft_physical_dim(g::AbstractGrid) = physical_dim(g, rfft_storage_dim(g))
@@ -571,7 +571,7 @@ negative-`kx` entry is not stored, so no symmetry constraint can be applied.
    - index `i > 1` (wavenumber `n = i - 1 > 0`) maps to `size(data, d) - i + 2`
      (the index storing wavenumber `-n`).
    Axes not in `FFT_DIMS_ORDER` (e.g. wall-normal, mode index) are kept
-   identical between `I` and `Ineg` — they are not transformed.
+   identical between `I` and `Ineg` - they are not transformed.
 
 3. **Average each pair once**: the `LI[I] <= LI[Ineg]` guard ensures each
    `{I, Ineg}` pair is visited exactly once.  The `_average_complex` helper
@@ -583,7 +583,7 @@ negative-`kx` entry is not stored, so no symmetry constraint can be applied.
 # Arguments
 
 - `FFT_DIMS_ORDER` (via `Val`): tuple of transformed array dimensions in
-  transform order — `FFT_DIMS_ORDER[1]` is the rfft dim, the rest are
+  transform order - `FFT_DIMS_ORDER[1]` is the rfft dim, the rest are
   signed-FFT dims.
 
 No-op when `length(FFT_DIMS_ORDER) ≤ 1` (only an rfft dim, no partners).

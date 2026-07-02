@@ -121,8 +121,7 @@ decomposed direction:
 
   - `decomposed_physical_dims[k]` — the physical-coordinate symbol
     (`:x`, `:y`, `:z`, or `:t`) of the `k`-th decomposed direction; must
-    be a spatial inhomogeneous direction (FFT-transformed and temporal
-    directions cannot be decomposed).
+    be a spatial inhomogeneous direction (FFT-transformed cannot be decomposed).
   - `nprocesses[k]` — number of ranks along that direction.
   - `nhalo[k]` — halo width along that direction (the FD stencil
     half-width).
@@ -157,7 +156,6 @@ dg = distributed(g, MPI.COMM_WORLD;
                  nhalo=(1,))
 ```
 """
-# TODO: nhalo should be implicit from the stencil width of the DiffMatrix's
 function NSEBase.distributed(               g::NSEBase.AbstractGrid{T, D, AXES, FFT_DIMS_ORDER},
                                          comm::COMM;
                      decomposed_physical_dims::NTuple{K, Symbol},
