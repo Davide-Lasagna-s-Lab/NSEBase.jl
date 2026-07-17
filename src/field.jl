@@ -55,6 +55,24 @@ The coordinate arrays are obtained via `points(grid; dealias=dealias)`, so
 setting `dealias=true` constructs a field on the padded physical grid. This is
 the appropriate layout for nonlinear products that will be transformed back to
 spectral space.
+
+# Examples
+
+A full channel is stored as `(y, x, z, t)`, but the field function still
+receives coordinates in physical `(x, y, z, t)` order:
+
+```julia
+g = ChannelGrid(9, 17, 9; Nt=3, α=0.5, β=1, width=5)
+u = Field(g, (x, y, z, t) -> (1 - y^2) * cos(x + z - 2π*t))
+```
+
+For a two-dimensional lid-driven cavity, the absent `z` coordinate is passed
+as `nothing`:
+
+```julia
+g = LidDrivenCavityGrid(11, 11; Nt=3, width=5)
+ψ = Field(g, (x, y, ::Nothing, t) -> sinpi(x) * sinpi(y) * cospi(2t))
+```
 """
 function Field(grid::AbstractGrid{T}, func::Function; dealias=false) where {T}
     return Field(grid, T.(func.(_field_args(grid; dealias)...)))
