@@ -125,11 +125,12 @@ matrices of that size.
 # Conversion and ownership
 
 Points, weights, scales, and operators are converted to `T` when necessary.
-Compatible dense `Vector{T}` values and custom matrix operators are retained
-rather than copied; other vector containers are materialised as `Vector{T}`.
+Containers whose element type is already `T`, including custom matrix
+operators, are retained rather than copied; others are converted by
+broadcasting `T` over their values.
 Caller-supplied adjoints remain caller-supplied adjoints. Repeated identical
-objects are converted once and remain shared, including across precision
-conversion of a square duct.
+objects that already have scalar type `T` are retained and remain shared;
+converting to a different scalar type produces independent copies.
 
 The operators must implement dimension-wise multiplication via
 `LinearAlgebra.mul!(out, D, u, Val(dim))`, where `dim` is the corresponding
@@ -186,43 +187,11 @@ function RectangularGrid(xs::Tuple{Vararg{Any, NI}},
             throw(ArgumentError("differentiation matrices for storage dimension $dim have incompatible sizes"))
     end
 
-    # TODO: this is a mess.. i want much smarter, shorter and elegant code. Given that it's only done once
-    # we do not need to be superefficient and we can just convert argument directly. Don't overthink this
-    # Convert numerical data once per distinct object so repeated directions remain shared.
-    convert_vector(values) = values isa Vector{T} ? values : Vector{T}(values)
-    converted_xs, converted_ws = if NI == 1
-        map(values -> (convert_vector(values[1]),), (xs, ws))
-    elseif NI == 2
-        map((xs, ws)) do values
-            converted₁ = convert_vector(values[1])
-            converted₂ = values[2] === values[1] ? converted₁ : convert_vector(values[2])
-            (converted₁, converted₂)
-        end
-    else
-        map((xs, ws)) do values
-            converted₁ = convert_vector(values[1])
-            converted₂ = values[2] === values[1] ? converted₁ : convert_vector(values[2])
-            converted₃ = values[3] === values[1] ? converted₁ : values[3] === values[2] ? converted₂ : convert_vector(values[3])
-            (converted₁, converted₂, converted₃)
-        end
-    end
-    convert_operator(operator) = eltype(operator) === T ? operator : T.(operator)
-    operators = if NI == 1
-        map(values -> (convert_operator(values[1]),), (D₁, D₂, D₁⁺, D₂⁺))
-    elseif NI == 2
-        map((D₁, D₂, D₁⁺, D₂⁺)) do values
-            converted₁ = convert_operator(values[1])
-            converted₂ = values[2] === values[1] ? converted₁ : convert_operator(values[2])
-            (converted₁, converted₂)
-        end
-    else
-        map((D₁, D₂, D₁⁺, D₂⁺)) do values
-            converted₁ = convert_operator(values[1])
-            converted₂ = values[2] === values[1] ? converted₁ : convert_operator(values[2])
-            converted₃ = values[3] === values[1] ? converted₁ : values[3] === values[2] ? converted₂ : convert_operator(values[3])
-            (converted₁, converted₂, converted₃)
-        end
-    end
+    # Convert numerical data to the target scalar type; same-type data is retained as-is.
+    convert_data(x) = eltype(x) === T ? x : T.(x)
+    converted_xs = map(convert_data, xs)
+    converted_ws = map(convert_data, ws)
+    operators = map(values -> map(convert_data, values), (D₁, D₂, D₁⁺, D₂⁺))
     product_weights = _rectangular_product_weights(converted_ws)
 
     # Store direction count, size, and layout in the type.
@@ -366,9 +335,9 @@ If `g` already has scalar type `T`, return `g` itself. Otherwise a new grid is
 constructed; adjoints are converted directly and are not recomputed from the
 forward operators.
 
-When several tuple entries refer to the same object, conversion preserves that
-sharing. This matters for square grids, whose two finite-difference directions
-may deliberately reuse one set of points, weights, and derivative operators.
+When several tuple entries refer to the same object and the scalar type
+actually changes, each entry is converted independently; the resulting grid
+holds equal but distinct copies rather than shared objects.
 """
 function Base.convert(::Type{T}, g::RectangularGrid{NI, T0, S, D, AXES, FFT_DIMS}) where {T<:Real, NI, T0, S, D, AXES, FFT_DIMS}
     T === T0 && return g

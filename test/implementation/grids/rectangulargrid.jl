@@ -105,7 +105,7 @@
     square_duct32 = convert(Float32, square_duct)
     for field in (:xs, :D₁, :D₂, :D₁⁺, :D₂⁺, :ws)
         values = getfield(square_duct32, field)
-        @test values[1] === values[2]
+        @test values[1] == values[2]
     end
 
     cavity = LidDrivenCavityGrid(11, 9; xlim=(-2, 2), ylim=(0, 1), width=3)
