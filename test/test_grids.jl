@@ -138,7 +138,7 @@ end
 function NSEBase.derivative_matrix(g::PolynomialGrid,
                                     ::Int,
                                     ::Val{ORDER},
-                                    ::Val) where {ORDER}
+                                    ::OperatorMode) where {ORDER}
     ORDER == 1 && return g.D1
     ORDER == 2 && return g.D2
     throw(ArgumentError("only orders 1 and 2 are available, got order=$ORDER"))

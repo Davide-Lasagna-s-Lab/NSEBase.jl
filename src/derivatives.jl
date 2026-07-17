@@ -22,80 +22,89 @@
 # downstream) with `_add_homogeneous_laplacian!` (provided here), which
 # subtracts the spatial ‖k‖² · u contribution from each spectral coefficient.
 
-# ! needs to be implemented by user (needs to update docs for the newer inteface)
-derivative_matrix(g::AbstractGrid, ::Integer, ::Val, ::Val) = throw(NotImplementedError(g))
+derivative_matrix(g::AbstractGrid, ::Integer, ::Val, ::OperatorMode) = throw(NotImplementedError(g))
 
 """
-    ddx!(out, u; adjoint=false) -> out
-    ddy!(out, u; adjoint=false) -> out
-    ddz!(out, u; adjoint=false) -> out
-    ddt!(out, u; adjoint=false) -> out
-
-Differentiate `u` along the named physical direction, storing the result in
-`out`. Each wrapper resolves its direction to a `Val{STORAGE_DIM}` at the
+    ddx!(out, u, mode=Forward()) -> out
+Differentiate `u` along physical direction `x`, storing the result in `out`.
+The wrapper resolves the direction to a `Val{STORAGE_DIM}` at the
 call site and delegates to the low-level [`dd!`](@ref)`(out, u, ::Val)` primitive.
+
+`mode` selects the operator variant: `Forward()` (default) applies the forward
+derivative, `AdjointDiscrete()` its discrete adjoint. The tag participates in
+dispatch, so each variant compiles to a concrete operator with no runtime
+branch.
 
 For an absent direction (e.g. `:z` on a 2D grid) the call is a compile-time no-op.
 """
-ddx!(out, u; kwargs...) = dd!(out, u, physical_to_storage_dim(grid(u), Val(:x)); kwargs...)
-ddy!(out, u; kwargs...) = dd!(out, u, physical_to_storage_dim(grid(u), Val(:y)); kwargs...)
-ddz!(out, u; kwargs...) = dd!(out, u, physical_to_storage_dim(grid(u), Val(:z)); kwargs...)
-ddt!(out, u; kwargs...) = dd!(out, u, physical_to_storage_dim(grid(u), Val(:t)); kwargs...)
+ddx!(out, u, mode::OperatorMode=Forward()) = dd!(out, u, physical_to_storage_dim(grid(u), Val(:x)), mode)
 
-dd!(out::VectorField{N}, u::VectorField{N}, sd::Val; kwargs...) where {N} =
-    (for n in 1:N; dd!(out[n], u[n], sd; kwargs...); end; return out)
+"""Differentiate `u` along physical direction `y`; see [`ddx!`](@ref)."""
+ddy!(out, u, mode::OperatorMode=Forward()) = dd!(out, u, physical_to_storage_dim(grid(u), Val(:y)), mode)
+
+"""Differentiate `u` along physical direction `z`; see [`ddx!`](@ref)."""
+ddz!(out, u, mode::OperatorMode=Forward()) = dd!(out, u, physical_to_storage_dim(grid(u), Val(:z)), mode)
+
+"""Differentiate `u` along physical direction `t`; see [`ddx!`](@ref)."""
+ddt!(out, u, mode::OperatorMode=Forward()) = dd!(out, u, physical_to_storage_dim(grid(u), Val(:t)), mode)
+
+dd!(out::VectorField{N}, u::VectorField{N}, sd::Val, mode::OperatorMode=Forward()) where {N} =
+    (for n in 1:N; dd!(out[n], u[n], sd, mode); end; return out)
 
 """
-    dd!(out, u, ::Val{STORAGE_DIM}; adjoint=false)
+    dd!(out, u, ::Val{STORAGE_DIM}, mode=Forward())
 
 In-place derivative of `u` along the storage dimension encoded by
 `Val(STORAGE_DIM)`.
 
 For `STORAGE_DIM in FFT_DIMS_ORDER` the derivative is multiplication by
 `±im * n * wavenumber_scale(grid, STORAGE_DIM)` where `n` is the signed
-wavenumber. `adjoint=false` (default) gives `+im·n·scale·u`;
-`adjoint=true` gives `-im·n·scale·u`.
+wavenumber. `Forward()` (default) gives `+im·n·scale·u`;
+`AdjointDiscrete()` gives `-im·n·scale·u`.
 
 For an inhomogeneous storage dimension the method throws
 `NotImplementedError`. Downstream packages should extend
-[`inhomogeneous_dd!`](@ref) for each inhomogeneous direction.
+[`derivative_matrix`](@ref) for each inhomogeneous direction.
+
+`AdjointContinuous` is not part of this API: the continuous adjoint is
+expressed in the equation methods through forward derivatives.
 
 For `Val(nothing)` the function is a no-op.
 """
-function dd!(out::F, u::F, ::Val{STORAGE_DIM};
-             adjoint::Bool=false) where {
+function dd!(out::F, u::F, ::Val{STORAGE_DIM},
+             mode::OperatorMode=Forward()) where {
         STORAGE_DIM, T, D, AXES, FFT_DIMS_ORDER,
         G<:AbstractGrid{T, D, AXES, FFT_DIMS_ORDER},
         F<:Union{FTField{G}, ProjectedField{G}}}
 
     isnothing(STORAGE_DIM) && return out
-    STORAGE_DIM ∉ FFT_DIMS_ORDER ? _inhomogeneous_dd!(out, u, Val(STORAGE_DIM)                                ; adjoint=adjoint) :
-                                        _spectral_dd!(out, u, Val(STORAGE_DIM), Val(D), Val(FFT_DIMS_ORDER[1]); adjoint=adjoint)
+    STORAGE_DIM ∉ FFT_DIMS_ORDER ? _inhomogeneous_dd!(out, u, Val(STORAGE_DIM), mode) :
+                                       _spectral_dd!(out, u, Val(STORAGE_DIM), mode)
 
     return out
 end
 
 """
-    _spectral_dd!(out, u, ::Val{STORAGE_DIM}, ::Val{D}, ::Val{FFT_DIMS_ORDER};
-                    adjoint=false)
+    _spectral_dd!(out, u, ::Val{STORAGE_DIM}, mode=Forward())
 
 In-place derivative of `u` along the storage dimension where
 `STORAGE_DIM ∈ FFT_DIMS_ORDER` using spectral methods.
 """
-function _spectral_dd!(out::Union{FTField, ProjectedField},
-                         u::Union{FTField, ProjectedField},
+function _spectral_dd!(out::F,
+                         u::F,
                           ::Val{STORAGE_DIM},
-                          ::Val{D},
-                          ::Val{RFFT_DIM};
-                   adjoint::Bool=false) where {STORAGE_DIM, D, RFFT_DIM}
+                      mode::OperatorMode=Forward()) where {
+        STORAGE_DIM, T, D, AXES, FFT_DIMS_ORDER,
+        G<:AbstractGrid{T, D, AXES, FFT_DIMS_ORDER},
+        F<:Union{FTField{G}, ProjectedField{G}}}
 
     scale = wavenumber_scale(grid(u), STORAGE_DIM)
-    coeff = adjoint ? -im * real(eltype(u))(scale) : im * real(eltype(u))(scale)
+    coeff = mode isa AdjointDiscrete ? -im * T(scale) : im * T(scale)
     Nd    = size(u, STORAGE_DIM)
     pu    = parent(u)
     pout  = parent(out)
 
-    if STORAGE_DIM == RFFT_DIM
+    if STORAGE_DIM == FFT_DIMS_ORDER[1]
         @inbounds for I in CartesianIndices(pu)
             pout[I] = (coeff * (I[STORAGE_DIM] - 1)) * pu[I]
         end
@@ -123,10 +132,10 @@ Requires `NSEBase.derivative_matrix` to be defined for input types.
 """
 function _inhomogeneous_dd!(out::FTField{G},
                               u::FTField{G},
-                               ::Val{STORAGE_DIM};
-                        adjoint::Bool=false) where {G<:AbstractGrid, STORAGE_DIM}
+                               ::Val{STORAGE_DIM},
+                           mode::OperatorMode=Forward()) where {G<:AbstractGrid, STORAGE_DIM}
 
-    A = derivative_matrix(grid(u), STORAGE_DIM, Val(1), Val(adjoint))
+    A = derivative_matrix(grid(u), STORAGE_DIM, Val(1), mode)
     LinearAlgebra.mul!(parent(out), A, parent(u), Val(STORAGE_DIM))
 
     return out
@@ -171,7 +180,7 @@ _add_homogeneous_laplacian!(out::VectorField{N}, u::VectorField{N}) where {N} =
     (for n in 1:N; _add_homogeneous_laplacian!(out[n], u[n]); end; return out)
 
 """
-    _inhomogeneous_laplacian!(out::FTField, u::FTField; kwargs...) -> out
+    inhomogeneous_laplacian!(out::FTField, u::FTField, mode=Forward()) -> out
 
 Apply the inhomogeneous (non-FFT) part of the Laplacian of `u` to `out`.
 
@@ -183,16 +192,16 @@ spectral contribution from [`_add_homogeneous_laplacian!`](@ref).
 Requires `NSEBase.derivative_matrix` to be defined for input types.
 """
 function _inhomogeneous_laplacian!(out::FTField{G},
-                                     u::FTField{G};
-                               adjoint::Bool=false) where {G<:AbstractGrid}
+                                     u::FTField{G},
+                                  mode::OperatorMode=Forward()) where {G<:AbstractGrid}
     inh_spatial_dims = inhomogeneous_storage_dims(grid(u))
     isempty(inh_spatial_dims) && (out .*= 0; return out)
 
-    A = derivative_matrix(grid(u), inh_spatial_dims[1], Val(2), Val(adjoint))
+    A = derivative_matrix(grid(u), inh_spatial_dims[1], Val(2), mode)
     LinearAlgebra.mul!(parent(out), A, parent(u), Val(inh_spatial_dims[1]))
 
     for dim in Base.tail(inh_spatial_dims)
-        A = derivative_matrix(grid(u), dim, Val(2), Val(adjoint))
+        A = derivative_matrix(grid(u), dim, Val(2), mode)
         LinearAlgebra.mul!(parent(out), A, parent(u), Val(dim), Val(true))
     end
 
@@ -200,8 +209,8 @@ function _inhomogeneous_laplacian!(out::FTField{G},
 end
 
 """
-    laplacian!(out::FTField{G}, u::FTField{G}; kwargs...)
-    laplacian!(out::VectorField{N}, u::VectorField{N}; kwargs...)
+    laplacian!(out::FTField{G}, u::FTField{G}, mode=Forward())
+    laplacian!(out::VectorField{N}, u::VectorField{N}, mode=Forward())
 
 Compute the full Laplacian of `u` in-place, storing the result in `out`:
 
@@ -210,11 +219,14 @@ Compute the full Laplacian of `u` in-place, storing the result in `out`:
 
 Only spatial transformed directions enter the homogeneous sum; a transformed
 logical time coordinate is excluded through [`spatial_fft_storage_dims`](@ref).
+
+`mode` selects the operator variant for the finite-difference part;
+the homogeneous −‖k‖² contribution is self-adjoint and unaffected.
 """
-function laplacian!(out::FTField{G}, u::FTField{G}; kwargs...) where {G}
-    _inhomogeneous_laplacian!(out, u; kwargs...)
+function laplacian!(out::FTField{G}, u::FTField{G}, mode::OperatorMode=Forward()) where {G}
+    _inhomogeneous_laplacian!(out, u, mode)
     _add_homogeneous_laplacian!(out, u)
     return out
 end
-laplacian!(out::VectorField{N}, u::VectorField{N}; kwargs...) where {N} =
-    (for n in 1:N; laplacian!(out[n], u[n]; kwargs...); end; return out)
+laplacian!(out::VectorField{N}, u::VectorField{N}, mode::OperatorMode=Forward()) where {N} =
+    (for n in 1:N; laplacian!(out[n], u[n], mode); end; return out)

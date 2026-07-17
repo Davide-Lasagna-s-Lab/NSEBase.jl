@@ -23,14 +23,14 @@ runtime dispatch and no runtime allocation in the hot paths.
 
 ### Required methods
 
-A concrete grid must implement exactly four methods:
+A concrete grid should implement exactly five methods:
 
 ```julia
-Base.size(grid)                                                     # → NTuple{D, Int}
-points(grid; dealias=false)                                         # → one array per dimension
-wavenumber_scale(grid, dim::Int)                                    # → Real (2π/L for spatial, 1 for temporal)
-weights(grid)                                                       # → AbstractArray (quadrature weights)
-derivative_matrix(grid, storage_dim::Int, ::Val{ORDER}, ::Val{ADD}) # -> AbstractArray (differentiation operator for inhomogeneous directions)
+Base.size(grid)                                                             # → NTuple{D, Int}
+points(grid; dealias=false)                                                 # → one array per dimension
+wavenumber_scale(grid, dim::Int)                                            # → Real (2π/L for spatial, 1 for temporal)
+weights(grid)                                                               # → AbstractArray (quadrature weights)
+derivative_matrix(grid, storage_dim::Int, ::Val{ORDER}, mode::OperatorMode) # -> AbstractArray (differentiation operator for inhomogeneous directions)
 ```
 
 `weights` must have one axis per entry in `inhomogeneous_dims(grid)` in ascending array-dimension order, and `derivative_matrix` should be defined for all `storage_dim ∉ FFT_DIMS_ORDER`.

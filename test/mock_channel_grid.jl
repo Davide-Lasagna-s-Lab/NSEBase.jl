@@ -152,11 +152,21 @@ end
 function NSEBase.derivative_matrix(g::MockChannelGrid,
                                     ::Integer,
                                     ::Val{ORDER},
-                                    ::Val{ADJ}) where {ORDER, ADJ}
+                                    ::Forward) where {ORDER}
     A = ORDER == 1 ? g.D₁ :
         ORDER == 2 ? g.D₂ :
         throw(ArgumentError("MockChannelGrid: unsupported derivative order $ORDER"))
-    return ADJ ? LinearAlgebra.adjoint(A) : A
+    return A
+end
+
+function NSEBase.derivative_matrix(g::MockChannelGrid,
+                                    ::Integer,
+                                    ::Val{ORDER},
+                                    ::AdjointDiscrete) where {ORDER}
+    A = ORDER == 1 ? g.D₁ :
+        ORDER == 2 ? g.D₂ :
+        throw(ArgumentError("MockChannelGrid: unsupported derivative order $ORDER"))
+    return LinearAlgebra.adjoint(A)
 end
 
 # ------------------------------------------------------------------ #
