@@ -180,9 +180,9 @@ function timeit(f; nrep=5, niter=5, nwarm=2)
     return MPI.Allreduce(local_med, MPI.MAX, COMM)
 end
 
-f1(y,x,z,t) = (1-y^2) * cos(2π*x) * cos(5.8z) * cos(t)
-f2(y,x,z,t) = (1-y^2) * sin(2π*x) * cos(5.8z) * sin(t)
-f3(y,x,z,t) = (1-y^2)^2 * cos(2π*x) * sin(5.8z) * cos(t)
+f1(x,y,z,t) = (1-y^2) * cos(2π*x) * cos(5.8z) * cos(t)
+f2(x,y,z,t) = (1-y^2) * sin(2π*x) * cos(5.8z) * sin(t)
+f3(x,y,z,t) = (1-y^2)^2 * cos(2π*x) * sin(5.8z) * cos(t)
 
 # async run reuses the :cur ordering (only the launch environment differs)
 const STRATS = ASYNC ? (:cur,) : (:noov, :cur, :test)

@@ -347,6 +347,25 @@ function NSEBase.points(g::DecomposedGrid{T, D}; dealias::Bool=false) where {T, 
 end
 
 """
+    plane_couette_base(g::DecomposedGrid) -> Vector
+
+Evaluate the canonical Couette profile at this rank's wall-normal points using
+the undecomposed parent grid's wall locations. The global limits are essential:
+rescaling each local slab independently would incorrectly assign wall values
+`-1` and `1` on every rank.
+"""
+function NSEBase.plane_couette_base(g::Union{
+        DecomposedGrid{T, 3, NSEBase.CHANNEL_2D3C_AXES, NSEBase.CHANNEL_2D3C_FFT_ORDER},
+        DecomposedGrid{T, 4, NSEBase.CHANNEL_3D_AXES, NSEBase.CHANNEL_3D_FFT_ORDER},
+    }) where {T}
+    dim = only(NSEBase.inhomogeneous_storage_dims(g))
+    y = copy(vec(NSEBase.points(g)[dim]))
+    y₋, y₊ = extrema(vec(NSEBase.points(parent(g))[dim]))
+    y₊ > y₋ || throw(ArgumentError("channel walls must have distinct coordinates"))
+    return @. T(2) * (y - y₋) / (y₊ - y₋) - one(T)
+end
+
+"""
     weights(g::DecomposedGrid) -> AbstractArray
 
 Return the per-rank quadrature weights for `g`.
@@ -495,7 +514,7 @@ global_size(g::DecomposedGrid) = size(g.parent)
 
 global_size(g::DecomposedGrid, phys_dim::Symbol) =
     global_size(g)[NSEBase.storage_dim(g, phys_dim)]
-    
+
 global_size(g::DecomposedGrid, stor_dim::Int) = global_size(g)[stor_dim]
 
 """

@@ -9,18 +9,16 @@
 
 using Test
 
-import LinearAlgebra
 import MPI
 import Random
 
-using NSEBase,
-      FDGrids
+using NSEBase
 
 const MPIExt = Base.get_extension(NSEBase, :MPIExt)
 
 MPI.Initialized() || MPI.Init()
 
-include("grid.jl")
+include("helpers.jl")
 
 nranks = MPI.Comm_size(MPI.COMM_WORLD)
 rank   = MPI.Comm_rank(MPI.COMM_WORLD)
@@ -31,7 +29,7 @@ const NMODES = 2
 const NCOMP = 2
 
 base_comm = MPI.Comm_dup(MPI.COMM_WORLD)
-g = distributed(MockChannelGrid(Ny, Nx, Nz, Nt), base_comm;
+g = distributed(test_channel_grid(Ny, Nx, Nz, Nt), base_comm;
                 decomposed_physical_dims=(:y,), nprocesses=(nranks,), nhalo=(NHALO,))
 
 Ny_local = Ny ÷ nranks
@@ -56,7 +54,7 @@ for n in 1:NCOMP
     parent(u[n]) .= reshape(flat, size(parent(u[n])))
 end
 
-@testset "project! coefficients are rank-consistent                           " begin
+@testset verbose=true "project! coefficients are rank-consistent                   " begin
     a_local = NSEBase.project!(similar(basis), u)
 
     # Pull rank 0's coefficients and compare to each rank's local copy.

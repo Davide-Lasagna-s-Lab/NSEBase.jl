@@ -14,29 +14,30 @@
 # When a physical direction is absent from the grid its storage dimension is
 # `nothing` and the kernel is a no-op.
 #
-# Inhomogeneous (non-FFT) directions are NOT handled here — `dd!` throws
-# `NotImplementedError` for those, and downstream packages must extend it
-# with a grid-specific method (typically a matrix–vector multiply).
+# Inhomogeneous directions delegate to `inhomogeneous_dd!`. RectangularGrid
+# implements that hook with the stored FDGrids matrix.
 #
-# The full Laplacian combines `inhomogeneous_laplacian!` (provided by
-# downstream) with `add_homogeneous_laplacian!` (provided here), which
+# The full Laplacian combines `inhomogeneous_laplacian!` with
+# `add_homogeneous_laplacian!`, which
 # subtracts the spatial ‖k‖² · u contribution from each spectral coefficient.
 
 """
     ddx!(out, u; adjoint=false) -> out
-    ddy!(out, u; adjoint=false) -> out
-    ddz!(out, u; adjoint=false) -> out
-    ddt!(out, u; adjoint=false) -> out
-
-Differentiate `u` along the named physical direction, storing the result in
-`out`. Each wrapper resolves its direction to a `Val{STORAGE_DIM}` at the
+Differentiate `u` along physical direction `x`, storing the result in `out`.
+The wrapper resolves the direction to a `Val{STORAGE_DIM}` at the
 call site and delegates to the low-level [`dd!`](@ref)`(out, u, ::Val)` primitive.
 
 For an absent direction (e.g. `:z` on a 2D grid) the call is a compile-time no-op.
 """
 ddx!(out, u; kwargs...) = dd!(out, u, physical_to_storage_dim(grid(u), Val(:x)); kwargs...)
+
+"""Differentiate `u` along physical direction `y`; see [`ddx!`](@ref)."""
 ddy!(out, u; kwargs...) = dd!(out, u, physical_to_storage_dim(grid(u), Val(:y)); kwargs...)
+
+"""Differentiate `u` along physical direction `z`; see [`ddx!`](@ref)."""
 ddz!(out, u; kwargs...) = dd!(out, u, physical_to_storage_dim(grid(u), Val(:z)); kwargs...)
+
+"""Differentiate `u` along physical direction `t`; see [`ddx!`](@ref)."""
 ddt!(out, u; kwargs...) = dd!(out, u, physical_to_storage_dim(grid(u), Val(:t)); kwargs...)
 
 dd!(out::VectorField{N}, u::VectorField{N}, sd::Val; kwargs...) where {N} =
@@ -53,9 +54,11 @@ For `STORAGE_DIM in FFT_DIMS_ORDER` the derivative is multiplication by
 wavenumber. `adjoint=false` (default) gives `+im·n·scale·u`;
 `adjoint=true` gives `-im·n·scale·u`.
 
-For an inhomogeneous storage dimension the method throws
-`NotImplementedError`. Downstream packages should extend
-[`inhomogeneous_dd!`](@ref) for each inhomogeneous direction.
+For an inhomogeneous storage dimension the method delegates to
+`inhomogeneous_dd!`; [`RectangularGrid`](@ref) supplies an allocation-free
+implementation using its stored first-derivative operator. There,
+`adjoint=true` selects the caller-supplied `D₁⁺`; when it is the weighted
+adjoint under [`weights`](@ref), `⟨D₁u,v⟩_w = ⟨u,D₁⁺v⟩_w` up to roundoff.
 
 For `Val(nothing)` the function is a no-op.
 """
@@ -158,6 +161,10 @@ This contribution contains the second derivatives along directions that are
 not in [`fft_storage_dims`](@ref), such as wall-normal collocation directions.  The
 full spatial Laplacian is the sum of this contribution and the homogeneous
 spectral contribution from [`add_homogeneous_laplacian!`](@ref).
+
+[`RectangularGrid`](@ref) applies its stored `D₂` operator along each spatial
+finite-difference direction. Passing `adjoint=true` to that implementation
+selects the corresponding caller-supplied `D₂⁺` operators.
 """
 inhomogeneous_laplacian!(out::FTField, u::FTField) = throw(NotImplementedError(out, u))
 

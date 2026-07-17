@@ -1,17 +1,13 @@
-# Tests for the decomposed-grid interface defined in
-# `MPIExt/src/abstractgrid.jl`.
+# Tests for the decomposed-grid interface defined in `MPIExt/decomposed.jl`.
 #
-# Runs under any rank count; uses a `MockChannelGrid` parent wrapped via
+# Runs under any rank count; uses a production `ChannelGrid` parent wrapped via
 # `MPIExt.distributed` along the wall-normal `:y` direction. Every
-# user-facing accessor exported by abstractgrid.jl gets at least one
+# user-facing accessor defined by `src/grids/abstractgrid.jl` gets at least one
 # assertion.
 
 using Test
 
-import LinearAlgebra
 import MPI
-import FDGrids
-import HaloArrays
 
 using NSEBase
 
@@ -19,7 +15,7 @@ const MPIExt = Base.get_extension(NSEBase, :MPIExt)
 
 MPI.Initialized() || MPI.Init()
 
-include("grid.jl")
+include("helpers.jl")
 
 # -- common setup -----------------------------------------------------------
 nranks = MPI.Comm_size(MPI.COMM_WORLD)
@@ -32,18 +28,18 @@ const NHALO = 1
 
 base_comm = MPI.Comm_dup(MPI.COMM_WORLD)
 
-g_parent = MockChannelGrid(Ny, Nx, Nz, Nt)
+g_parent = test_channel_grid(Ny, Nx, Nz, Nt)
 g        = distributed(g_parent, base_comm;
                         decomposed_physical_dims=(:y,), nprocesses=(nranks,), nhalo=(NHALO,))
 
 Ny_local = Ny ÷ nranks
 y_offset = rank * Ny_local
 
-@testset "DecomposedGrid alias                                                " begin
+@testset verbose=true "DecomposedGrid alias                                        " begin
     @test g isa MPIExt.DecomposedGrid
 end
 
-@testset "comm / comm_size / comm_rank                                        " begin
+@testset verbose=true "comm / comm_size / comm_rank                                " begin
     # `distributed(...)` builds a full-Cart comm (one direction per
     # storage dim) for HaloArrays. `comm(g)` returns that comm.
     g_comm = MPIExt.comm(g)
@@ -52,25 +48,25 @@ end
     @test MPIExt.comm_rank(g) == rank
 end
 
-@testset "decomposition_storage_dims / _physical_dims                         " begin
+@testset verbose=true "decomposition_storage_dims / _physical_dims                 " begin
     @test MPIExt.decomposition_storage_dims(g) == (1,)
     @test MPIExt.decomposition_physical_dims(g) == (:y,)
     @test MPIExt.ndecomposed_dims(g) == 1
 end
 
-@testset "size / global_size                                                  " begin
+@testset verbose=true "size / global_size                                          " begin
     @test size(g) == (Ny_local, Nx, Nz, Nt)
     @test MPIExt.global_size(g) == (Ny, Nx, Nz, Nt)
     @test size(g, 1) == Ny_local
 end
 
-@testset "nhalo                                                               " begin
+@testset verbose=true "nhalo                                                       " begin
     # Halos live on the decomposed (wall-normal) storage axis only.
     @test MPIExt.nhalo(g) == (NHALO, 0, 0, 0)
     @test MPIExt.nhalo(g, :y) == NHALO
 end
 
-@testset "global_first_index                                                  " begin
+@testset verbose=true "global_first_index                                          " begin
     @test MPIExt.global_first_index(g, :y) == y_offset + 1
     # Non-decomposed coordinates always start at global index 1.
     @test MPIExt.global_first_index(g, :x) == 1
@@ -78,7 +74,7 @@ end
     @test MPIExt.global_first_index(g, :t) == 1
 end
 
-@testset "local_interior_range / local_boundary_ranges                        " begin
+@testset verbose=true "local_interior_range / local_boundary_ranges                " begin
     interior = MPIExt.local_interior_range(g, :y)
     lower, upper = MPIExt.local_boundary_ranges(g, :y)
 
@@ -101,24 +97,24 @@ end
     @test MPIExt.local_boundary_ranges(g, :x) == (1:0, 1:0)
 end
 
-@testset "derivative_matrix forwards to parent                                " begin
+@testset verbose=true "derivative_matrix forwards to parent                        " begin
     y_sd = NSEBase.storage_dim(g, :y)
     x_sd = NSEBase.storage_dim(g, :x)
 
     D1 = NSEBase.derivative_matrix(g, y_sd, Val(1))
     D2 = NSEBase.derivative_matrix(g, y_sd, Val(2))
-    @test D1 === g_parent.D₁
-    @test D2 === g_parent.D₂
+    @test D1 === g_parent.D₁[1]
+    @test D2 === g_parent.D₂[1]
 
     # Adjoint flag is forwarded.
     D1_adj = NSEBase.derivative_matrix(g, y_sd, Val(1), Val(true))
-    @test D1_adj == LinearAlgebra.adjoint(g_parent.D₁)
+    @test D1_adj === g_parent.D₁⁺[1]
 
     # FFT directions have no parent FD operator; the parent throws.
     @test_throws ArgumentError NSEBase.derivative_matrix(g, x_sd, Val(1))
 end
 
-@testset "local_size names the per-rank interior size                         " begin
+@testset verbose=true "local_size names the per-rank interior size                 " begin
     @test MPIExt.local_size(g) == size(g)
 end
 

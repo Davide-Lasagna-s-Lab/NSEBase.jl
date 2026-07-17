@@ -22,8 +22,8 @@ using NSEBase
 # the grid size.  No FFTW plans, no differentiation matrices.
 # ──────────────────────────────────────────────────────────────────────────────
 #
-# CHANNEL_AXES      = (2, 1, 3, 4): physical dim k lives in storage dim AXES[k]
-# CHANNEL_FFT_ORDER = (2, 3, 4):    rfft on dim 2, signed FFTs on dims 3 and 4
+# CHANNEL_3D_AXES      = (2, 1, 3, 4): physical dim k lives in storage dim AXES[k]
+# CHANNEL_3D_FFT_ORDER = (2, 3, 4):    rfft on dim 2, signed FFTs on dims 3 and 4
 #
 const BENCH_AXES      = (2, 1, 3, 4)
 const BENCH_FFT_ORDER = (2, 3, 4)

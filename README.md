@@ -1,57 +1,68 @@
 # NSEBase.jl
 
-**NSEBase** is a Julia package that provides the shared spectral-field infrastructure
-for Navier-Stokes solvers targeting wall-bounded flows.  It defines the grid
-interface, all field types, FFT transforms, spectral derivative operators,
-Galerkin projection utilities, and concrete Cartesian primitive-variable NSE
-operators.  Downstream packages (e.g. *ChannelFlow.jl*) contribute a concrete
-`AbstractGrid` subtype and obtain a fully-featured, allocation-free spectral
-solver without reimplementing any of the above.
+NSEBase provides the grids, spectral/finite-difference fields, transforms,
+derivatives, Galerkin projection, and primitive-variable Navier–Stokes operators
+used by the ReSolver ecosystem.
+
+Rectangular wall-bounded cases are included directly. Separate geometry
+packages are no longer required for:
+
+- plane Couette and plane Poiseuille flow;
+- square-duct flow;
+- lid-driven cavities;
+- streamwise-independent rotating plane Couette flow (RPCF); and
+- Rayleigh–Bénard convection.
+
+All of these cases use one concrete `RectangularGrid{NI}` backed by FDGrids.
+Case factories and structural aliases hide axis mappings, FFT order, differentiation
+matrices, quadrature weights, and weighted adjoints behind physical parameters
+and documented defaults.
 
 ## Installation
 
-NSEBase is not registered.  Install it directly from GitHub:
+NSEBase is not yet registered. Install it directly from GitHub:
 
 ```julia
 using Pkg
-Pkg.add(url = "https://github.com/Davide-Lasagna-s-Lab/NSEBase.jl")
+Pkg.add(url="https://github.com/Davide-Lasagna-s-Lab/FDGrids.jl")
+Pkg.add(url="https://github.com/Davide-Lasagna-s-Lab/NSEBase.jl")
 ```
+
+FDGrids is installed explicitly because it is also currently unregistered.
 
 ## Quick start
 
 ```julia
 using NSEBase
 
-# A concrete grid is provided by a downstream package, e.g. ChannelFlow.jl.
-# Assuming `grid` is already constructed and `U` holds the laminar base flow:
-obj = construct_equations(grid, Re, (U, nothing, nothing); flags = FFTW.MEASURE)
+# (Nx, Ny, Nz), with Nt, α=2π/Lx, and β=2π/Lz as keywords.
+grid = ChannelGrid(9, 17, 9; Nt=1, α=0.5, β=0.5, width=5)
 
-# Evaluate the nonlinear NSE residual projected onto a Galerkin basis
-a   = ProjectedField(grid, randn(ComplexF64, M, Nk), modes)
-rhs = obj(zero(a), a)          # rhs = P(Δu/Re − (u·∇)u)
-
-# Evaluate the linearised operator around a given base state `b`
-rhs_lin = obj(similar(a), a, b)
+couette = PlaneCouetteFlow(grid, 500; Ro=0.1, fftw_flags=FFTW.ESTIMATE, dealias=false)
+poiseuille = PlanePoiseuilleFlow(grid, 500; f=1, fftw_flags=FFTW.ESTIMATE, dealias=false)
 ```
 
-## Documentation
+`grid` stores arrays as `(y,x,z,t)`, builds the wall-normal FDGrids operators
+and quadrature-weighted adjoints, and uses Fourier periods `2π/α`, `2π/β`,
+and `1`. The flow constructors return `ProjectedNSE` operator bundles.
 
-Full documentation — including a concepts & conventions guide and the
-complete API reference — lives in [`docs/`](docs/).
+See [`examples/`](examples/) for runnable constructors for every bundled case
+and [`docs/`](docs/) for conventions, custom-grid construction, boundary-condition
+contracts, MPI decomposition, and the complete API.
 
-## Extending NSEBase
+## Boundary conditions
 
-Implement a new grid by subtyping
-`AbstractGrid{T, D, AXES, FFT_DIMS_ORDER, DECOMPOSITION}` and defining four
-required methods. Use `Undecomposed` for a grid stored on one domain, or
-`Decomposed{DIMS}` when storage is partitioned along the dimensions in `DIMS`.
+Grid distributions include boundary points when the selected FDGrids rule does,
+but NSEBase does not impose wall values. No-slip and thermal conditions belong
+to the projection basis or residual assembly. For lid-driven cavities, the
+required base lifting carries the inhomogeneous moving-lid values while the
+perturbation basis or residual enforces homogeneous wall conditions. Case
+constructors do not silently alter boundary degrees of freedom.
 
-| Method | Purpose |
-|--------|---------|
-| `Base.size(grid)` | Physical-space array size |
-| `points(grid; dealias)` | Collocation coordinate arrays |
-| `wavenumber_scale(grid, dim)` | `2π/L` for spatial, `1` for temporal |
-| `weights(grid)` | Quadrature weights for inhomogeneous dimensions |
+## Custom geometries
 
-See the [Concepts & Conventions](docs/src/guide.md) page for the full interface
-contract and the assumptions NSEBase makes about grid geometry.
+For a new Cartesian geometry, construct `RectangularGrid` from tuples of
+collocation vectors, FDGrids matrices, weighted adjoints, and quadrature weights.
+For a non-rectangular discretisation, subtype
+`AbstractGrid{T,D,AXES,FFT_DIMS_ORDER}` and implement the documented grid
+interface.

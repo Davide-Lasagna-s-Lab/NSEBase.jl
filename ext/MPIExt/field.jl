@@ -23,15 +23,15 @@ NSEBase.Field(g::DecomposedGrid{T}; dealias::Bool=false) where {T} =
 
 Construct a physical-space field by evaluating `func` at the grid points.
 
-`func` is called as `func(coords...)` where `coords = NSEBase.points(grid;
-dealias=dealias)`.  `points` must return per-rank local coordinate arrays
-(as required by the decomposed-grid locality contract), so `func`
-is evaluated only at the collocation points owned by this rank. The result is
-written into the HaloArray interior, with halos left uninitialised until the
-next exchange.
+`func` receives four arguments in physical `(x, y, z, t)` order, independently
+of their storage order; absent coordinates are passed as `nothing`. `points`
+must return per-rank local coordinate arrays (as required by the decomposed-grid
+locality contract), so `func` is evaluated only at the collocation points owned
+by this rank. The result is written into the HaloArray interior, with halos left
+uninitialised until the next exchange.
 """
 function NSEBase.Field(g::DecomposedGrid{T}, func::Function; dealias::Bool=false) where {T}
     u = NSEBase.Field(g; dealias=dealias)
-    parent(u) .= func.(NSEBase.points(g; dealias=dealias)...)
+    parent(u) .= func.(NSEBase._field_args(g; dealias)...)
     return u
 end

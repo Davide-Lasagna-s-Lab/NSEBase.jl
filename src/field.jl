@@ -41,20 +41,44 @@ element type of `data` does not match `T` of the grid, the array is converted.
 """
 Field(grid::AbstractGrid{T}, data::AbstractArray) where {T} = Field(grid, T.(data))
 
-# TODO: we should change the interface and require func to take x, y, z, and t in physical order, not array order
-# TODO: we then also need to change the code in resolver-channelflow to match this, and the code in the tests
 """
     Field(grid::AbstractGrid, func::Function; dealias=false)
 
 Construct a `Field` by evaluating `func` at every collocation point.
 
-`func` must accept one argument per grid dimension (in array-dimension order)
-and return a scalar.  The coordinate arrays are obtained via `points(grid;
-dealias=dealias)`, so setting `dealias=true` constructs a field on the padded
-(dealiased) physical grid — the right choice when computing nonlinear products
-that will be transformed back to spectral space.
+`func` must accept four arguments in physical `(x, y, z, t)` order and return a
+scalar. A coordinate absent from the grid is passed as `nothing`. This calling
+convention is independent of storage order: on a channel stored as
+`(y, x, z, t)`, for example, use `func(x, y, z, t)`.
+
+The coordinate arrays are obtained via `points(grid; dealias=dealias)`, so
+setting `dealias=true` constructs a field on the padded physical grid. This is
+the appropriate layout for nonlinear products that will be transformed back to
+spectral space.
 """
-Field(grid::AbstractGrid{T}, func::Function; dealias=false) where {T} = Field(grid, T.(func.(points(grid, dealias=dealias)...)))
+function Field(grid::AbstractGrid{T}, func::Function; dealias=false) where {T}
+    return Field(grid, T.(func.(_field_args(grid; dealias)...)))
+end
+
+# Select one storage-order point array, while preserving `nothing` for a
+# coordinate that is absent from the grid.
+@inline _field_arg(::Tuple, ::Val{nothing}) = nothing
+@inline _field_arg(points::Tuple, ::Val{DIM}) where {DIM} = points[DIM]
+
+"""
+    _field_args(grid; dealias=false) -> Tuple
+
+Return the four broadcast arguments used by the function-valued [`Field`](@ref)
+constructor in physical `(x, y, z, t)` order. The grid's `AXES` parameter maps
+each present coordinate to its storage-order array from [`points`](@ref), while
+an absent coordinate becomes `nothing`. The `Val`-based selection keeps the
+heterogeneous tuple fully inferred for every concrete grid layout.
+"""
+function _field_args(grid::AbstractGrid{<:Any, <:Any, AXES}; dealias=false) where {AXES}
+    grid_points = points(grid; dealias)
+    return (_field_arg(grid_points, Val(AXES[1])), _field_arg(grid_points, Val(AXES[2])),
+            _field_arg(grid_points, Val(AXES[3])), _field_arg(grid_points, Val(AXES[4])))
+end
 
 """
     Field(grid::AbstractGrid; dealias=false)
@@ -62,7 +86,7 @@ Field(grid::AbstractGrid{T}, func::Function; dealias=false) where {T} = Field(gr
 Construct a zero-initialised `Field` on `grid`.  Setting `dealias=true` uses
 the padded grid size, matching the layout expected by `FFTPlans` with dealiasing.
 """
-Field(grid::AbstractGrid{T}                ; dealias=false) where {T} = Field(grid, (pts...)->zero(T); dealias=dealias)
+Field(grid::AbstractGrid{T}; dealias=false) where {T} = Field(grid, (_...)->zero(T); dealias)
 
 # ---------------------------------- #
 # AbstractArray interface             #

@@ -4,40 +4,55 @@ using FFTW
 using HCubature
 using LinearAlgebra
 using NSEBase
+import FDGrids
 
-# Shared test fixtures: `fake.jl` defines `FakeGrid` (a 2-D grid with one
-# inhomogeneous and one rfft dimension), `test_grids.jl` defines
-# `TripleGrid` (a 3-D grid with one inhomogeneous, one rfft and one signed
-# FFT dimension) for tests that need multiple homogeneous directions.
-include("fake.jl")
-include("test_grids.jl")
+# Test support contains constructor functions and numerical references only.
+# Production-grid behavior is never supplied by a test-only grid subtype.
+include("helpers/rectangular.jl")
+include("helpers/case_contracts.jl")
 
-# Generic interface / utility tests — exercise every public function in
-# NSEBase against the documented contract, not its implementation.
-include("test_notimplementederror.jl")
-include("test_abstractgrid.jl")
-include("test_wavenumbervector.jl")
-include("test_broadcasting.jl")
-include("test_field.jl")
-include("test_ftfield.jl")
-include("test_vectorfield.jl")
-include("test_projectedfield.jl")
-include("test_fields.jl")
-include("test_fftplans.jl")
-include("test_derivatives.jl")
-include("test_axis_utils.jl")
-include("test_shifts.jl")
-include("test_norms.jl")
-include("test_weighting.jl")
-include("test_galerkin.jl")
-include("test_io.jl")
+@testset verbose=true "Implementation contracts                                    " begin
+    include("implementation/errors/notimplementederror.jl")
+    include("implementation/grids/abstractgrid.jl")
+    include("implementation/grids/rectangulargrid.jl")
+    include("implementation/grids/wavenumbervector.jl")
+    include("implementation/grids/axis_utils.jl")
 
-# Integration tests for the bundled equations module.
-include("test_operators.jl")
+    include("implementation/fields/broadcasting.jl")
+    include("implementation/fields/field.jl")
+    include("implementation/fields/ftfield.jl")
+    include("implementation/fields/vectorfield.jl")
+    include("implementation/fields/projectedfield.jl")
+    include("implementation/fields/contracts.jl")
 
-# Extension integration tests. These launch MPI subprocesses so each test file
-# runs with the requested Cartesian communicator size.
+    include("implementation/transforms/fftplans.jl")
+    include("implementation/transforms/shifts.jl")
+    include("implementation/operators/derivatives.jl")
+    include("implementation/operators/norms.jl")
+    include("implementation/operators/weighting.jl")
+    include("implementation/operators/galerkin.jl")
+    include("implementation/equations/projected_nse.jl")
+end
+
+@testset verbose=true "Flow cases                                                  " begin
+    include("cases/forcings.jl")
+    include("cases/lid_driven_cavity.jl")
+    include("cases/rpcf.jl")
+    include("cases/rayleigh_benard.jl")
+    include("cases/channel.jl")
+    include("cases/square_duct.jl")
+end
+
+@testset verbose=true "Documentation and examples                                  " begin
+    include("documentation/case_docstrings.jl")
+    include("integration/examples.jl")
+end
+
+include("integration/io.jl")
+
+# Performance contracts run before loading the MPI extension so extension
+# initialization cannot perturb allocation baselines.
+include("performance/allocations.jl")
+
+# MPI programs execute in isolated subprocesses and intentionally run last.
 include("ext/MPIExt/runtests.jl")
-
-# Allocation tests — check that no unexpected allocations occur
-include("test_allocations.jl")

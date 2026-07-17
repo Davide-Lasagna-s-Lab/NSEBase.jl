@@ -1,313 +1,209 @@
-# Concepts & Conventions
+# Concepts and conventions
 
-This page documents the core assumptions, conventions, and constraints that
-NSEBase builds on.  Understanding these is essential both for using the package
-correctly and for implementing a new downstream grid.
+## Grid structure
 
-## The grid interface
-
-Everything in NSEBase is parameterised on a **grid** — a concrete subtype of
-`AbstractGrid{T, D, AXES, FFT_DIMS_ORDER, DECOMPOSITION}`.  The five compile-time type parameters
-encode all structural information about the domain:
+Every field carries an `AbstractGrid{T,D,AXES,FFT_DIMS_ORDER}`. The type
+parameters encode structural information that must remain fixed for a concrete
+grid type:
 
 | Parameter | Meaning |
-|-----------|---------|
-| `T <: Real` | Scalar real type (typically `Float64`) |
-| `D` | Number of array dimensions |
-| `AXES` | Four-tuple `(x_dim, y_dim, z_dim, t_dim)` mapping logical Cartesian coordinates to array dimensions; use `nothing` for absent coordinates |
-| `FFT_DIMS_ORDER` | Ordered tuple of the array dimensions that are FFT-transformed; `FFT_DIMS_ORDER[1]` is **always** the rfft dimension |
+|:--|:--|
+| `T` | Real scalar type |
+| `D` | Number of storage dimensions |
+| `AXES` | Mapping `(x,y,z,t)` to storage dimensions; `nothing` means absent |
+| `FFT_DIMS_ORDER` | Homogeneous storage dimensions; the first uses rFFT |
 
-Because these parameters are part of the type, the compiler can fully specialise
-every loop, index mapping, and generated function at compile time — there is no
-runtime dispatch and no runtime allocation in the hot paths.
+`RectangularGrid{NI}` is the built-in tensor-product implementation. `NI` is
+the number of inhomogeneous FDGrids directions. Case factories select fixed
+layout contracts, so users normally specify only resolutions, domain scales,
+and optional finite-difference settings.
 
-### Required methods
+## Physical order and storage order
 
-A concrete grid must implement exactly four methods:
+Physical directions always mean `(x,y,z,t)`. Storage order is the order of
+array dimensions and may differ for performance. A channel is stored as
+`(y,x,z,t)`, placing the wall-normal matrix product on the leading dimension:
 
-```julia
-Base.size(grid)                       # → NTuple{D, Int}
-points(grid; dealias=false)           # → one array per dimension
-wavenumber_scale(grid, dim::Int)      # → Real (2π/L for spatial, 1 for temporal)
-weights(grid)                         # → AbstractArray (quadrature weights)
-```
+| Physical direction | Storage dimension | Discretisation |
+|:--|:--:|:--|
+| `x` | 2 | rFFT |
+| `y` | 1 | FDGrids |
+| `z` | 3 | FFT |
+| `t` | 4 | FFT |
 
-`weights` must have one axis per entry in `inhomogeneous_dims(grid)` in ascending
-array-dimension order.
+Use `storage_dim`, `physical_dim`, and the `*_physical_dims`/
+`*_storage_dims` queries instead of hard-coding this mapping in generic code.
+Functions passed to `Field(grid, func)` and `VectorField(grid, funcs...)` always
+receive four arguments in physical `(x,y,z,t)` order; absent coordinates are
+`nothing`, and the constructors perform the storage permutation internally.
+The streamwise-independent 2D3C channel is the deliberate exception in physical
+naming: its computational `x` and `y` are physical wall-normal and spanwise
+coordinates so the 2D3C formulation can use `ddx!` and `ddy!` directly.
 
-### Homogeneous vs. inhomogeneous dimensions
+## Homogeneous directions and wavenumbers
 
-NSEBase draws a sharp distinction between two kinds of dimensions:
+The first entry of `fft_storage_dims(g)` is stored by a real-to-complex FFT and
+contains nonnegative wavenumbers. Later entries use FFTW wrap-around order.
+`WaveNumberVector` provides signed modal indexing without exposing storage
+indices.
 
-- **Homogeneous** (a.k.a. FFT-transformed) dimensions — entries of
-  `FFT_DIMS_ORDER`.  These are statistically periodic and are represented in
-  spectral space as Fourier coefficients.  Derivatives are exact multiplications
-  by `im · n · wavenumber_scale`.
-- **Inhomogeneous** dimensions — the complement of `FFT_DIMS_ORDER` in `1:D`.
-  These are non-periodic (e.g. the wall-normal direction in channel flow).
-  NSEBase provides no derivative for them; downstream packages must extend `ddx!`
-  with their own matrix-multiply or spectral-element method.
-
----
-
-## Field types
-
-NSEBase provides four field types.  All are subtypes of `AbstractArray` and store
-a reference to their grid alongside their data.
-
-### `Field`
-
-A physical-space scalar field.  The underlying array has shape `size(grid)` and
-real element type `T`.  Used as a scratch buffer for de-aliased nonlinear
-products.
-
-```julia
-u = Field(grid)                       # zero field
-u = Field(grid, (x, y) -> sin(x)*y)  # initialise from a function
-```
-
-### `FTField`
-
-A spectral-space scalar field — the rfft of a `Field`.  The underlying array has
-complex element type and shape `transform_size(grid)`, which is `size(grid)` with
-dimension `FFT_DIMS_ORDER[1]` halved to `(N÷2)+1`.
-
-The remaining transformed dimensions keep their full size in **FFTW wrap-around
-order**: indices `1:n÷2+1` hold non-negative wavenumbers and indices `n÷2+2:n`
-hold negative wavenumbers in reverse order.
-
-Two invariants are **enforced on construction** (when given a plain `Array`):
-
-1. **Hermitian symmetry** — in the zero-rfft-wavenumber plane every coefficient
-   at signed wavenumber `(0, k₂, k₃, …)` must satisfy
-   `û(0, -k₂, -k₃, …) = conj(û(0, k₂, k₃, …))`.
-2. **Real mean** — the fully-zero-wavenumber mode `û(0, 0, …)` must be real.
-
-### `VectorField`
-
-A fixed-length tuple of `FTField`s (or `Field`s) representing a vector-valued
-quantity such as a velocity field.  `VectorField{N}` holds exactly `N` scalar
-components.  Broadcasting, `copy`, `zero`, `similar`, etc. are all
-component-wise.
-
-### `ProjectedField`
-
-A Galerkin-reduced representation of a vector field.  Instead of storing full
-spectral coefficients for every wavenumber and every wall-normal point, it stores
-`Nm` scalar coefficients per wavenumber:
-
-```
-parent(a)[m, i_H1, i_H2, …]   m ∈ 1:Nm, spectral storage indices
-```
-
-The mode index occupies axis 1 and the spectral axes follow in `FFT_DIMS_ORDER`
-order.  Non-FFT (inhomogeneous) dimensions are **absent** — the basis functions
-absorb the wall-normal dependence.  The same Hermitian-symmetry and real-mean
-invariants as `FTField` apply.
-
----
-
-## Wavenumber conventions
-
-### Storage order and signed wavenumbers
-
-The rfft dimension (`FFT_DIMS_ORDER[1]`) stores only non-negative wavenumbers
-`0, 1, …, N÷2`.  All other transformed dimensions use FFTW's wrap-around order.
-The helper type `WaveNumberVector{N}` converts between storage indices and signed
-wavenumber integers, handling the conjugate-symmetry lookup for the rfft axis.
-
-### Physical wavenumber scale
-
-The actual physical wavenumber associated with integer mode `n` in an
-`FFT_DIMS_ORDER[j]` dimension is
-
-```
-k_physical = n × wavenumber_scale(grid, FFT_DIMS_ORDER[j])
-```
-
-For a spatial dimension with period `L` the convention is `wavenumber_scale = 2π/L`.
-For a temporal direction with unit period the convention is `wavenumber_scale = 1`.
-
-Downstream grids must implement `wavenumber_scale` for every dimension in
-`fft_dims(grid)`.
-
----
-
-## Spectral derivative convention
-
-`dd!(out, u, Val{STORAGE_DIM})` computes the in-place spectral derivative along array
-dimension `STORAGE_DIM`:
-
-```
-out[k] = +im · n · wavenumber_scale(grid, DIM) · u[k]     (adjoint=false)
-out[k] = -im · n · wavenumber_scale(grid, DIM) · u[k]     (adjoint=true)
-```
-
-The `adjoint=true` form is the L² adjoint of the spectral derivative operator.
-`STORAGE_DIM` must lie in `FFT_DIMS_ORDER`; passing an inhomogeneous dimension throws
-`NotImplementedError`.
-
-Four named wrappers pick the array dimension from `AXES`:
-
-| Wrapper | Logical coordinate |
-|---------|--------------------|
-| `ddx!` | x (`AXES[1]`) |
-| `ddy!` | y (`AXES[2]`) |
-| `ddz!` | z (`AXES[3]`) |
-| `ddt!` | t (`AXES[4]`) |
-
-When the coordinate is absent (`AXES[j] === nothing`) the wrapper is a compile-time
-no-op.
-
----
-
-## Inner product and norm conventions
-
-The L² inner product is defined as
+For a periodic coordinate of length `L`, integer mode `n` represents physical
+wavenumber
 
 ```math
-\langle u, v \rangle
-  = \frac{1}{2} \sum_{\mathbf{k}} c_{k_1}\, w(\mathbf{j})\,
-    \Re\bigl(\bar{u}_{\mathbf{k},\mathbf{j}}\, v_{\mathbf{k},\mathbf{j}}\bigr),
+k = n\,\frac{2\pi}{L}.
 ```
 
-where:
+Consequently `wavenumber_scale(g, dim) == 2π/L`. Every bundled temporal
+coordinate covers `[0,1)`, so its scale is `2π`, not `1`.
 
-- The sum runs over all stored spectral wavenumbers **k** and inhomogeneous
-  indices **j**.
-- `c_{k₁}` is **1** for the zero rfft wavenumber and **2** for all others,
-  accounting for Hermitian symmetry.
-- `w(j)` are the quadrature weights returned by `weights(grid)`.
-- The `1/2` factor combined with the `c_{k₁}` multiplier ensures equivalence with
-  the continuous L² norm: the rfft discards the negative-wavenumber half of the
-  spectrum, which carries equal energy.
+## Inhomogeneous directions
 
-`dot(u, v)` implements this for `FTField`, `VectorField{<:FTField}`, and
-`ProjectedField`.
+Rectangular grids store, for each inhomogeneous direction:
 
----
+- collocation points `xs[i]`;
+- first and second FDGrids operators `D₁[i]` and `D₂[i]`;
+- caller-supplied weighted adjoints `D₁⁺[i]` and `D₂⁺[i]`; and
+- one-dimensional quadrature weights `ws[i]`.
+
+The tuples follow `inhomogeneous_storage_dims(g)` order. `weights(g)` returns
+their tensor product. Matrix products unwrap `parent(field)` before calling
+FDGrids' dimension-aware `mul!`, ensuring the specialised stencil kernels are
+used instead of a generic array wrapper path.
+
+## Fields and transforms
+
+`Field` stores real physical values with shape `size(g)`. `FTField` stores the
+Fourier representation, with the rFFT dimension reduced to `N÷2+1`.
+`VectorField` groups scalar fields into a fixed component tuple, and
+`ProjectedField` stores coefficients in a supplied Galerkin basis.
+
+`FFTPlans` owns compatible forward and inverse plans. The allocating `FFT` and
+`IFFT` helpers are convenient for setup and examples; hot paths should use the
+in-place plan calls.
+
+Because physical fields are real, the zero-rFFT plane must be Hermitian across
+the remaining Fourier dimensions and the all-zero mode must be real. `FTField`
+and `ProjectedField` constructors sanitise ordinary array inputs to enforce
+these invariants. Modal indexing through `WaveNumberVector` applies the same
+conjugate-symmetry convention when a negative rFFT wavenumber is requested.
+
+## Derivatives and Laplacian
+
+`ddx!`, `ddy!`, `ddz!`, and `ddt!` map physical names through `AXES`.
+Homogeneous derivatives multiply each Fourier coefficient by
+`im*n*wavenumber_scale`. Inhomogeneous derivatives apply `D₁` along the
+corresponding storage dimension.
+
+The spatial Laplacian deliberately excludes the logical time direction.
+`inhomogeneous_laplacian!` applies the FD contributions and
+`add_homogeneous_laplacian!` adds spatial Fourier contributions. Explicit
+implementations for `NI=1,2,3` keep the FD sequence statically specialised.
+
+Passing `adjoint=true` selects the stored weighted FD adjoints and reverses the
+sign of Fourier first derivatives. These are the operators used by the discrete
+adjoint formulations.
+
+## Inner products
+
+The spectral inner product combines:
+
+- quadrature weights in every inhomogeneous direction;
+- FFT normalisation in homogeneous directions; and
+- the factor-of-two multiplicity of nonzero rFFT modes.
+
+This makes `dot(FFT(u), FFT(v))` agree with the corresponding quadrature
+integral over inhomogeneous directions and average over homogeneous directions.
+The inhomogeneous measure is not normalised: a constant field on a channel of
+height two has squared norm two. Each supplied `D⁺` satisfies the discrete
+adjoint identity under this inner product.
 
 ## Phase shifts
 
-A continuous shift by displacement `s` in a homogeneous direction is an **exact**
-spectral operation — no interpolation is needed.  The phase factor applied to mode
-`n` is
-
-```
-exp(im · n · s · wavenumber_scale(g, dim))
-```
-
-`shift!(u, shifts)` applies the product of phase factors over all homogeneous
-dimensions in `FFT_DIMS_ORDER` order.  Shifts are given in **physical units**
-(same units as the period `L`).
-
----
+A continuous displacement in a homogeneous direction is exact in spectral
+space: integer mode `n` is multiplied by
+`exp(im*n*shift*wavenumber_scale(g,dim))`. `shift!` accepts one physical-unit
+displacement per entry of `fft_storage_dims(g)`. `normdiff` and `minnormdiff`
+use the same convention to compare fields modulo continuous translations.
 
 ## De-aliasing
 
-Physical-space nonlinear products are computed on a padded grid using the **3/2
-rule**: the physical-space arrays in `pcache` are allocated with `dealias=true`,
-which asks `growto(grid, target_size)` to extend each homogeneous dimension to
-`3N/2`.  NSEBase zero-pads the spectral coefficients before transforming to the
-padded grid and symmetrically truncates after transforming back, eliminating
-aliasing errors from quadratic nonlinearities.
+Quadratic nonlinear products use the 3/2 rule. With `dealias=true`, physical
+caches are created on enlarged homogeneous dimensions. `growto` changes only
+those sizes and retains the inhomogeneous points, one-dimensional weights, and
+FD operators.
 
-Downstream grids must implement `growto` to support de-aliasing.
+## Equation construction
 
----
+`construct_equations` combines a grid, Reynolds number, base state, formulation
+tag, body force, FFT plans, and shared caches into `ProjectedNSE`. Bundled case
+constructors select the appropriate formulation:
 
-## NSE formulations
+| Case | Formulation | State order |
+|:--|:--|:--|
+| Full channel and square duct | `CartesianPrimitive3D` | `(u,v,w)` |
+| 2D cavity | `CartesianPrimitive2D` | `(u,v)` |
+| 3D cavity | `CartesianPrimitive3D` | `(u,v,w)` |
+| Streamwise-independent channel (RPCF) | `CartesianPrimitive2D3C` | `(v,w,u)` |
+| Rayleigh–Bénard | `CartesianPrimitive3DBoussinesq` | `(u,v,w,θ)` |
 
-NSEBase includes two complete Cartesian primitive-variable formulations:
+The default linearised mode is `AdjointDiscrete`, appropriate when an exact
+adjoint of the discretised operator is required. `AdjointContinuous` remains
+available when the continuously derived adjoint is desired.
 
-| Tag struct | Components | Operators |
-|-----------|-----------|----------|
-| `CartesianPrimitive3D()` | u, v, w (3 components) | `CartesianPrimitive3DNSE`, `CartesianPrimitive3DLNSE{MODE}` |
-| `CartesianPrimitive2D()` | u, v (2 components) | `CartesianPrimitive2DNSE`, `CartesianPrimitive2DLNSE{MODE}` |
-
-Each linearised operator `CartesianPrimitive3DLNSE{MODE}` is parameterised on a
-`MODE <: Mode` tag:
-
-| `MODE` | Operator computed |
-|--------|------------------|
-| `Forward` | Standard linearised NSE around base flow |
-| `AdjointContinuous` | Continuous adjoint of the linearised operator |
-| `AdjointDiscrete` | Discrete (numerical) adjoint — exact transpose of `Forward` |
-
-### Adding a new formulation
-
-Implement a singleton struct (no fields) and the four interface methods:
+The returned object operates on `ProjectedField` coefficients:
 
 ```julia
-struct MyFormulation end
-ncomp(              ::MyFormulation)                    = ...   # number of velocity components
-cache_length(       ::MyFormulation, ::Type{<:FTField}) = ...   # spectral scratch arrays needed
-cache_length(       ::MyFormulation, ::Type{<:Field})   = ...   # physical scratch arrays needed
-nonlinear_operator( ::MyFormulation)                    = ...   # return concrete operator type
-linearised_operator(::MyFormulation, ::M) where {M}     = ...   # return parametric operator type
+equations(out, a)       # nonlinear action
+equations(out, a, b)    # linearised or adjoint action on b
 ```
 
-Then pass `MyFormulation()` to `construct_equations`.
+Both calls expand into cached full fields, apply the primitive-variable
+operator, and project back into the basis stored by the inputs. Call the
+nonlinear form before the three-argument form when reusing the cached base-flow
+gradients, as required by the current `ProjectedNSE` interface. The underlying
+full operators remain available as `equations.nl` and `equations.ln`.
 
----
+To add another formulation, define a tag and implement `ncomp`, both
+`cache_length` methods, `nonlinear_operator`, and `linearised_operator`; then
+pass the tag to `construct_equations`. The bundled case constructors are thin
+specialisations of this factory.
 
-## `construct_equations` and `ProjectedNSE`
+## Allocation policy
 
-`construct_equations` is the recommended entry point for building a solver.  It:
+Constructors and convenience operations such as `FFT`, `IFFT`, `project`, and
+`expand` allocate their results. Mutating derivatives, transforms, forcing,
+projection, and warmed equation actions reuse caller-owned arrays or operator
+caches and are covered by allocation regressions. Prefer the `!` forms in
+iterative solvers.
 
-1. Allocates two shared scratch pools — `scache` (spectral) and `pcache`
-   (physical), sized by `cache_length`.
-2. Builds FFTW plans for the grid.
-3. Instantiates the nonlinear and linearised operators, wiring them to the same
-   scratch pools.
-4. Wraps everything in a `ProjectedNSE` struct.
+## Boundary-condition contract
 
-`ProjectedNSE` is callable:
+FDGrids distributions determine whether wall points are present, but a grid
+does not impose boundary values. Bases or residual formulations must encode
+no-slip walls and fixed thermal values. In a lid-driven cavity, the required
+base lifting carries the inhomogeneous lid values while the perturbation basis
+or residual enforces homogeneous wall conditions. Body forces are not
+substitutes for boundary conditions.
+
+## MPI decomposition
+
+Loading MPI, FDGrids, and HaloArrays activates NSEBase's MPI extension.
+`distributed` wraps a rectangular grid and partitions selected inhomogeneous
+physical directions. The wrapper forwards derivative-matrix access to the
+parent grid and uses halo-aware FDGrids kernels. Homogeneous decomposition is
+not currently supported.
 
 ```julia
-obj(out, a)       # nonlinear NSE: out = P(Δu/Re − (u·∇)u + force)
-obj(out, a, b)    # linearised NSE: out = P(L_a · b)
+using MPI, FDGrids, HaloArrays, NSEBase
+
+MPI.Init()
+nranks = MPI.Comm_size(MPI.COMM_WORLD)
+parent_grid = ChannelGrid(31, 16 * nranks, 31; Nt=1, α=0.5, β=0.5, width=5)
+grid = distributed(parent_grid, MPI.COMM_WORLD;
+                   decomposed_physical_dims=(:y,),
+                   nprocesses=(nranks,), nhalo=(2,))
 ```
 
-where `a` and `b` are `ProjectedField`s.
-
----
-
-## Memory and allocation policy
-
-Every hot-path operation in NSEBase is **allocation-free** at steady state.
-Cache arrays are pre-allocated once inside the operator structs and reused on
-every call.
-
-When writing downstream code, prefer the in-place (`!`) variants of all
-operations.  The allocating wrappers (`FFT`, `IFFT`, `shift`, `project`,
-`expand`) are convenience forms intended for interactive exploration and tests.
-
----
-
-## MPI and Distributed Computations
-
-MPI parallelisation is supported, and can be accessed by loading [MPI.jl](https://github.com/JuliaParallel/MPI.jl) and [FDGrids.jl](https://github.com/Davide-Lasagna-s-Lab/FDGrids.jl) into the current Julia session alongside NSEBase.
-
-Using `distributed` a `DecomposedGrid` object can be constructed, which allows for the construction of `FTField`'s, `Field`'s, and whole operators that are split up over multiple MPI processes. Only decomposing over the inhomogeneous spatial directions is currently supported. 
-
-Below is an example of a decomposition of a field over the `y` direction:
-
-```julia
-comm = MPI.COMM_WORLD
-np   = MPI.Comm_size(comm)
-
-g_dist = distributed(g_parent, comm;
-                        decomposed_physical_dims=(:y,), nprocesses=(np,), nhalo=(2,))
-
-Re = 100 # Reynolds number
-op = CartesianPrimitive3DNSE(g_dist, Re)
-```
-
-The variable `nhalo` is used to tell the fields how much to pad the local arrays to accomodate data from neighbouring processes required to compute derivatives. This functionality is enabled via [HaloArrays.jl](https://github.com/Davide-Lasagna-s-Lab/HaloArrays.jl). Note that it is required to use [FDGrids.jl](https://github.com/Davide-Lasagna-s-Lab/FDGrids.jl) for the differentiation over the decomposed directions as the package implements the (somewhat fiddly) methods to compute derivatives using finite-differences with arbitrary stencil widths and thus order of accuracy. See the package for extra details.
-
----
-
-# GPU Accelerations
-
-*TODO: this*
+Every decomposed parent size must be divisible by its corresponding process
+count; deriving `Ny` from `nranks` makes the example valid for any launch size.

@@ -12,18 +12,15 @@
 
 using Test
 
-import FDGrids
-import LinearAlgebra
 import MPI
 
-using NSEBase,
-      FDGrids
+using NSEBase
 
 const MPIExt = Base.get_extension(NSEBase, :MPIExt)
 
 MPI.Initialized() || MPI.Init()
 
-include("grid.jl")
+include("helpers.jl")
 
 nranks = MPI.Comm_size(MPI.COMM_WORLD)
 rank   = MPI.Comm_rank(MPI.COMM_WORLD)
@@ -34,28 +31,27 @@ rank   = MPI.Comm_rank(MPI.COMM_WORLD)
 # polynomial, exactly differentiable by the 5-point FD stencil.
 const α_test = 2π
 const β_test = 5.8
-const γ_test = 1.0   # temporal wavenumber
+const γ_test = 2π   # unit-period temporal wavenumber
 
-u_fun(y, x, z, t)      =  (1 - y^2) * cos(α_test*x) * cos(β_test*z) * cos(γ_test*t)
-dudx_fun(y, x, z, t)   = -(1 - y^2) * α_test * sin(α_test*x) * cos(β_test*z) * cos(γ_test*t)
-d2udx2_fun(y, x, z, t) = -(1 - y^2) * α_test^2 * cos(α_test*x) * cos(β_test*z) * cos(γ_test*t)
-dudy_fun(y, x, z, t)   = -2y * cos(α_test*x) * cos(β_test*z) * cos(γ_test*t)
-d2udy2_fun(y, x, z, t) = -2 * cos(α_test*x) * cos(β_test*z) * cos(γ_test*t)
-dudz_fun(y, x, z, t)   = -(1 - y^2) * β_test * cos(α_test*x) * sin(β_test*z) * cos(γ_test*t)
-d2udz2_fun(y, x, z, t) = -(1 - y^2) * β_test^2 * cos(α_test*x) * cos(β_test*z) * cos(γ_test*t)
-dudt_fun(y, x, z, t)   = -(1 - y^2) * γ_test * cos(α_test*x) * cos(β_test*z) * sin(γ_test*t)
-lapl_fun(y, x, z, t)   = d2udx2_fun(y, x, z, t) +
-                        d2udy2_fun(y, x, z, t) +
-                        d2udz2_fun(y, x, z, t)
+u_fun(x, y, z, t)      =  (1 - y^2) * cos(α_test*x) * cos(β_test*z) * cos(γ_test*t)
+dudx_fun(x, y, z, t)   = -(1 - y^2) * α_test * sin(α_test*x) * cos(β_test*z) * cos(γ_test*t)
+d2udx2_fun(x, y, z, t) = -(1 - y^2) * α_test^2 * cos(α_test*x) * cos(β_test*z) * cos(γ_test*t)
+dudy_fun(x, y, z, t)   = -2y * cos(α_test*x) * cos(β_test*z) * cos(γ_test*t)
+d2udy2_fun(x, y, z, t) = -2 * cos(α_test*x) * cos(β_test*z) * cos(γ_test*t)
+dudz_fun(x, y, z, t)   = -(1 - y^2) * β_test * cos(α_test*x) * sin(β_test*z) * cos(γ_test*t)
+d2udz2_fun(x, y, z, t) = -(1 - y^2) * β_test^2 * cos(α_test*x) * cos(β_test*z) * cos(γ_test*t)
+dudt_fun(x, y, z, t)   = -(1 - y^2) * γ_test * cos(α_test*x) * cos(β_test*z) * sin(γ_test*t)
+lapl_fun(x, y, z, t)   = d2udx2_fun(x, y, z, t) +
+                        d2udy2_fun(x, y, z, t) +
+                        d2udz2_fun(x, y, z, t)
 
 const Ny = 32; const Nx = 7; const Nz = 9; const Nt = 5
 const NHALO = 2  # 5-point stencil -> half-width 2
 
 base_comm = MPI.Comm_dup(MPI.COMM_WORLD)
-# Wavenumber scales chosen so that x has period 1/2 (k_x = 2π gives spectral
-# coefficients at integer wavenumbers) and z has period 2π/5.8 to match
-# `cos(4π*x)` and `cos(5.8*z)` factors in the analytic test field.
-g_parent = MockChannelGrid(Ny, Nx, Nz, Nt; stencil_width=5, α=2π, β=5.8)
+# Wavenumber scales give x unit period, z period 2π/5.8, and production
+# channel time unit period. Each trigonometric factor is therefore mode one.
+g_parent = test_channel_grid(Ny, Nx, Nz, Nt; stencil_width=5, α=2π, β=5.8)
 g = distributed(g_parent, base_comm;
                 decomposed_physical_dims=(:y,), nprocesses=(nranks,), nhalo=(NHALO,))
 
@@ -64,7 +60,7 @@ plans = NSEBase.FFTPlans(g; dealias=false, flags=NSEBase.FFTW.ESTIMATE)
 u_phys = NSEBase.Field(g, u_fun)
 u      = NSEBase.FTField(g); plans(u, u_phys)
 
-@testset "staged ddy! matches analytic du/dy                                  " begin
+@testset verbose=true "staged ddy! matches analytic du/dy                          " begin
     out = NSEBase.FTField(g)
     NSEBase.ddy!(out, u)
 
@@ -74,15 +70,15 @@ u      = NSEBase.FTField(g); plans(u, u_phys)
     @test parent(out) ≈ parent(expected) rtol=1e-6
 end
 
-@testset "staged VectorField derivative uses per-component halo requests      " begin
+@testset verbose=true "staged VectorField derivative uses component halo requests  " begin
     q        = NSEBase.VectorField(g, NSEBase.FTField; N=2)
     expected = NSEBase.VectorField(g, NSEBase.FTField; N=2)
     out      = NSEBase.VectorField(g, NSEBase.FTField; N=2)
 
     plans(q[1], NSEBase.Field(g, u_fun))
-    plans(q[2], NSEBase.Field(g, (y, x, z, t) -> 2u_fun(y, x, z, t)))
+    plans(q[2], NSEBase.Field(g, (x, y, z, t) -> 2u_fun(x, y, z, t)))
     plans(expected[1], NSEBase.Field(g, dudy_fun))
-    plans(expected[2], NSEBase.Field(g, (y, x, z, t) -> 2dudy_fun(y, x, z, t)))
+    plans(expected[2], NSEBase.Field(g, (x, y, z, t) -> 2dudy_fun(x, y, z, t)))
 
     NSEBase.ddy!(out, q)
 
@@ -92,7 +88,7 @@ end
 
 sd(sym) = NSEBase.physical_to_storage_dim(NSEBase.grid(u), Val(sym))
 
-@testset "interior_dd! + wait + boundary_dd! covers the FD direction          " begin
+@testset verbose=true "interior_dd! + wait + boundary_dd! covers the FD direction  " begin
     out = NSEBase.FTField(g)
     requests = MPIExt.init_requests!(u)
     MPIExt.interior_dd!(out, u, sd(:y))
@@ -104,7 +100,7 @@ sd(sym) = NSEBase.physical_to_storage_dim(NSEBase.grid(u), Val(sym))
     @test parent(out) ≈ parent(expected) rtol=1e-6
 end
 
-@testset "dd! along an FFT direction is spectral (no halo needed)             " begin
+@testset verbose=true "dd! along an FFT direction is spectral (no halo needed)     " begin
     out = NSEBase.FTField(g)
     NSEBase.dd!(out, u, sd(:x))
     expected = NSEBase.FTField(g)
@@ -124,7 +120,7 @@ end
     @test parent(out_t) ≈ parent(expected_t) rtol=1e-6
 end
 
-@testset "interior_laplacian! + boundary_laplacian! matches analytic Laplacian" begin
+@testset verbose=true "staged Laplacian matches the analytic Laplacian             " begin
     out = NSEBase.FTField(g)
     requests = MPIExt.init_requests!(u)
     MPIExt.interior_laplacian!(out, u)
@@ -136,7 +132,7 @@ end
     @test parent(out) ≈ parent(expected) rtol=1e-6
 end
 
-@testset "NSEBase.laplacian!(out, u) agrees with the explicit form            " begin
+@testset verbose=true "NSEBase.laplacian!(out, u) agrees with the explicit form    " begin
     out_a = NSEBase.FTField(g)
     out_b = NSEBase.FTField(g)
 

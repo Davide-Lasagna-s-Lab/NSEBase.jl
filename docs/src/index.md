@@ -1,54 +1,38 @@
 # NSEBase.jl
 
-**NSEBase** is a Julia package providing the shared spectral-field infrastructure
-for Navier-Stokes solvers targeting wall-bounded flows.  It defines:
+NSEBase is the shared numerical foundation for wall-bounded Navier–Stokes
+solvers. It combines Fourier directions with FDGrids collocation directions,
+provides physical and spectral field types, and assembles nonlinear, linearised,
+continuous-adjoint, and discrete-adjoint primitive-variable equations.
 
-- a generic **grid interface** (`AbstractGrid`) that downstream packages implement
-  for their specific geometry;
-- four **field types** (`Field`, `FTField`, `VectorField`, `ProjectedField`) that
-  wrap raw arrays and carry their grid;
-- **FFT plan management** and lossless physical↔spectral transforms;
-- **spectral derivative operators** and a Laplacian;
-- **Galerkin projection** onto arbitrary bases;
-- **continuous phase shifts**, inner products, norms;
-- **concrete Cartesian primitive-variable NSE and LNSE operators** (3-D and 2-D),
-  with forward, continuous-adjoint, and discrete-adjoint modes; and
-- a `construct_equations` factory that wires all of the above together into a
-  ready-to-use `ProjectedNSE` callable.
+The package now includes concrete rectangular grids and complete case
+constructors. Users can build channels, square ducts, cavities, RPCF, and
+Rayleigh–Bénard systems without installing a geometry-specific grid package.
 
-Downstream packages (e.g. *ChannelFlow.jl*) only need to supply a concrete grid
-subtype implementing four required methods.
-
-## Installation
-
-NSEBase is not yet registered. Install directly from GitHub:
-
-```julia
-using Pkg
-Pkg.add(url = "https://github.com/Davide-Lasagna-s-Lab/NSEBase.jl")
-```
-
-## Quick start
+## First example
 
 ```julia
 using NSEBase
 
-# grid is provided by a downstream package (e.g. ChannelFlow.jl)
-obj = construct_equations(grid, Re, (U, nothing, nothing); flags = FFTW.MEASURE)
-
-# Galerkin basis and a random coefficient vector
-a   = ProjectedField(grid, randn(ComplexF64, M, Nk), modes)
-
-# Evaluate nonlinear NSE: rhs = P(Δu/Re − (u·∇)u)
-rhs = obj(zero(a), a)
-
-# Evaluate linearised NSE around base state b acting on perturbation a
-rhs_lin = obj(similar(a), a, b)
+grid = ChannelGrid(9, 17, 9; Nt=1, α=0.5, β=0.5, width=5)
+equations = PlanePoiseuilleFlow(grid, 500; f=1, fftw_flags=FFTW.ESTIMATE, dealias=false)
 ```
 
-## Contents
+This creates a `(y,x,z,t)` grid with Gauss–Lobatto wall-normal points,
+quadrature-weighted finite-difference adjoints, and Fourier domains of length
+`4π` in both homogeneous spatial directions. The unit-period temporal
+coordinate uses wavenumber scale `2π`.
+
+## What to read next
+
+- [Concepts and conventions](guide.md) explains storage order, transforms,
+  derivatives, inner products, de-aliasing, and equation assembly.
+- [Rectangular grids](rectangular_grids.md) documents the shared concrete grid,
+  its ownership contract, and custom construction.
+- The case manual gives geometry-specific defaults, examples, and physical
+  conventions.
+- [API reference](api.md) contains every public docstring.
 
 ```@contents
-Pages = ["guide.md", "api.md"]
 Depth = 2
 ```

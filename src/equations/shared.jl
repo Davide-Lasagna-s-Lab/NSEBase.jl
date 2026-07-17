@@ -142,9 +142,10 @@ formulation tag, pre-allocating all operator caches and FFTW plans.
 - `grid`: computational grid defining the domain geometry and spectral structure.
 - `Re`: Reynolds number.
 - `base`: laminar base flow as a tuple with one entry per velocity component.
-  Each entry is either a vector of values at the inhomogeneous grid points or
-  `nothing` when that component has no base flow (e.g. `(U, nothing, nothing)`
-  for streamwise-only Couette/Poiseuille flow).
+  Each entry is either an array on the inhomogeneous grid or `nothing` when
+  that component has no base flow: a vector for a channel profile, a matrix for
+  a duct profile, and so on. For example, `(U, nothing, nothing)` represents a
+  streamwise-only Couette or Poiseuille base flow.
 - `formulation`: NSE formulation tag, defaulting to `CartesianPrimitive3D()`.
 
 # Keyword arguments
@@ -171,7 +172,7 @@ Two shared scratch pools are allocated (and reused by both operators):
 
 # Example
 ```julia
-grid = ChannelGrid(y, Nx, Nz, Nt, α, β, D₁, D₂, ws)
+grid = ChannelGrid(y, Nx, Nz, Nt, α, β, D₁, D₂, D₁⁺, D₂⁺, ws)
 obj  = construct_equations(grid, 1000.0, (U, nothing, nothing); flags=FFTW.MEASURE)
 ```
 """
@@ -184,7 +185,7 @@ function construct_equations(grid::AbstractGrid{T},
                             flags=FFTW.EXHAUSTIVE,
                           dealias=true) where {T}
     mode isa Union{AdjointContinuous, AdjointDiscrete} || throw(ArgumentError("linearised operator has to operate in adjoint mode"))
-    plans = FFTPlans(grid; flags=flags)
+    plans = FFTPlans(grid; flags=flags, dealias)
     scache = [VectorField([FTField(grid)                  for _ in 1:ncomp(formulation)]...) for _ in 1:cache_length(formulation, FTField)]
     pcache = [VectorField([  Field(grid; dealias=dealias) for _ in 1:ncomp(formulation)]...) for _ in 1:cache_length(formulation, Field)]
     nl = nonlinear_operator(formulation)(T(Re), plans, scache, pcache, force)

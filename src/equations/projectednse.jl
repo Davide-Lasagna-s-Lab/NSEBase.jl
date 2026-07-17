@@ -6,7 +6,10 @@
 # of a `VectorField{N, FTField}`.
 #
 # Two pre-allocated `VectorField` caches (`cache1`, `cache2`) are held by the
-# struct so that no allocations occur during the operator calls.
+# struct so that no allocations occur during the operator calls. The wrapped
+# nonlinear and linearised operators also share their own derivative caches:
+# evaluating the nonlinear action prepares those caches for the subsequent
+# linearised action.
 
 """
     ProjectedNSE{EQ, LEQ, B, N, S1, S2}
@@ -27,6 +30,10 @@ sized caches and FFTW plans rather than constructing it directly.
 - `ln`: linearised NSE operator; called as `ln(t, v, M_uv)`
 - `base`: laminar base flow tuple, passed to [`add_base_flow!`](@ref)
 - `cache1`, `cache2`: pre-allocated full spectral `VectorField` workspaces
+
+The object is stateful because `nl` and `ln` share workspaces. In particular,
+the three-argument linearised call must immediately follow the nonlinear call
+at the same coefficient state; see the call-method documentation below.
 """
 struct ProjectedNSE{EQ, LEQ, B, N, S1, S2}
         nl::EQ
@@ -48,9 +55,12 @@ ProjectedNSE(grid::AbstractGrid, N::Int, nl, ln, base) =
 Nonlinear action: expand `a` to a full spectral velocity field, add the laminar
 base flow, apply the nonlinear NSE operator, and project the result back onto
 the basis, writing modal coefficients into `out`.
+
+Besides producing `out`, this call prepares the shared physical-field and
+derivative caches consumed by the three-argument linearised action. Therefore,
+call `(eq)(out, a)` before `(eq)(out, a, b)` for every new `a`.
 """
-function (eq::ProjectedNSE)(out::ProjectedField,
-                              a::ProjectedField)
+function (eq::ProjectedNSE)(out::ProjectedField, a::ProjectedField)
     # aliases
     u   = eq.cache1
     N_u = eq.cache2
@@ -68,19 +78,38 @@ function (eq::ProjectedNSE)(out::ProjectedField,
     return out
 end
 
-# TODO: TOM, this interface with a second unused argument does not make much sense to me. It needs better documentation
-# ! this is to avoid re-computing parts of the cache which can be re-used for the gradient part of the computation.
-# ! Note that this is only really used in the optimisation where L-BFGS always calls this method after the one above
 """
-    (eq::ProjectedNSE)(out::ProjectedField, ::ProjectedField, b::ProjectedField) -> out
+    (eq::ProjectedNSE)(out::ProjectedField,
+                       cached_state::ProjectedField,
+                       b::ProjectedField) -> out
 
-Linearised action: expand `b` to a full spectral velocity field, apply the
-linearised NSE operator (which uses the base flow cached from a preceding
-nonlinear call), and project the result back onto the basis.
+Apply the linearised or adjoint operator at `cached_state` to the perturbation
+`b`, writing the projected result into `out`.
+
+This is a cache-reuse interface. A preceding call to
+`eq(nonlinear_out, cached_state)` expands the state, adds `eq.base`, and leaves
+the physical state and its derivatives in workspaces shared by `eq.nl` and
+`eq.ln`. This method therefore expands only `b`; `cached_state` is a dependency
+marker and is deliberately not read again. Avoiding that second expansion and
+the repeated derivatives is important in optimisation algorithms such as
+L-BFGS, which evaluate an objective and then its gradient at the same state.
+
+The calls must be paired and ordered:
+
+```julia
+eq(nonlinear_out, a)       # prepares the caches for a
+eq(linearised_out, a, b)   # consumes those caches
+```
+
+Passing a different second argument, calling this method before the nonlinear
+form, or interleaving a call at another state uses stale cache contents. This
+contract is not checked at runtime because comparing or re-expanding the state
+would defeat cache reuse. Consequently, a `ProjectedNSE` instance is neither
+reentrant nor safe for concurrent calls.
 """
-function (eq::ProjectedNSE)(out::ProjectedField,
-                               ::ProjectedField,
-                              b::ProjectedField)
+function (eq::ProjectedNSE)(out::ProjectedField, _cached_state::ProjectedField, b::ProjectedField)
+    # `_cached_state` is intentionally unused; it names the state whose caches
+    # the preceding nonlinear call prepared, as specified above.
     # aliases
     v    = eq.cache1
     M_uv = eq.cache2

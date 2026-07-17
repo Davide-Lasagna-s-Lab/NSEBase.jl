@@ -258,7 +258,23 @@ Base.@propagate_inbounds function Base.setindex!(a::ProjectedField{<:Any, <:Any,
     @inbounds parent(a)[I] = val
 end
 
-#TODO: can the two functions below be made easier to understand?
+# `to_homogeneous_indices` appends a Boolean conjugation flag to its tuple of
+# storage indices. Keep that representation detail out of the indexing methods.
+@inline function _projected_storage_indices(a::ProjectedField, k::WaveNumberVector{N}) where {N}
+    indices_and_flag = to_homogeneous_indices(grid(a), k)
+    return Base.front(indices_and_flag), last(indices_and_flag)
+end
+
+# Return the stored partner of `(i_rfft, i_fft...)` under Hermitian symmetry.
+# The rfft index is unchanged; every signed-FFT index is reflected in FFTW's
+# wrap-around layout.
+@inline function _hermitian_partner_indices(a::ProjectedField, indices::NTuple{N, Int}) where {N}
+    partner = ntuple(Val(N - 1)) do j
+        _fftw_sym_index(indices[j + 1], size(a, j + 2))
+    end
+    return (first(indices), partner...)
+end
+
 """
     a[m::Int, k::WaveNumberVector]
     a[m::Int, k::WaveNumberVector] = val
@@ -280,39 +296,28 @@ conjugated.
 If `k[1] < 0` the write targets the conjugate-symmetric storage location and
 `conj(val)` is stored, keeping the representation consistent with reads.
 """
-Base.@propagate_inbounds function Base.getindex(a::ProjectedField,
-                                                m::Int,
-                                                k::WaveNumberVector)
-    tpl     = to_homogeneous_indices(grid(a), k)
-    do_conj = last(tpl)
-    indices = Base.front(tpl)
-    @boundscheck checkbounds(a, m, indices...)
-    @inbounds val = parent(a)[m, indices...]
-    return do_conj ? conj(val) : val
+Base.@propagate_inbounds function Base.getindex(a::ProjectedField, m::Int, k::WaveNumberVector)
+    indices, needs_conjugate = _projected_storage_indices(a, k)
+    @boundscheck checkbounds(parent(a), m, indices...)
+    @inbounds value = parent(a)[m, indices...]
+    return needs_conjugate ? conj(value) : value
 end
-Base.@propagate_inbounds function Base.setindex!(a::ProjectedField{G},
-                                               val,
-                                                 m::Int,
-                                                 k::WaveNumberVector{N}) where {T, N, G<:AbstractGrid{T}}
-    CT      = Complex{T}
-    tpl     = to_homogeneous_indices(grid(a), k)
-    do_conj = last(tpl)
-    indices = Base.front(tpl)
-    i0      = first(indices)      # rfft axis index (axis 2 of ProjectedField)
-    rest    = Base.tail(indices)  # signed-fft axis indices (axes 3…)
+Base.@propagate_inbounds function Base.setindex!(a::ProjectedField{G}, val, m::Int, k::WaveNumberVector{N}) where {T, N, G<:AbstractGrid{T}}
+    indices, needs_conjugate = _projected_storage_indices(a, k)
+    value = Complex{T}(val)
 
-    # Force the fully-zero wavenumber to be real.
-    val = (i0 == 1 && all(==(1), rest)) ? CT(real(val)) : CT(val)
+    # Storage index `(1, 1, ...)` is the fully-zero wavenumber and must be real.
+    all(isone, indices) && (value = Complex{T}(real(value)))
 
-    # Conjugate-symmetric indices for each signed-fft axis.
-    sym_rest = ntuple(j -> _fftw_sym_index(rest[j], size(a, j + 2)), Val(N-1))
+    @boundscheck checkbounds(parent(a), m, indices...)
+    @inbounds parent(a)[m, indices...] = needs_conjugate ? conj(value) : value
 
-    @boundscheck checkbounds(a, m, i0, rest...)
-    @inbounds parent(a)[m, i0, rest...] = do_conj ? conj(val) : val
-    # When the rfft wavenumber is zero, also write the mirror entry so that
-    # the Hermitian-symmetry invariant is preserved across all signed dims.
-    i0 == 1 && @inbounds parent(a)[m, i0, sym_rest...] = do_conj ? val  : conj(val)
-    return val
+    # The rfft zero plane stores both members of every signed-FFT pair.
+    if isone(first(indices))
+        partner = _hermitian_partner_indices(a, indices)
+        @inbounds parent(a)[m, partner...] = conj(value)
+    end
+    return value
 end
 
 """

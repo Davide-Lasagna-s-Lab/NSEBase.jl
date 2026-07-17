@@ -39,9 +39,11 @@ end
 Add the laminar base flow `base` to the zero-wavenumber slice of the spectral
 vector field `u` in-place, recovering the full (base + perturbation) velocity.
 
-`base` has one entry per velocity component.  Each entry is either a vector of
-length `Ny` (values at the inhomogeneous grid points) or `nothing` (component
-is skipped, i.e. no base flow in that direction).
+`base` has one entry per velocity component. Each entry is either an array of
+values on the inhomogeneous grid or `nothing` (the component is skipped). A
+one-direction channel profile is a vector; a two-direction duct or cavity
+profile is a matrix. The array must broadcast with the zero-wavenumber slice
+selected below.
 
 # Index construction
 
@@ -53,7 +55,7 @@ slice is selected by an index pattern derived from the grid's `fft_storage_dims`
   FFT (rfft) and the full complex FFT.
 - Inhomogeneous dimensions: `Colon()`, selecting all grid points.
 
-For a 4D channel grid with `CHANNEL_FFT_ORDER = (2, 3, 4)` this emits
+For a full channel grid with `CHANNEL_3D_FFT_ORDER = (2, 3, 4)` this emits
 `parent(u[n])[:, 1, 1, 1]` — the full wall-normal profile at zero streamwise,
 spanwise, and temporal wavenumber.
 
@@ -62,6 +64,9 @@ spanwise, and temporal wavenumber.
 ```julia
 # Channel flow: Couette base U(y)=y, no base in v or w.
 add_base_flow!(u, (U, nothing, nothing))
+
+# Square-duct flow: streamwise base W(x,y), no cross-stream base flow.
+add_base_flow!(u, (nothing, nothing, W))
 
 # Equivalent to the original hand-written channel specialisation:
 #   u[1][:, 1, 1, 1] .+= U
@@ -122,8 +127,10 @@ VectorField(g::AbstractGrid, ::Type{S}=FTField; N::Int=3, kwargs...) where {S} =
     VectorField(g::AbstractGrid, funcs...; dealias::Bool=false) -> VectorField
 
 Construct a `VectorField` of physical-space `Field` components by evaluating
-each function in `funcs` at the collocation points of `g`.  The number of
-components equals `length(funcs)`.  `dealias=true` uses the padded grid size.
+each function in `funcs` at the collocation points of `g`. Each function takes
+four arguments in physical `(x, y, z, t)` order, regardless of array storage
+order; absent coordinates are passed as `nothing`. The number of components
+equals `length(funcs)`. `dealias=true` uses the padded grid size.
 """
 VectorField(g::AbstractGrid, funcs...; dealias::Bool=false) = VectorField([Field(g, f; dealias=dealias) for f in funcs]...)
 

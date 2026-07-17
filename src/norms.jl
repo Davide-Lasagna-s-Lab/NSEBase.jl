@@ -28,18 +28,21 @@
 
 Inner product of two spectral fields on the same grid.
 
-In terms of the physical field `u(j, z, t)`, this computes the quadrature-weighted
-domain average over the full 4D domain:
+In physical space, this computes a quadrature integral over the inhomogeneous
+coordinates and an average over the homogeneous periodic coordinates:
 
 ```math
 \\langle u, v \\rangle =
-  \\frac{1}{V} \\int w(\\mathbf{j})\\, u(\\mathbf{j}, \\mathbf{z})\\,
-  v(\\mathbf{j}, \\mathbf{z})\\, d\\mathbf{j}\\, d\\mathbf{z}
+  \\frac{1}{V_H} \\int_{\\Omega_I}\\int_{\\Omega_H}
+  u(\\mathbf{x}_I, \\mathbf{x}_H)\\,v(\\mathbf{x}_I, \\mathbf{x}_H)\\,
+  d\\mathbf{x}_H\\,d\\mathbf{x}_I
 ```
 
-where `j` are the inhomogeneous coordinates, `z` are the periodic coordinates,
-`w(j)` are the quadrature weights returned by [`weights`](@ref), and `V` is the
-product of the periods in the homogeneous directions.
+where `V_H` is the product of the homogeneous periods. The integral over
+`\\Omega_I` is approximated by the quadrature weights returned by
+[`weights`](@ref); it is not divided by the inhomogeneous-domain measure. A
+constant field on the default channel `y \\in [-1,1]` therefore has squared norm
+`2`, not `1`.
 
 In spectral space this is:
 
@@ -51,8 +54,9 @@ In spectral space this is:
 
 where `c_{k_1}` is `1` for the zero rfft wavenumber and `2` otherwise (rfft
 Hermitian symmetry: each stored non-DC mode represents both the `+k` and `-k`
-contributions).  The forward FFT normalization by `1/V` combined with Parseval
-gives the domain-averaged inner product.
+contributions). The forward FFT normalization and Parseval identity provide the
+homogeneous average, while the stored quadrature weights provide the
+inhomogeneous integral.
 """
 function LinearAlgebra.dot(u::FTField{G}, v::FTField{G}) where {FFT_DIMS_ORDER, G<:AbstractGrid{<:Any,<:Any,<:Any,FFT_DIMS_ORDER}}
     return _dot(parent(u), parent(v), weights(grid(u)), Val(FFT_DIMS_ORDER))
