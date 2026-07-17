@@ -59,6 +59,10 @@ g = distributed(g_parent, base_comm;
 plans = NSEBase.FFTPlans(g; dealias=false, flags=NSEBase.FFTW.ESTIMATE)
 u_phys = NSEBase.Field(g, u_fun)
 u      = NSEBase.FTField(g); plans(u, u_phys)
+u_serial = FFT(Field(g_parent, u_fun))
+y_storage_dim = storage_dim(g, :y)
+y_first = MPIExt.global_first_index(g, y_storage_dim)
+local_y_indices = y_first:(y_first + size(g, y_storage_dim) - 1)
 
 @testset verbose=true "staged ddy! matches analytic du/dy                          " begin
     out = NSEBase.FTField(g)
@@ -68,6 +72,10 @@ u      = NSEBase.FTField(g); plans(u, u_phys)
     plans(expected, NSEBase.Field(g, dudy_fun))
 
     @test parent(out) ≈ parent(expected) rtol=1e-6
+
+    adjoint_out = NSEBase.ddy!(NSEBase.FTField(g), u; adjoint=true)
+    serial_adjoint = NSEBase.ddy!(NSEBase.FTField(g_parent), u_serial; adjoint=true)
+    @test parent(adjoint_out) ≈ selectdim(parent(serial_adjoint), y_storage_dim, local_y_indices) rtol=1e-6
 end
 
 @testset verbose=true "staged VectorField derivative uses component halo requests  " begin
@@ -130,6 +138,10 @@ end
     expected = NSEBase.FTField(g)
     plans(expected, NSEBase.Field(g, lapl_fun))
     @test parent(out) ≈ parent(expected) rtol=1e-6
+
+    adjoint_out = NSEBase.laplacian!(NSEBase.FTField(g), u; adjoint=true)
+    serial_adjoint = NSEBase.laplacian!(NSEBase.FTField(g_parent), u_serial; adjoint=true)
+    @test parent(adjoint_out) ≈ selectdim(parent(serial_adjoint), y_storage_dim, local_y_indices) rtol=1e-6
 end
 
 @testset verbose=true "NSEBase.laplacian!(out, u) agrees with the explicit form    " begin

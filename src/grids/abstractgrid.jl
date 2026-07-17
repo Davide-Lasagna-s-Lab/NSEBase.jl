@@ -79,7 +79,10 @@ homogeneous resolution.  Implementing grid growth is also required for
 
 Implement `derivative_matrix(grid, storage_dim, Val(order), Val(adjoint))` when
 a decomposed-grid wrapper needs to retrieve local first- and second-derivative
-stencils from its serial parent.
+stencils from its serial parent. The adjoint selector is deliberately a `Val`:
+forward and adjoint operators may have different concrete types. In-place
+derivative APIs should retain the `adjoint::Bool=false` keyword and branch once
+before calling the matrix accessor with `Val(false)` or `Val(true)`.
 
 # Provided defaults (override only if needed)
 

@@ -101,14 +101,15 @@ end
     y_sd = NSEBase.storage_dim(g, :y)
     x_sd = NSEBase.storage_dim(g, :x)
 
-    D1 = NSEBase.derivative_matrix(g, y_sd, Val(1))
-    D2 = NSEBase.derivative_matrix(g, y_sd, Val(2))
+    D1 = @inferred NSEBase.derivative_matrix(g, y_sd, Val(1))
+    D2 = @inferred NSEBase.derivative_matrix(g, y_sd, Val(2))
     @test D1 === g_parent.D₁[1]
     @test D2 === g_parent.D₂[1]
 
     # Adjoint flag is forwarded.
-    D1_adj = NSEBase.derivative_matrix(g, y_sd, Val(1), Val(true))
+    D1_adj = @inferred NSEBase.derivative_matrix(g, y_sd, Val(1), Val(true))
     @test D1_adj === g_parent.D₁⁺[1]
+    @test typeof(D1) !== typeof(D1_adj)
 
     # FFT directions have no parent FD operator; the parent throws.
     @test_throws ArgumentError NSEBase.derivative_matrix(g, x_sd, Val(1))

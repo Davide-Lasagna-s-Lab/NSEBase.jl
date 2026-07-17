@@ -19,6 +19,12 @@
     @test points(channel, (9, 7, 3)) == points(growto(channel, (9, 7, 3)))
     @test_throws ArgumentError ChannelGrid(8, 13, 5; Nt=1, α=1, β=1, width=3)
 
+    y_dim = storage_dim(channel, :y)
+    forward_matrix = @inferred NSEBase.derivative_matrix(channel, y_dim, Val(1), Val(false))
+    adjoint_matrix = @inferred NSEBase.derivative_matrix(channel, y_dim, Val(1), Val(true))
+    @test forward_matrix === channel.D₁[1] && adjoint_matrix === channel.D₁⁺[1]
+    @test typeof(forward_matrix) !== typeof(adjoint_matrix)
+
     grown = growto(channel, (9, 7, 3))
     @test size(grown) == (13, 9, 7, 3)
     @test grown.xs == channel.xs

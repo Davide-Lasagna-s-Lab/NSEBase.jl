@@ -519,7 +519,7 @@ global_size(g::DecomposedGrid, stor_dim::Int) = global_size(g)[stor_dim]
 
 """
     derivative_matrix(g::DecomposedGrid, stor_dim::Int,
-                      ::Val{ORDER}, ::Val{ADJ}=Val(false))
+                      ::Val{ORDER}, [::Val{ADJ}])
 
 Return the FD differentiation matrix of order `ORDER` along storage
 dimension `stor_dim`, in its forward (`ADJ=false`) or adjoint

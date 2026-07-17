@@ -229,17 +229,29 @@ parts of the field locally that want to be computed.
 
 Optionally, by setting `accumulate=Val(true)` the result can be accumulated
 into `out`, instead of overwritting it with the result.
+
+The Boolean adjoint keyword is resolved before entering the matrix kernel so
+the selected forward or adjoint operator has one concrete type there.
 """
 @inline function _dd_over!(out, u, g::DecomposedGrid, ::Val{STORAGE_DIM}, ::Val{ORDER},
                            ranges;
                            adjoint::Bool=false,
                            accumulate::Val{B}=Val(false)) where {STORAGE_DIM, ORDER, B}
-    A = NSEBase.derivative_matrix(g, STORAGE_DIM, Val(ORDER), Val(adjoint))
+    if adjoint
+        A = NSEBase.derivative_matrix(g, STORAGE_DIM, Val(ORDER), Val(true))
+        return _dd_over_matrix!(out, u, g, Val(STORAGE_DIM), ranges, A, accumulate)
+    end
+    A = NSEBase.derivative_matrix(g, STORAGE_DIM, Val(ORDER), Val(false))
+    return _dd_over_matrix!(out, u, g, Val(STORAGE_DIM), ranges, A, accumulate)
+end
+
+@inline function _dd_over_matrix!(out, u, g::DecomposedGrid, dim::Val{STORAGE_DIM}, ranges,
+                                  A, accumulate::Val) where {STORAGE_DIM}
     g_first = global_first_index(g, STORAGE_DIM)
     for rng in ranges
         isempty(rng) && continue
         LinearAlgebra.mul!(parent(out), A, parent(u),
-                           Val(STORAGE_DIM), g_first, rng, accumulate)
+                           dim, g_first, rng, accumulate)
     end
     return out
 end

@@ -376,7 +376,7 @@ function Base.convert(::Type{T}, g::RectangularGrid{NI, T0, S, D, AXES, FFT_DIMS
 end
 
 """
-    derivative_matrix(g::RectangularGrid, storage_dim, Val(order), Val(adjoint=false))
+    derivative_matrix(g::RectangularGrid, storage_dim, Val(order), [Val(adjoint)])
 
 Return the finite-difference operator acting along `storage_dim`.
 
@@ -390,6 +390,13 @@ concrete operator type. Decomposed-grid implementations call this method on the
 parent rectangular grid to obtain the first- or second-derivative stencil for a
 local slab; the grid itself therefore remains independent of partition
 metadata.
+
+The `Val` adjoint selector is required for type stability because an FDGrids
+forward operator and its weighted adjoint have different concrete types.
+Higher-level in-place derivative functions expose an `adjoint::Bool` keyword
+and branch to this type-specialized accessor internally. Omitting the final
+argument selects the forward operator through the type-stable `Val(false)`
+default.
 """
 function derivative_matrix(g::RectangularGrid, storage_dim::Int, ::Val{ORDER}, ::Val{ADJOINT}=Val(false)) where {ORDER, ADJOINT}
     index = findfirst(==(storage_dim), inhomogeneous_storage_dims(g))
@@ -412,12 +419,12 @@ and `u` must use the same concrete grid. If the supplied adjoint was built for
 the grid quadrature, the operation obeys
 `⟨D₁u, v⟩_w = ⟨u, D₁⁺v⟩_w` up to numerical roundoff.
 """
-function inhomogeneous_dd!(out::FTField{G}, u::FTField{G}, ::Val{DIM}; adjoint=false) where {G<:RectangularGrid, DIM}
-    return adjoint ? _inhomogeneous_dd!(out, u, Val(DIM), Val(true)) : _inhomogeneous_dd!(out, u, Val(DIM), Val(false))
-end
-
-function _inhomogeneous_dd!(out::FTField{G}, u::FTField{G}, dim::Val{DIM}, adjoint::Val{ADJOINT}) where {G<:RectangularGrid, DIM, ADJOINT}
-    LinearAlgebra.mul!(parent(out), derivative_matrix(grid(u), DIM, Val(1), adjoint), parent(u), dim)
+function inhomogeneous_dd!(out::FTField{G}, u::FTField{G}, ::Val{DIM}; adjoint::Bool=false) where {G<:RectangularGrid, DIM}
+    if adjoint
+        LinearAlgebra.mul!(parent(out), derivative_matrix(grid(u), DIM, Val(1), Val(true)), parent(u), Val(DIM))
+    else
+        LinearAlgebra.mul!(parent(out), derivative_matrix(grid(u), DIM, Val(1), Val(false)), parent(u), Val(DIM))
+    end
     return out
 end
 
@@ -430,9 +437,9 @@ into `out`. The method applies `D₂` along every entry of
 and subsequent terms accumulate in place, so no temporary field is required.
 
 The generated implementation supports one, two, or three inhomogeneous
-directions and unrolls their matrix products at compile time. Because `NI` and
-the internal adjoint flag are type parameters, each specialization contains a
-fixed sequence of dimension-aware products without a runtime loop.
+directions and unrolls their matrix products at compile time. It emits separate
+forward and adjoint branches so every matrix product has a concrete operator
+type without exposing a `Val` argument in this in-place API.
 
 Homogeneous Fourier contributions are deliberately excluded and are added by
 [`add_homogeneous_laplacian!`](@ref). With `adjoint=true`, every `D₂` is
@@ -440,21 +447,26 @@ replaced by its caller-supplied `D₂⁺`. When those operators are weighted
 adjoints under [`weights`](@ref), the complete finite-difference sum satisfies
 the corresponding multidimensional weighted-adjoint identity.
 """
-function inhomogeneous_laplacian!(out::FTField{G}, u::FTField{G}; adjoint=false) where {G<:RectangularGrid}
-    return adjoint ? _inhomogeneous_laplacian!(out, u, Val(true)) : _inhomogeneous_laplacian!(out, u, Val(false))
-end
-
-@generated function _inhomogeneous_laplacian!(out::FTField{G}, u::FTField{G}, ::Val{ADJOINT}) where {NI, G<:RectangularGrid{NI}, ADJOINT}
+@generated function inhomogeneous_laplacian!(out::FTField{G}, u::FTField{G}; adjoint::Bool=false) where {NI, G<:RectangularGrid{NI}}
     1 <= NI <= 3 || return :(throw(ArgumentError("inhomogeneous Laplacian supports one to three directions")))
     return quote
         g = grid(u)
         dims = spatial_inhomogeneous_storage_dims(g)
-        operators = ADJOINT ? g.D₂⁺ : g.D₂
-        Base.Cartesian.@nexprs $NI i -> begin
-            if i == 1
-                LinearAlgebra.mul!(parent(out), operators[i], parent(u), Val(dims[i]))
-            else
-                LinearAlgebra.mul!(parent(out), operators[i], parent(u), Val(dims[i]), Val(true))
+        if adjoint
+            Base.Cartesian.@nexprs $NI i -> begin
+                if i == 1
+                    LinearAlgebra.mul!(parent(out), g.D₂⁺[i], parent(u), Val(dims[i]))
+                else
+                    LinearAlgebra.mul!(parent(out), g.D₂⁺[i], parent(u), Val(dims[i]), Val(true))
+                end
+            end
+        else
+            Base.Cartesian.@nexprs $NI i -> begin
+                if i == 1
+                    LinearAlgebra.mul!(parent(out), g.D₂[i], parent(u), Val(dims[i]))
+                else
+                    LinearAlgebra.mul!(parent(out), g.D₂[i], parent(u), Val(dims[i]), Val(true))
+                end
             end
         end
         return out
