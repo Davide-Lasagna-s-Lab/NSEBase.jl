@@ -31,7 +31,8 @@ export CartesianPrimitive3DNSE, CartesianPrimitive3DLNSE
 export CartesianPrimitive2DNSE, CartesianPrimitive2DLNSE
 export CartesianPrimitive2D3CNSE, CartesianPrimitive2D3CLNSE
 export CartesianPrimitive3DBoussinesqNSE, CartesianPrimitive3DBoussinesqLNSE
-export Forward, AdjointContinuous, AdjointDiscrete, NoForce, CompoundForcing, Mode
+export Forward, AdjointContinuous, AdjointDiscrete, Mode, OperatorMode
+export NoForce, CompoundForcing
 export construct_equations, CartesianPrimitive3D, CartesianPrimitive2D, CartesianPrimitive2D3C, PolarPrimitive
 export CartesianPrimitive3DBoussinesq
 export ncomp, cache_length, nonlinear_operator, linearised_operator
@@ -50,9 +51,10 @@ include("shifts.jl")
 include("norms.jl")
 include("weighting.jl")
 include("broadcasting.jl")
+include("equations/types.jl")
 include("derivatives.jl")
 include("io.jl")
-include("equations/types.jl")
+include("equations/forcing.jl")
 include("equations/cartesianprimitive_3d.jl")
 include("equations/cartesianprimitive_2d.jl")
 include("equations/cartesianprimitive_2d3c.jl")

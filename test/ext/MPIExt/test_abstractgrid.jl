@@ -105,14 +105,10 @@ end
     y_sd = NSEBase.storage_dim(g, :y)
     x_sd = NSEBase.storage_dim(g, :x)
 
-    D1 = NSEBase.derivative_matrix(g, y_sd, Val(1), Val(false))
-    D2 = NSEBase.derivative_matrix(g, y_sd, Val(2), Val(false))
+    D1 = NSEBase.derivative_matrix(g, y_sd, Val(1))
+    D2 = NSEBase.derivative_matrix(g, y_sd, Val(2))
     @test D1 === g_parent.D₁
     @test D2 === g_parent.D₂
-
-    # Adjoint flag is forwarded.
-    D1_adj = NSEBase.derivative_matrix(g, y_sd, Val(1), Val(true))
-    @test D1_adj == LinearAlgebra.adjoint(g_parent.D₁)
 end
 
 @testset "local_size names the per-rank interior size                         " begin

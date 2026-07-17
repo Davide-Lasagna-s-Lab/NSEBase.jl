@@ -1,22 +1,23 @@
 # GPU kernels for derivatives of FTFields wrapping on a GPUGrid.
 # 
 # These methods are extensions to the base packages spectral differentiation
-# components. The inhomogeneous derivatives are handled via `NSEBase.inhomogeneous_dd!`
+# components. The inhomogeneous derivatives are handled via `NSEBase._inhomogeneous_dd!`
 # which relies on the user implemented `NSEBase.derivative_matrix`. Any GPU
 # specialisations of derivatives over non-transformed directions is assumed to handled
 # by the user defining the behaviour `mul!(out, A, u, ::Val{STORAGE_DIM})` for their
 # dirivative operator type `A`.
 
-function NSEBase._spectral_dd!(out::Union{GPUFTField, GPUProjectedField},
-                                 u::Union{GPUFTField, GPUProjectedField},
-                                  ::Val{STORAGE_DIM},
-                                  ::Val,
-                                  ::Val{RFFT_DIM};
-                           adjoint::Bool=false) where {STORAGE_DIM, RFFT_DIM}
+NSEBase._spectral_dd!(out::F,
+                        u::F,
+                         ::Val{STORAGE_DIM},
+                     mode::NSEBase.OperatorMode=NSEBase.Forward()) where {STORAGE_DIM, F<:Union{GPUFTField, GPUProjectedField}} =
+    _cuda_spectral_dd!(out, u, Val(STORAGE_DIM), Val(NSEBase.rfft_storage_dim(NSEBase.grid(u))), mode)
+
+function _cuda_spectral_dd!(out, u, ::Val{STORAGE_DIM}, ::Val{RFFT_DIM}, mode::NSEBase.OperatorMode) where {STORAGE_DIM, RFFT_DIM}
     # kernel arguments
     sz     = Int32.(size(u))
     nelem  = Int32(prod(sz))
-    _ddx_sign  = adjoint ? -1im*one(real(eltype(u))) : 1im*one(real(eltype(u)))
+    _ddx_sign  = mode isa NSEBase.AdjointDiscrete ? -1im*one(real(eltype(u))) : 1im*one(real(eltype(u)))
     _ddx_scale = NSEBase.wavenumber_scale(NSEBase.grid(u), STORAGE_DIM)
 
     # launch kernel
@@ -65,8 +66,6 @@ direction of the array.
         :(@inline; ifelse(I[$DIM] ≤ (sz[$DIM] >> 1) + 1, I[$DIM] - 1, I[$DIM] - 1 - sz[$DIM]))
     end
 end
-
-
 
 
 function NSEBase._add_homogeneous_laplacian!(out::GPUFTField,

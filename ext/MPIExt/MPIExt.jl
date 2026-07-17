@@ -5,6 +5,7 @@ import HaloArrays
 import LinearAlgebra
 import MPI
 import NSEBase
+using NSEBase: Forward, AdjointDiscrete, OperatorMode
 
 include("decomposed.jl")
 include("types.jl")

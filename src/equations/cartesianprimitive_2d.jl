@@ -194,7 +194,7 @@ function (eq::CartesianPrimitive2DLNSE{AdjointDiscrete})(::Real,
     U    = eq.pcache[1]; dUdx = eq.pcache[2]; dUdy = eq.pcache[3]
     V    = eq.pcache[4]; U1V  = eq.pcache[5]; U2V  = eq.pcache[6]
 
-    laplacian!(out, v; adjoint=true)
+    laplacian!(out, v, AdjointDiscrete())
     out .*= 1/eq.Re
 
     eq.plans(V, v)
@@ -206,8 +206,8 @@ function (eq::CartesianPrimitive2DLNSE{AdjointDiscrete})(::Real,
 
     eq.plans(dUdx, dudx)
     for n in 1:2
-        ddx!(dudx[1], u1v[n]; adjoint=true)
-        ddy!(dudx[2], u2v[n]; adjoint=true)
+        ddx!(dudx[1], u1v[n], AdjointDiscrete())
+        ddy!(dudx[2], u2v[n], AdjointDiscrete())
         out[n] .-= dudx[1] .+ dudx[2]
     end
     U1V .= 0

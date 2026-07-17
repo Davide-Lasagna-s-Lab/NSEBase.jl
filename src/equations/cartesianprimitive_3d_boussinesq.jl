@@ -273,7 +273,7 @@ function (eq::CartesianPrimitive3DBoussinesqLNSE{AdjointDiscrete})(::Real,
     U    = eq.pcache[1]; dUdx = eq.pcache[2]; dUdy = eq.pcache[3]; dUdz = eq.pcache[4]
     V    = eq.pcache[5]; U1V  = eq.pcache[6]; U2V  = eq.pcache[7]; U3V  = eq.pcache[8]
 
-    laplacian!(out, v, adjoint=true)
+    laplacian!(out, v, AdjointDiscrete())
     for n in 1:3; out[n] .*= 1/eq.Re; end
     out[4] .*= 1/(eq.Re * eq.Pr)
 
@@ -287,9 +287,9 @@ function (eq::CartesianPrimitive3DBoussinesqLNSE{AdjointDiscrete})(::Real,
 
     eq.plans(dUdx, dudx)
     for n in 1:4
-        out[n] .-= ddx!(dudx[1], u1v[n], adjoint=true) .+
-                   ddy!(dudx[2], u2v[n], adjoint=true) .+
-                   ddz!(dudx[3], u3v[n], adjoint=true)
+        out[n] .-= ddx!(dudx[1], u1v[n], AdjointDiscrete()) .+
+                   ddy!(dudx[2], u2v[n], AdjointDiscrete()) .+
+                   ddz!(dudx[3], u3v[n], AdjointDiscrete())
     end
 
     # Adjoint of velocity-perturbation-advects-base-state term.

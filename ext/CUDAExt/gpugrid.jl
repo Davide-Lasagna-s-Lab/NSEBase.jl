@@ -67,5 +67,5 @@ NSEBase.derivative_matrix(::ParentType, stor_dim::Int, ::Val{ORDER}, ::Val{ADJ})
 NSEBase.derivative_matrix(g::GPUGrid,
                    stor_dim::Int,
                            ::Val{ORDER},
-                           ::Val{ADJ}=Val(false)) where {ORDER, ADJ} =
-    NSEBase.derivative_matrix(parent(g), stor_dim, Val(ORDER), Val(ADJ))
+                       mode::NSEBase.OperatorMode=Forward()) where {ORDER} =
+    NSEBase.derivative_matrix(parent(g), stor_dim, Val(ORDER), mode)

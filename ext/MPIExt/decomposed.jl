@@ -500,22 +500,22 @@ global_size(g::DecomposedGrid, stor_dim::Int) = global_size(g)[stor_dim]
 
 """
     derivative_matrix(g::DecomposedGrid, stor_dim::Int,
-                      ::Val{ORDER}, ::Val{ADJ}=Val(false))
+                      ::Val{ORDER}, [mode])
 
 Return the FD differentiation matrix of order `ORDER` along storage
-dimension `stor_dim`, in its forward (`ADJ=false`) or adjoint
-(`ADJ=true`) form.
+dimension `stor_dim`, in its forward (`Forward()`, the default) or discrete
+adjoint (`AdjointDiscrete()`) form.
 
 Downstream single-domain grid types implement this on `parent(g)`:
 ```
-NSEBase.derivative_matrix(::ParentType, stor_dim::Int, ::Val{ORDER}, ::Val{ADJ})
+NSEBase.derivative_matrix(::ParentType, stor_dim::Int, ::Val{ORDER}, mode)
 ```
 """
 NSEBase.derivative_matrix(g::DecomposedGrid,
                    stor_dim::Int,
                            ::Val{ORDER},
-                           ::Val{ADJ}=Val(false)) where {ORDER, ADJ} =
-    NSEBase.derivative_matrix(g.parent, stor_dim, Val(ORDER), Val(ADJ))
+                       mode::OperatorMode=Forward()) where {ORDER} =
+    NSEBase.derivative_matrix(g.parent, stor_dim, Val(ORDER), mode)
 
 # Neighbour predicates. Periodic directions always have neighbours;
 # non-periodic ones do not at the first/last rank.
