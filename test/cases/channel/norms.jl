@@ -16,7 +16,10 @@
     @test normdiff(q̂, r̂)^2 ≈ 1.251547 rtol=1e-5
     @test normdiff(a, b)^2 ≈ 1.251547 rtol=1e-5
 
-    shifted(x, y, z, t) = f₁(x + π, y, z - π, t - π/2)
-    _, minimizing_shift = minnormdiff(û, FFT(Field(g, shifted)), (4, 4, 4))
-    @test_broken all(minimizing_shift .≈ (0, π, 0.25))
+    # A band-limited field makes the alignment unique and exact to roundoff; channel time has unit period.
+    phase_field(x, y, z, t) = (1 - y^2) * (1 + 0.2cos(x) + 0.1sin(z)) * (1 + 0.3cos(2π*t) + 0.2sin(4π*t))
+    shifted(x, y, z, t) = phase_field(x, y, z - π, t - 1/4)
+    min_diff, minimizing_shift = minnormdiff(FFT(Field(g, phase_field)), FFT(Field(g, shifted)), (4, 4, 4))
+    @test min_diff ≈ 0 atol=1e-14
+    @test all(minimizing_shift .≈ (0, π, 0.25))
 end
