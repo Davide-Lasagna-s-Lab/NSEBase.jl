@@ -121,32 +121,29 @@
         @test size(compatibility.nl.pcache[1][1]) == size(square)
     end
 
-    @testset verbose=true "Product quadrature and Parseval identity                    " begin
+    @testset verbose=true "Analytical product norm and Parseval identity               " begin
         g = SquareDuctGrid(15, 9, 9, 2π; width=5)
-        u(x, y, z, t) = sin(π * x) * sin(π * y) * exp(sin(2π * z)) * cos(2π * t)
+        u(x, y, z, t) = case_poly11(x) * case_poly11(y) * case_periodic_profile(2π*z) * case_periodic_profile(2π*t)
+        twice_u(x, y, z, t) = 2u(x, y, z, t)
+        thrice_u(x, y, z, t) = 3u(x, y, z, t)
         physical = Field(g, u)
         spectral = FFT(physical)
-        direct_norm = sum(reshape(weights(g), 15, 15, 1, 1) .* parent(physical) .^ 2) / prod(size(g)[3:4])
-        @test dot(spectral, spectral) ≈ direct_norm rtol=1e-12
-        velocity = VectorField(spectral, copy(spectral), copy(spectral))
-        @test norm(velocity)^2 ≈ 3 * direct_norm rtol=1e-12
+        exact_norm2 = CASE_UNIT_BUBBLE_NORM2^2 * CASE_PERIODIC_PROFILE_NORM2^2
+        @test case_physical_dot(g, parent(physical)) ≈ exact_norm2 rtol=1e-12
+        @test dot(spectral, spectral) ≈ exact_norm2 rtol=1e-12
+        @test norm(FFT(VectorField(g, u, twice_u, thrice_u)))^2 ≈ 14exact_norm2 rtol=1e-12
     end
 
     @testset verbose=true "Square 4D velocity norm with an analytical reference        " begin
-        g = SquareDuctGrid(25, 17, 17, 2π; dist=FDGrids.GaussLobattoGrid(), width=9)
-        u(x, y, z, t) = sin(π * x) * sin(π * y) * exp(sin(2π * z)) * exp(sin(2π * t))
-        X, _, _, _ = points(g)
+        g = SquareDuctGrid(25, 9, 9, 2π; dist=FDGrids.GaussLobattoGrid(), width=9)
+        u(x, y, z, t) = sin(π*x) * sin(π*y) * case_periodic_profile(2π*z) * case_periodic_profile(2π*t)
         physical = Field(g, u)
         spectral = FFT(physical)
-        direct_norm = sum(reshape(weights(g), 25, 25, 1, 1) .* parent(physical) .^ 2) / prod(size(g)[3:4])
-        @test norm(spectral)^2 ≈ direct_norm rtol=1e-12
-
-        I₀₂ = sum(exp.(2 .* sin.(2π .* (0:10_000) ./ 10_001))) / 10_001
-        sine = sin.(π .* vec(X))
-        cross_section_norm = sum(weights(g) .* (sine * transpose(sine)) .^ 2)
-        @test norm(spectral)^2 ≈ cross_section_norm * I₀₂^2 rtol=1e-10
+        exact_norm2 = CASE_PERIODIC_PROFILE_NORM2^2 / 4
+        @test case_physical_dot(g, parent(physical)) ≈ exact_norm2 rtol=1e-10
+        @test norm(spectral)^2 ≈ exact_norm2 rtol=1e-10
 
         velocity = FFT(VectorField(g, u, u, u))
-        @test norm(velocity)^2 ≈ 3 * norm(spectral)^2 rtol=1e-14
+        @test norm(velocity)^2 ≈ 3exact_norm2 rtol=1e-10
     end
 end

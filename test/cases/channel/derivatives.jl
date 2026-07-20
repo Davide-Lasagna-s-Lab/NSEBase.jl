@@ -1,14 +1,22 @@
 @testset verbose=true "Derivatives                                                 " begin
-    Ny, Nx, Nz, Nt = 17, 7, 7, 7
+    Ny, Nx, Nz, Nt = 17, 9, 9, 9
     α, β = 1.25, 0.75
     g = ChannelGrid(Nx, Ny, Nz; Nt, α, β, width=5)
 
-    u(x, y, z, t) = (1 - y^2) * cos(2α*x) * sin(β*z) * cos(2π*t)
-    dudx(x, y, z, t) = -2α * (1 - y^2) * sin(2α*x) * sin(β*z) * cos(2π*t)
-    dudy(x, y, z, t) = -2y * cos(2α*x) * sin(β*z) * cos(2π*t)
-    dudz(x, y, z, t) = β * (1 - y^2) * cos(2α*x) * cos(β*z) * cos(2π*t)
-    dudt(x, y, z, t) = -2π * (1 - y^2) * cos(2α*x) * sin(β*z) * sin(2π*t)
-    lapu(x, y, z, t) = (-2 - ((2α)^2 + β^2) * (1 - y^2)) * cos(2α*x) * sin(β*z) * cos(2π*t)
+    fx(x) = case_periodic_profile(α*x)
+    dfx(x) = α * case_periodic_profile_d1(α*x)
+    d2fx(x) = α^2 * case_periodic_profile_d2(α*x)
+    fz(z) = case_periodic_profile(β*z)
+    dfz(z) = β * case_periodic_profile_d1(β*z)
+    d2fz(z) = β^2 * case_periodic_profile_d2(β*z)
+    ft(t) = case_periodic_profile(2π*t)
+    dft(t) = 2π * case_periodic_profile_d1(2π*t)
+    u(x, y, z, t) = (1 - y^2) * fx(x) * fz(z) * ft(t)
+    dudx(x, y, z, t) = (1 - y^2) * dfx(x) * fz(z) * ft(t)
+    dudy(x, y, z, t) = -2y * fx(x) * fz(z) * ft(t)
+    dudz(x, y, z, t) = (1 - y^2) * fx(x) * dfz(z) * ft(t)
+    dudt(x, y, z, t) = (1 - y^2) * fx(x) * fz(z) * dft(t)
+    lapu(x, y, z, t) = (-2fx(x) * fz(z) + (1 - y^2) * (d2fx(x) * fz(z) + fx(x) * d2fz(z))) * ft(t)
 
     û = FFT(Field(g, u))
     @test ddx!(FTField(g), û) ≈ FFT(Field(g, dudx)) atol=2e-11 rtol=2e-11
@@ -26,8 +34,8 @@ end
 
 @testset verbose=true "Weighted derivative adjoints                                " begin
     g = ChannelGrid(7, 17, 7; Nt=7, α=1.25, β=0.75, width=5)
-    a(x, y, z, t) = (1 + y + 0.3y^2) * (1 + 0.2cos(1.25x) + 0.1sin(0.75z) + 0.05cos(2π*t))
-    b(x, y, z, t) = (0.4 - 0.2y + y^2) * (1 - 0.1sin(1.25x) + 0.3cos(0.75z) - 0.07sin(2π*t))
+    a(x, y, z, t) = (1 + y + 0.3y^2) * exp(sin(1.25x)) * exp(cos(0.75z)) * exp(sin(2π*t))
+    b(x, y, z, t) = (0.4 - 0.2y + y^2) * exp(cos(1.25x)) * exp(sin(0.75z)) * exp(cos(2π*t))
     â, b̂ = FFT(Field(g, a)), FFT(Field(g, b))
 
     Da, D⁺b = FTField(g), FTField(g)

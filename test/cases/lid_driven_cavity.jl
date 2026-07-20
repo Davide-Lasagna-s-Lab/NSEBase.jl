@@ -70,7 +70,7 @@
         @test parent(Δ)[:, :, 1] ≈ reshape(6 .* x, :, 1) .+ reshape(6 .* y, 1, :) atol=1e-9
     end
 
-    @testset verbose=true "Analytic and algebraic inner products                       " begin
+    @testset verbose=true "Analytical norms and inner products                         " begin
         velocity = (((0, 0, 1 // 1), (1, 0, 1 // 1), (0, 1, 2 // 1), (1, 1, 1 // 1)),
                     ((2, 0, 1 // 1), (0, 1, -1 // 1), (1, 1, 3 // 1)))
         test_velocity = (((0, 0, 2 // 1), (1, 0, -1 // 1), (0, 2, 1 // 1)),
@@ -79,8 +79,11 @@
         u = case_analytic_velocity_field(analytic_grid, velocity)
         v = case_analytic_velocity_field(analytic_grid, test_velocity)
         exact = case_analytic_velocity_dot(velocity, test_velocity)
+        exact_norm2 = case_analytic_velocity_dot(velocity, velocity)
         @test exact == 77 // 12
+        @test exact_norm2 == 1661 // 180
         @test dot(u, v) ≈ Float64(exact) atol=1e-13
+        @test norm(u)^2 ≈ Float64(exact_norm2) atol=1e-13
 
         spectral_grid = LidDrivenCavityGrid(17, 17; Nt=5, width=5)
         a = deterministic_ftfield(spectral_grid, 0.1)
@@ -95,6 +98,54 @@
         q, p = VectorField(a, b), VectorField(b, c)
         @test dot(q, p) ≈ dot(a, b) + dot(b, c)
         @test norm(q)^2 ≈ dot(q, q)
+    end
+
+    @testset verbose=true "Analytical cavity norms                                     " begin
+        @testset verbose=true "Two-dimensional cavity norms                                " begin
+            g = LidDrivenCavityGrid(11, 11; Nt=9, dist=FDGrids.GaussLobattoGrid(), width=5)
+            f(x, y, _, t) = case_poly11(x) * case_poly11(y) * case_periodic_profile(2π*t)
+            twice_f(x, y, z, t) = 2f(x, y, z, t)
+            physical = Field(g, f)
+            spectral = FFT(physical)
+            exact_norm2 = CASE_UNIT_BUBBLE_NORM2^2 * CASE_PERIODIC_PROFILE_NORM2
+
+            @test case_physical_dot(g, parent(physical)) ≈ exact_norm2 rtol=1e-12
+            @test dot(spectral, spectral) ≈ exact_norm2 rtol=1e-12
+            @test norm(spectral) ≈ sqrt(exact_norm2) rtol=1e-12
+            @test norm(FFT(VectorField(g, f, twice_f)))^2 ≈ 5exact_norm2 rtol=1e-12
+        end
+
+        @testset verbose=true "Bounded three-dimensional cavity norms                      " begin
+            g = LidDrivenCavityGrid(11, 11, 11; Nt=9, spanwise=:bounded,
+                                    dist=FDGrids.GaussLobattoGrid(), width=5)
+            f(x, y, z, t) = case_poly11(x) * case_poly11(y) * case_poly11(z) * case_periodic_profile(2π*t)
+            twice_f(x, y, z, t) = 2f(x, y, z, t)
+            thrice_f(x, y, z, t) = 3f(x, y, z, t)
+            physical = Field(g, f)
+            spectral = FFT(physical)
+            exact_norm2 = CASE_UNIT_BUBBLE_NORM2^3 * CASE_PERIODIC_PROFILE_NORM2
+
+            @test case_physical_dot(g, parent(physical)) ≈ exact_norm2 rtol=1e-12
+            @test dot(spectral, spectral) ≈ exact_norm2 rtol=1e-12
+            @test norm(spectral) ≈ sqrt(exact_norm2) rtol=1e-12
+            @test norm(FFT(VectorField(g, f, twice_f, thrice_f)))^2 ≈ 14exact_norm2 rtol=1e-12
+        end
+
+        @testset verbose=true "Periodic three-dimensional cavity norms                     " begin
+            g = LidDrivenCavityGrid(11, 11, 9; Nt=9, spanwise=:periodic, Lz=2,
+                                    dist=FDGrids.GaussLobattoGrid(), width=5)
+            f(x, y, z, t) = case_poly11(x) * case_poly11(y) * case_periodic_profile(π*z) * case_periodic_profile(2π*t)
+            twice_f(x, y, z, t) = 2f(x, y, z, t)
+            thrice_f(x, y, z, t) = 3f(x, y, z, t)
+            physical = Field(g, f)
+            spectral = FFT(physical)
+            exact_norm2 = CASE_UNIT_BUBBLE_NORM2^2 * CASE_PERIODIC_PROFILE_NORM2^2
+
+            @test case_physical_dot(g, parent(physical)) ≈ exact_norm2 rtol=1e-12
+            @test dot(spectral, spectral) ≈ exact_norm2 rtol=1e-12
+            @test norm(spectral) ≈ sqrt(exact_norm2) rtol=1e-12
+            @test norm(FFT(VectorField(g, f, twice_f, thrice_f)))^2 ≈ 14exact_norm2 rtol=1e-12
+        end
     end
 
     @testset verbose=true "Weighted adjoints                                           " begin
@@ -135,12 +186,12 @@
     @testset verbose=true "Temporal derivative and flow constructor                    " begin
         temporal = LidDrivenCavityGrid(9, 9; Nt=9, width=3)
         plans = FFTPlans(temporal; flags=FFTW.ESTIMATE, dealias=false)
-        physical = Field(temporal, (_, _, _, t) -> cos(2π * t))
+        physical = Field(temporal, (_, _, _, t) -> case_periodic_profile(2π * t))
         spectral, derivative, result = FTField(temporal), FTField(temporal), Field(temporal)
         plans(spectral, physical)
         ddt!(derivative, spectral)
         plans(result, derivative)
-        expected = -2π .* sin.(2π .* points(temporal)[3]) .* ones(size(temporal, 1), size(temporal, 2), 1)
+        expected = 2π .* case_periodic_profile_d1(2π .* points(temporal)[3]) .* ones(size(temporal, 1), size(temporal, 2), 1)
         @test parent(result) ≈ expected atol=1e-11
 
         compact = LidDrivenCavityGrid(13, 11; dist=FDGrids.GaussLobattoGrid(), width=5)

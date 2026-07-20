@@ -1,8 +1,8 @@
 @testset verbose=true "Three-direction norm weighting                              " begin
     Ny, Nx, Nz, Nt = 17, 9, 9, 9
     g = ChannelGrid(Nx, Ny, Nz; Nt, α=2π, β=2π, width=5)
-    f₁(x, y, z, t) = (1 - y^2) * exp(cos(2π*z)) * cos(sin(2π*t))
-    f₂(x, y, z, t) = cos(π*y) * (1 - y^2) * exp(sin(2π*z)) * cos(2π*t)^2
+    f₁(x, y, z, t) = (1 - y^2) * exp(sin(2π*x)) * exp(cos(2π*z)) * exp(sin(2π*t))
+    f₂(x, y, z, t) = cos(π*y) * (1 - y^2) * exp(cos(2π*x)) * exp(sin(2π*z)) * exp(cos(2π*t))
     modes = channel_wall_normal_modes(g; Nm=3)
     a = project(FFT(VectorField(g, f₁)), modes)
     b = project(FFT(VectorField(g, f₂)), modes)
