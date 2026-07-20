@@ -37,7 +37,8 @@ end
 @testset verbose=true "Flow cases                                                  " begin
     include("cases/forcings.jl")
     include("cases/lid_driven_cavity.jl")
-    include("cases/rpcf.jl")
+    include("cases/streamwise_invariant_channel.jl")
+    include("cases/two_dimensional_channel.jl")
     include("cases/rayleigh_benard.jl")
     include("cases/channel.jl")
     include("cases/square_duct.jl")

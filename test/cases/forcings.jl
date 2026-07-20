@@ -16,9 +16,19 @@
     @test parent(out[1]) == fill(-0.5, size(out[1]))
     @test parent(out[2]) == fill(0.25, size(out[2]))
 
+    planar_grid = TwoDimensionalChannelGrid(3, 9; Nt=1, α=1, width=3)
+    planar_state, planar_out = VectorField(planar_grid; N=2), VectorField(planar_grid; N=2)
+    parent(planar_state[1]) .= 1
+    parent(planar_state[2]) .= 2
+    force(planar_out, planar_state, Forward())
+    @test parent(planar_out[1]) == fill(0.5, size(planar_out[1]))
+    @test parent(planar_out[2]) == fill(-0.25, size(planar_out[2]))
+    @test_throws ArgumentError CoriolisForce(0.25; components=(3, 1))(
+        planar_out, planar_state, Forward())
+
     out .= 0
-    rpcf_force = CoriolisForce(0.25; components=(3, 1))
-    rpcf_force(out, u, Forward())
+    streamwise_invariant_force = CoriolisForce(0.25; components=(3, 1))
+    streamwise_invariant_force(out, u, Forward())
     @test parent(out[1]) == fill(-0.75, size(out[1]))
     @test parent(out[3]) == fill(0.25, size(out[3]))
     @test_throws ArgumentError CoriolisForce(1; components=(1, 1))

@@ -1,4 +1,57 @@
 # //////////////////////////////////////////////////////////////////////////// #
+# ///                       Reusable case forcings                         /// #
+# //////////////////////////////////////////////////////////////////////////// #
+#
+# This file defines the callable policies used to add body forces to Cartesian equation operators.
+# Keeping them separate lets a grid describe geometry, a case choose physical source terms, and
+# `construct_equations` install a concrete callable without dynamic dispatch. There is no forcing
+# hierarchy or registration step: any object implementing `force(out,u,mode)` can be used.
+#
+# Operators invoke the force after writing viscous and advective contributions to the spectral
+# `VectorField` `out`, so a force must accumulate rather than clear or replace, and must return
+# `out`. Nonlinear NSE and forward LNSE evaluations both pass `Forward()`; adjoint LNSE evaluations
+# pass `AdjointContinuous()` or `AdjointDiscrete()`. A state-dependent nonsymmetric force must
+# implement the appropriate forward and adjoint actions for those tags.
+#
+# The bundled building blocks cover the forcing used by the case files:
+#
+# - `NoForce()` is the neutral default and leaves the residual unchanged.
+# - `ConstantBodyForce(value; component)` adds a spatially constant value to one velocity component
+#   only at the zero wavenumber of every Fourier direction. That slice still contains every
+#   finite-difference point. The channel uses component one and the duct uses component three.
+# - `CoriolisForce(Ro; components=(i,j))` applies a skew-symmetric coupling between two velocity
+#   components: forward action adds `Ro*u[j]` to `i` and subtracts `Ro*u[i]` from `j`; both signs
+#   reverse in adjoint modes. The component pair supports `(u,v)`, `(u,v,w)`, and the
+#   streamwise-invariant channel order `(v,w,u)`.
+# - `CompoundForcing` applies a heterogeneous tuple of forces in sequence. Its generated call is
+#   unrolled, preserving concrete dispatch for every constituent.
+#
+# Given an existing grid and base flow, several effects can be composed and passed directly to
+# `construct_equations`:
+#
+#     force = CompoundForcing(ConstantBodyForce(1; component=1),
+#                             CoriolisForce(0.1; components=(1, 2)))
+#     equations = construct_equations(grid, Re, base, CartesianPrimitive3D(); force,
+#                                     mode=AdjointDiscrete(), flags=FFTW.ESTIMATE)
+#
+# A custom self-adjoint linear drag can share one method for every `Mode`:
+#
+#     struct LinearDrag{T}
+#         coefficient::T
+#     end
+#
+#     function (force::LinearDrag)(out::VectorField{N}, u::VectorField{N}, ::Mode) where {N}
+#         for component in 1:N
+#             @. out[component] -= force.coefficient * u[component]
+#         end
+#         return out
+#     end
+#
+# A non-self-adjoint force should define separate methods for the three mode tags. Custom policies
+# may be supplied alone or nested in `CompoundForcing`; they must support the component count and
+# spectral field representation of the selected formulation.
+#
+# //////////////////////////////////////////////////////////////////////////// #
 # ///                    No-force type and application                     /// #
 # //////////////////////////////////////////////////////////////////////////// #
 
@@ -56,16 +109,14 @@ For `components=(i, j)`, the forward operator applies
 `out[i] += Ro*u[j]` and `out[j] -= Ro*u[i]`; both signs reverse for continuous
 and discrete adjoints.
 
-The default `components=(1, 2)` is rotation about the third Cartesian axis for
-velocity ordered as `(u, v, w)`. RPCF uses `components=(3, 1)` because its 2D3C
-state is ordered as wall-normal, spanwise, and streamwise velocity.
+The default `components=(1, 2)` is rotation about the third Cartesian axis for velocity ordered as
+`(u,v)` or `(u,v,w)`. A streamwise-invariant channel uses `components=(3,1)` because its 2D3C state
+is ordered as wall-normal, spanwise, and streamwise velocity.
 
 `rotation_number` is the nondimensional coefficient multiplying the Coriolis
-acceleration. In the channel and RPCF conventions it is
-`Ro = 2Ωh/U_ref`, where `Ω` is angular velocity, `h` is the channel half-height,
-and `U_ref` is the reference velocity (the wall speed `U_w` for RPCF). The
-component tuple fixes the projected sign convention explicitly, avoiding any
-ambiguity introduced by a case's velocity ordering.
+acceleration. In the channel convention it is `Ro = 2Ωh/U_ref`, where `Ω` is angular velocity, `h`
+is the channel half-height, and `U_ref` is the reference velocity. The component tuple fixes the
+projected sign convention explicitly, avoiding ambiguity introduced by a case's velocity ordering.
 
 # Fields
 
@@ -73,9 +124,9 @@ ambiguity introduced by a case's velocity ordering.
 - `components`: distinct velocity-component indices `(i, j)` coupled by the
   skew-symmetric operator. Both indices must lie in `1:3`.
 
-Because the forward coupling is skew-symmetric, its discrete and continuous
-adjoints are its negative; no grid-dependent adjoint data are required. The
-force acts on a three-component [`VectorField`](@ref).
+Because the forward coupling is skew-symmetric, its discrete and continuous adjoints are its
+negative; no grid-dependent adjoint data are required. The force acts on any [`VectorField`](@ref)
+that contains both selected components.
 """
 struct CoriolisForce{T, C<:NTuple{2, Int}}
     Ro::T
@@ -89,15 +140,18 @@ function CoriolisForce(rotation_number; components=(1, 2))
     return CoriolisForce(rotation_number, components)
 end
 
-function (f::CoriolisForce)(out::VectorField{3}, v::VectorField{3}, ::Forward)
+function (f::CoriolisForce)(out::VectorField{N}, v::VectorField{N}, ::Forward) where {N}
     i, j = f.components
+    max(i, j) <= N || throw(ArgumentError("Coriolis components must lie in 1:$N for this field"))
     @. out[i] += f.Ro * v[j]
     @. out[j] -= f.Ro * v[i]
     return out
 end
 
-function (f::CoriolisForce)(out::VectorField{3}, v::VectorField{3}, ::Union{AdjointDiscrete, AdjointContinuous})
+function (f::CoriolisForce)(out::VectorField{N}, v::VectorField{N},
+                            ::Union{AdjointDiscrete, AdjointContinuous}) where {N}
     i, j = f.components
+    max(i, j) <= N || throw(ArgumentError("Coriolis components must lie in 1:$N for this field"))
     @. out[i] -= f.Ro * v[j]
     @. out[j] += f.Ro * v[i]
     return out
@@ -121,6 +175,14 @@ so the same value is added at every wall-normal channel point or every `(x,y)`
 duct collocation point. It is applied in nonlinear, forward-linearised, and
 adjoint-linearised equation modes, matching the forcing convention of the
 original flow packages.
+
+!!! warning "Affine LNSE convention"
+    In a linearised call this policy adds a state-independent constant, so the
+    resulting call is affine rather than linear. It therefore cannot be part
+    of a forward/discrete-adjoint inner-product identity. Such an identity
+    applies only to the linear hydrodynamic operator and to force policies
+    whose `AdjointDiscrete()` action transposes their `Forward()` action; see
+    [`AdjointDiscrete`](@ref).
 
 # Fields
 

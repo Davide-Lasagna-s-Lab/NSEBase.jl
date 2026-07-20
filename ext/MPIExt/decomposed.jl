@@ -355,7 +355,10 @@ rescaling each local slab independently would incorrectly assign wall values
 `-1` and `1` on every rank.
 """
 function NSEBase.plane_couette_base(g::Union{
-        DecomposedGrid{T, 3, NSEBase.CHANNEL_2D3C_AXES, NSEBase.CHANNEL_2D3C_FFT_ORDER},
+        DecomposedGrid{T, 3, NSEBase.STREAMWISE_INVARIANT_CHANNEL_AXES,
+                       NSEBase.STREAMWISE_INVARIANT_CHANNEL_FFT_ORDER},
+        DecomposedGrid{T, 3, NSEBase.TWO_DIMENSIONAL_CHANNEL_AXES,
+                       NSEBase.TWO_DIMENSIONAL_CHANNEL_FFT_ORDER},
         DecomposedGrid{T, 4, NSEBase.CHANNEL_3D_AXES, NSEBase.CHANNEL_3D_FFT_ORDER},
     }) where {T}
     dim = only(NSEBase.inhomogeneous_storage_dims(g))

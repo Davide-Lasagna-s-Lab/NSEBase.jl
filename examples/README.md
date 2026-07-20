@@ -13,7 +13,8 @@ Production calculations normally retain the case defaults
 `fftw_flags=FFTW.EXHAUSTIVE` and `dealias=true`.
 
 - `channel.jl`: plane Couette and plane Poiseuille flow
+- `streamwise_invariant_channel.jl`: streamwise-invariant rotating plane Couette flow
+- `two_dimensional_channel.jl`: two-dimensional plane Poiseuille flow
 - `duct.jl`: square-duct flow and the historical positional-width constructor
 - `lid_driven_cavity.jl`: 2D cavity construction with an explicit lid lifting
-- `rpcf.jl`: streamwise-independent rotating plane Couette flow
-- `rayleigh_benard.jl`: Boussinesq convection around the conduction state
+- `rayleigh_benard.jl`: two- and three-dimensional Boussinesq convection around the conduction state

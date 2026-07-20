@@ -7,6 +7,19 @@ case_wall_poly(y) = @. 1 - y^2
 case_wall_poly2(y) = @. (1 - y^2)^2
 case_wall_sine(y) = @. sin(π * y)
 
+# Exact bounded-domain integrals used by the case-level norm tests.
+const CASE_UNIT_BUBBLE_NORM2 = 1 // 30
+const CASE_WALL_POLY_NORM2 = 16 // 15
+
+# The case-level Fourier tests use odd nine-point grids, whose distinct wavenumbers are
+# `0:4`. This band-limited profile gives every one of those modes a nonzero coefficient,
+# so it exercises the complete Fourier operator while retaining exact derivative and norm
+# references. In particular, its mean square over one period is `2133 / 2048`.
+case_periodic_profile(ξ) = @. 1 + sin(ξ) / 4 + cos(2ξ) / 8 - sin(3ξ) / 16 + cos(4ξ) / 32
+case_periodic_profile_d1(ξ) = @. cos(ξ) / 4 - sin(2ξ) / 4 - 3cos(3ξ) / 16 - sin(4ξ) / 8
+case_periodic_profile_d2(ξ) = @. -sin(ξ) / 4 - cos(2ξ) / 2 + 9sin(3ξ) / 16 - cos(4ξ) / 2
+const CASE_PERIODIC_PROFILE_NORM2 = 2133 // 2048
+
 function case_grown_size(g, target)
     result = collect(size(g))
     for (dim, n) in zip(fft_storage_dims(g), target)
@@ -112,6 +125,12 @@ function case_reference_dot(u::FTField, v::FTField)
         result += (I[rfft_dim] == 1 ? 1 : 2) * ws[weight_index...] * real(conj(parent(u)[I]) * parent(v)[I])
     end
     return result
+end
+
+function case_physical_dot(g, u, v=u)
+    weight_shape = ntuple(dim -> dim in inhomogeneous_storage_dims(g) ? size(g, dim) : 1, ndims(u))
+    normalization = prod(size(g, dim) for dim in fft_storage_dims(g))
+    return sum(reshape(weights(g), weight_shape) .* conj.(u) .* v) / normalization
 end
 
 function case_polynomial_value(poly, x, y)

@@ -1,9 +1,11 @@
 @testset verbose=true "Rectangular grids                                           " begin
     channel = ChannelGrid(7, 13, 5; Nt=1, α=1, β=1, width=3)
+    @test channel isa ChannelGrid
     @test channel isa RectangularGrid{1}
     @test channel isa AbstractChannel3DGrid
     @test channel isa AbstractChannelGrid
-    @test !(channel isa AbstractChannel2D3CGrid)
+    @test !(channel isa AbstractStreamwiseInvariantChannelGrid)
+    @test !(channel isa AbstractTwoDimensionalChannelGrid)
     @test size(channel) == (13, 7, 5, 1)
     @test fft_physical_dims(channel) == (:x, :z, :t)
     @test inhomogeneous_physical_dims(channel) == (:y,)
@@ -130,6 +132,12 @@
     @test CoriolisForce(0.2).Ro == 0.2
     @test applicable(PlaneCouetteFlow, channel, 100)
     @test applicable(PlanePoiseuilleFlow, channel, 100)
+    streamwise_channel = StreamwiseInvariantChannelGrid(9, 7; width=3)
+    two_dimensional_channel = TwoDimensionalChannelGrid(7, 9; width=3)
+    @test applicable(PlaneCouetteFlow, streamwise_channel, 100)
+    @test applicable(PlaneCouetteFlow, two_dimensional_channel, 100)
+    @test applicable(PlanePoiseuilleFlow, streamwise_channel, 100)
+    @test applicable(PlanePoiseuilleFlow, two_dimensional_channel, 100)
     @test square_duct isa AbstractSquareDuctGrid
     @test applicable(SquareDuctFlow, duct, 100)
     @test applicable(LidDrivenCavityFlow, cavity, 100)

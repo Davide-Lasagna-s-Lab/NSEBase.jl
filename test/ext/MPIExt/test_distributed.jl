@@ -10,6 +10,7 @@
 #   - `growto` and `convert` round-trip preserving comm/dims/halo widths
 
 using Test
+using LinearAlgebra
 
 import MPI
 
@@ -157,15 +158,38 @@ end
     expected_base = @. 2 * (local_y - y₋) / (y₊ - y₋) - 1
     @test equations.base[1] ≈ expected_base
 
-    reduced_parent = ChannelGrid(Ny, Nz; Nt, β=1, lim=(2, 6), width=3)
-    reduced_grid = distributed(reduced_parent, base_comm; decomposed_physical_dims=(:x,),
-                               nprocesses=(nranks,), nhalo=(NHALO,))
-    reduced = PlaneCouetteFlow(reduced_grid, 100; fftw_flags=FFTW.ESTIMATE, dealias=false)
-    reduced_y = vec(points(reduced_grid)[only(inhomogeneous_storage_dims(reduced_grid))])
-    reduced_expected = @. 2 * (reduced_y - y₋) / (y₊ - y₋) - 1
+    streamwise_parent = StreamwiseInvariantChannelGrid(Ny, Nz; Nt, β=1, lim=(2, 6), width=3)
+    streamwise_grid = distributed(streamwise_parent, base_comm; decomposed_physical_dims=(:y,),
+                                  nprocesses=(nranks,), nhalo=(NHALO,))
+    streamwise = PlaneCouetteFlow(streamwise_grid, 100; fftw_flags=FFTW.ESTIMATE, dealias=false)
+    streamwise_y = vec(points(streamwise_grid)[only(inhomogeneous_storage_dims(streamwise_grid))])
+    streamwise_expected = @. 2 * (streamwise_y - y₋) / (y₊ - y₋) - 1
+
+    two_dimensional_parent = TwoDimensionalChannelGrid(Nx, Ny; Nt, α=1, lim=(2, 6), width=3)
+    two_dimensional_grid = distributed(two_dimensional_parent, base_comm; decomposed_physical_dims=(:y,),
+                                       nprocesses=(nranks,), nhalo=(NHALO,))
+    two_dimensional = PlanePoiseuilleFlow(two_dimensional_grid, 100;
+                                          fftw_flags=FFTW.ESTIMATE, dealias=false)
+    two_dimensional_convection = RayleighBenardFlow(two_dimensional_grid, 1, 0.71, 1000;
+                                                    fftw_flags=FFTW.ESTIMATE, dealias=false)
+    convection_state = VectorField(two_dimensional_grid; N=3)
+    add_base_flow!(convection_state, two_dimensional_convection.base)
+    convection_residual = two_dimensional_convection.nl(0.0, convection_state, similar(convection_state))
+    two_dimensional_y = vec(points(two_dimensional_grid)[only(inhomogeneous_storage_dims(two_dimensional_grid))])
+    two_dimensional_expected = @. 1 - (2 * (two_dimensional_y - y₋) / (y₊ - y₋) - 1)^2
+    two_dimensional_temperature = @. (1 - (2 * (two_dimensional_y - y₋) / (y₊ - y₋) - 1)) / 2
+
     @test case_grid isa AbstractChannel3DGrid{Float64}
-    @test reduced_grid isa AbstractChannel2D3CGrid{Float64}
-    @test reduced.base[3] ≈ reduced_expected
+    @test streamwise_grid isa AbstractStreamwiseInvariantChannelGrid{Float64}
+    @test MPIExt.decomposition_physical_dims(streamwise_grid) == (:y,)
+    @test streamwise.base[3] ≈ streamwise_expected
+    @test two_dimensional_grid isa AbstractTwoDimensionalChannelGrid{Float64}
+    @test two_dimensional.base[1] ≈ two_dimensional_expected
+    @test two_dimensional_convection.nl isa CartesianPrimitive2DBoussinesqNSE
+    @test two_dimensional_convection.base[3] ≈ two_dimensional_temperature
+    @test norm(convection_residual[1]) < 1e-12
+    @test convection_residual[2] ≈ two_dimensional_convection.nl.Ri .* convection_state[3] atol=1e-12
+    @test norm(convection_residual[3]) < 1e-10
 end
 
 MPI.free(base_comm)

@@ -18,11 +18,19 @@ end
     @test cavity.grid isa AbstractLidDrivenCavityGrid
     @test cavity.equations isa ProjectedNSE
 
-    rpcf = include_example("rpcf.jl")
-    @test rpcf.grid isa AbstractChannel2D3CGrid
-    @test rpcf.equations isa ProjectedNSE
+    streamwise_invariant = include_example("streamwise_invariant_channel.jl")
+    @test streamwise_invariant.grid isa AbstractStreamwiseInvariantChannelGrid
+    @test streamwise_invariant.equations isa ProjectedNSE
+
+    two_dimensional = include_example("two_dimensional_channel.jl")
+    @test two_dimensional.grid isa AbstractTwoDimensionalChannelGrid
+    @test two_dimensional.equations isa ProjectedNSE
 
     convection = include_example("rayleigh_benard.jl")
-    @test convection.grid isa AbstractChannel3DGrid
-    @test convection.equations isa ProjectedNSE
+    @test convection.two_dimensional.grid isa AbstractTwoDimensionalChannelGrid
+    @test convection.two_dimensional.equations isa ProjectedNSE
+    @test convection.two_dimensional.state isa VectorField{3}
+    @test convection.three_dimensional.grid isa AbstractChannel3DGrid
+    @test convection.three_dimensional.equations isa ProjectedNSE
+    @test convection.three_dimensional.state isa VectorField{4}
 end

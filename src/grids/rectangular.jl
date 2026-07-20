@@ -65,10 +65,10 @@ projection basis or residual formulation remains responsible for imposing
 wall values, including a moving cavity lid.
 
 Users should normally use a case constructor such as [`ChannelGrid`](@ref),
-[`SquareDuctGrid`](@ref), or [`LidDrivenCavityGrid`](@ref). `ChannelGrid`
-selects either the streamwise-independent or full-channel layout from the
-number of spatial resolutions. Use the low-level constructor when supplying
-custom collocation data or derivative operators.
+[`StreamwiseInvariantChannelGrid`](@ref), [`TwoDimensionalChannelGrid`](@ref),
+[`SquareDuctGrid`](@ref), or [`LidDrivenCavityGrid`](@ref). The explicit invariant-channel names
+distinguish which homogeneous physical direction is absent. Use the low-level constructor when
+supplying custom collocation data or derivative operators.
 
 See also: [`points`](@ref), [`growto`](@ref), [`wavenumber_scale`](@ref),
 [`derivative_matrix`](@ref).

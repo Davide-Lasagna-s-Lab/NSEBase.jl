@@ -408,7 +408,7 @@ end
         channel_force = ConstantBodyForce(1.0; component=1)
         duct_force = ConstantBodyForce(1.0; component=3)
         channel_rotation = CoriolisForce(0.2)
-        rpcf_rotation = CoriolisForce(0.2; components=(3, 1))
+        streamwise_invariant_rotation = CoriolisForce(0.2; components=(3, 1))
 
         @test allocs_after_warmup(() -> NoForce()(out, nothing, Forward())) == 0
         @test allocs_after_warmup(() -> CompoundForcing(NoForce(), alloc_noop_force!)) == 0
@@ -416,7 +416,8 @@ end
         @test allocs_after_warmup(() -> channel_force(vectors.channel.out, vectors.channel.u, Forward())) == 0
         @test allocs_after_warmup(() -> duct_force(vectors.duct.out, vectors.duct.u, AdjointDiscrete())) == 0
         @test allocs_after_warmup(() -> channel_rotation(vectors.channel.out, vectors.channel.u, Forward())) == 0
-        @test allocs_after_warmup(() -> rpcf_rotation(vectors.channel.out, vectors.channel.u, AdjointContinuous())) == 0
+        @test allocs_after_warmup(() -> streamwise_invariant_rotation(
+            vectors.channel.out, vectors.channel.u, AdjointContinuous())) == 0
     end
 
     @testset verbose=true "src/equations/shared.jl                                     " begin
@@ -441,6 +442,45 @@ end
         @test allocs_after_warmup(() -> CartesianPrimitive2DLNSE(g, 100.0; mode=AdjointDiscrete(), flags=FFTW.ESTIMATE)) > 0
         # Equation actions call RectangularGrid's FDGrids derivatives internally;
         # on Julia < 1.11 mul! allocates with --check-bounds=yes.
+        if VERSION >= v"1.11"
+            @test allocs_after_warmup(() -> eq(0.0, q, out)) == 0
+            @test allocs_after_warmup(() -> ln(0.0, q, out)) == 0
+            @test allocs_after_warmup(() -> ln(0.0, q, q, out)) == 0
+        end
+    end
+
+    @testset verbose=true "src/equations/cartesianprimitive_2d_boussinesq.jl           " begin
+        g = TwoDimensionalChannelGrid(3, 9; Nt=1, α=1, width=3)
+        q, out = VectorField(g; N=3), VectorField(g; N=3)
+        formulation = CartesianPrimitive2DBoussinesq(0.71, 2.0)
+        eq = CartesianPrimitive2DBoussinesqNSE(
+            g, 100.0, formulation; flags=FFTW.ESTIMATE, dealias=false)
+        ln = CartesianPrimitive2DBoussinesqLNSE(
+            g, 100.0, formulation; mode=AdjointDiscrete(), flags=FFTW.ESTIMATE, dealias=false)
+
+        @test allocs_after_warmup(() -> NSEBase._check_cartesian_2d_boussinesq_grid(g)) == 0
+        @test allocs_after_warmup(() -> CartesianPrimitive2DBoussinesq(0.71, 2.0)) == 0
+        @test allocs_after_warmup(() -> CartesianPrimitive2DBoussinesqNSE(
+            g, 100.0, formulation; flags=FFTW.ESTIMATE, dealias=false)) > 0
+        @test allocs_after_warmup(() -> CartesianPrimitive2DBoussinesqLNSE(
+            g, 100.0, formulation; mode=AdjointDiscrete(), flags=FFTW.ESTIMATE, dealias=false)) > 0
+        if VERSION >= v"1.11"
+            @test allocs_after_warmup(() -> eq(0.0, q, out)) == 0
+            @test allocs_after_warmup(() -> ln(0.0, q, out)) == 0
+            @test allocs_after_warmup(() -> ln(0.0, q, q, out)) == 0
+        end
+    end
+
+    @testset verbose=true "src/equations/cartesianprimitive_2d3c.jl                    " begin
+        g = StreamwiseInvariantChannelGrid(9, 3; Nt=1, β=1, width=3)
+        q, out = VectorField(g; N=3), VectorField(g; N=3)
+        eq = CartesianPrimitive2D3CNSE(g, 100.0; flags=FFTW.ESTIMATE)
+        ln = CartesianPrimitive2D3CLNSE(g, 100.0; mode=AdjointDiscrete(), flags=FFTW.ESTIMATE)
+
+        @test allocs_after_warmup(() -> NSEBase._check_cartesian_2d3c_grid(g)) == 0
+        @test allocs_after_warmup(() -> CartesianPrimitive2D3CNSE(g, 100.0; flags=FFTW.ESTIMATE)) > 0
+        @test allocs_after_warmup(() -> CartesianPrimitive2D3CLNSE(
+            g, 100.0; mode=AdjointDiscrete(), flags=FFTW.ESTIMATE)) > 0
         if VERSION >= v"1.11"
             @test allocs_after_warmup(() -> eq(0.0, q, out)) == 0
             @test allocs_after_warmup(() -> ln(0.0, q, out)) == 0

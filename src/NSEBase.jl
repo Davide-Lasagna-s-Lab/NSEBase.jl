@@ -7,10 +7,15 @@ export FFTW
 
 export AbstractGrid
 export RectangularGrid
-export AbstractChannelGrid, AbstractChannel2D3CGrid, AbstractChannel3DGrid, AbstractSquareDuctGrid
+export AbstractChannelGrid, AbstractStreamwiseInvariantChannelGrid
+export AbstractTwoDimensionalChannelGrid, AbstractChannel3DGrid, AbstractSquareDuctGrid
 export AbstractLidDrivenCavityGrid, AbstractLidDrivenCavity3DGrid
-export ChannelGrid, SquareDuctGrid, LidDrivenCavityGrid
-export CHANNEL_2D3C_AXES, CHANNEL_2D3C_FFT_ORDER, CHANNEL_2D3C_INHOMOGENEOUS_DIMS
+export ChannelGrid, StreamwiseInvariantChannelGrid, TwoDimensionalChannelGrid
+export SquareDuctGrid, LidDrivenCavityGrid
+export STREAMWISE_INVARIANT_CHANNEL_AXES, STREAMWISE_INVARIANT_CHANNEL_FFT_ORDER
+export STREAMWISE_INVARIANT_CHANNEL_INHOMOGENEOUS_DIMS
+export TWO_DIMENSIONAL_CHANNEL_AXES, TWO_DIMENSIONAL_CHANNEL_FFT_ORDER
+export TWO_DIMENSIONAL_CHANNEL_INHOMOGENEOUS_DIMS
 export CHANNEL_3D_AXES, CHANNEL_3D_FFT_ORDER, CHANNEL_3D_INHOMOGENEOUS_DIMS
 export SQUARE_DUCT_AXES, SQUARE_DUCT_FFT_ORDER, SQUARE_DUCT_INHOMOGENEOUS_DIMS
 export LID_DRIVEN_CAVITY_2D_AXES, LID_DRIVEN_CAVITY_2D_FFT_ORDER, LID_DRIVEN_CAVITY_2D_INHOMOGENEOUS_DIMS
@@ -37,15 +42,16 @@ export FarazmandWeight
 export CartesianPrimitive3DNSE, CartesianPrimitive3DLNSE
 export CartesianPrimitive2DNSE, CartesianPrimitive2DLNSE
 export CartesianPrimitive2D3CNSE, CartesianPrimitive2D3CLNSE
+export CartesianPrimitive2DBoussinesqNSE, CartesianPrimitive2DBoussinesqLNSE
 export CartesianPrimitive3DBoussinesqNSE, CartesianPrimitive3DBoussinesqLNSE
 export Forward, AdjointContinuous, AdjointDiscrete, NoForce, CompoundForcing, Mode
 export construct_equations, CartesianPrimitive3D, CartesianPrimitive2D, CartesianPrimitive2D3C, PolarPrimitive
-export CartesianPrimitive3DBoussinesq
+export CartesianPrimitive2DBoussinesq, CartesianPrimitive3DBoussinesq
 export ncomp, cache_length, nonlinear_operator, linearised_operator
 export ProjectedNSE
 export PlaneCouetteFlow, PlanePoiseuilleFlow, SquareDuctFlow, LidDrivenCavityFlow
 export RayleighBenardFlow
-export plane_couette_base, plane_poiseuille_base, rpcf_base, rbc_base_temperature
+export plane_couette_base, plane_poiseuille_base, rbc_base_temperature
 export CoriolisForce, ConstantBodyForce
 
 include("notimplementederror.jl")
@@ -70,6 +76,7 @@ include("cases/forcings.jl")
 include("equations/cartesianprimitive_3d.jl")
 include("equations/cartesianprimitive_2d.jl")
 include("equations/cartesianprimitive_2d3c.jl")
+include("equations/cartesianprimitive_2d_boussinesq.jl")
 include("equations/cartesianprimitive_3d_boussinesq.jl")
 include("equations/projectednse.jl")
 include("equations/shared.jl")
