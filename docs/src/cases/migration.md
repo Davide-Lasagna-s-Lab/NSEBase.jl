@@ -1,8 +1,8 @@
 # Migrating from case packages
 
-The former channel, square-duct, cavity, RPCF, and Rayleigh–Bénard packages
-duplicated grid storage and interface methods. Their case constructors now use
-NSEBase's shared `RectangularGrid` implementation.
+The former channel, square-duct, cavity, rotating-Couette, and
+Rayleigh–Bénard packages duplicated grid storage and interface methods. Their
+case constructors now use NSEBase's shared `RectangularGrid` implementation.
 
 ## Package mapping
 
@@ -11,29 +11,31 @@ NSEBase's shared `RectangularGrid` implementation.
 | ReSolver-ChannelFlow.jl | `ChannelGrid`, `PlaneCouetteFlow`, `PlanePoiseuilleFlow` |
 | ReSolver-SquareDuct.jl | `SquareDuctGrid`, `SquareDuctFlow` |
 | Resolver-LidDrivenCavity.jl | `LidDrivenCavityGrid`, `LidDrivenCavityFlow` |
-| ReSolver-RPCF.jl | 2D3C `ChannelGrid`, `PlaneCouetteFlow` |
-| ReSolver-RayleighBenard.jl | 3D `ChannelGrid`, `RayleighBenardFlow` |
+| ReSolver-RPCF.jl | `StreamwiseInvariantChannelGrid`, `PlaneCouetteFlow` |
+| ReSolver-RayleighBenard.jl | `TwoDimensionalChannelGrid` or 3D `ChannelGrid`, `RayleighBenardFlow` |
 
-Replace package imports with `using NSEBase`. RPCF and Rayleigh–Bénard no
-longer define semantic grid aliases: their geometry is selected directly by
-the common channel factory.
+Replace package imports with `using NSEBase`. ReSolver-RPCF.jl maps to an
+explicitly named streamwise-invariant constructor. Rayleigh–Bénard can use the
+physical two-dimensional channel or the original full channel layout.
 
 ## Channel constructors
 
-The preferred constructors follow the same dimensional pattern as
-`LidDrivenCavityGrid`:
+The preferred constructors name the reduced physical formulation explicitly:
 
 ```julia
-ChannelGrid(Ny, Nz; Nt=1, β=1, ...)                 # streamwise-independent 2D3C
-ChannelGrid(Nx, Ny, Nz; Nt=1, α=1, β=1, ...)        # full 3D / Rayleigh–Bénard
+StreamwiseInvariantChannelGrid(Ny, Nz; Nt=1, β=1, ...) # wall-normal–spanwise 2D3C
+TwoDimensionalChannelGrid(Nx, Ny; Nt=1, α=1, ...)      # planar flow / Rayleigh–Bénard
+ChannelGrid(Nx, Ny, Nz; Nt=1, α=1, β=1, ...)           # full 3D / Rayleigh–Bénard
 ```
 
-The number of positional resolutions selects the layout. This removes the
-low-level axis and FFT parameters from user code and makes a steady 3D call
-unambiguous. Two compact forms are also available:
+This removes low-level axis and FFT parameters from user code without making
+the meaning of a two-resolution call depend on argument position. Compact
+forms place every resolution first, followed by the stencil width and Fourier
+scales:
 
 ```julia
-ChannelGrid(Ny, Nz, Nt, width, β)
+StreamwiseInvariantChannelGrid(Ny, Nz, Nt, width, β)
+TwoDimensionalChannelGrid(Nx, Ny, Nt, width, α)
 ChannelGrid(Nx, Ny, Nz, Nt, width, α, β)
 ```
 
@@ -48,28 +50,33 @@ ReSolver-ChannelFlow form is also restored:
 
 ## Channel layout dispatch
 
-Use `AbstractChannel2D3CGrid` for the streamwise-independent `(y,z,t)` layout,
+Use `AbstractStreamwiseInvariantChannelGrid` for the `(y,z,t)` 2D3C layout,
+`AbstractTwoDimensionalChannelGrid` for the `(y,x,t)` planar layout,
 `AbstractChannel3DGrid` for the full `(y,x,z,t)` layout, and
-`AbstractChannelGrid` when either is valid. These structural contracts accept
-the bundled serial grid, MPI-decomposed grids, and compatible downstream
-implementations. `ChannelGrid` itself is a factory function, not a concrete
-type, so replace `g isa ChannelGrid` with the appropriate abstract contract.
+`AbstractChannelGrid` when all channel layouts are valid. These structural
+contracts accept the bundled serial grid, MPI-decomposed grids, and compatible
+downstream implementations. The high-level names are factory functions, not
+concrete types, so type checks should use the appropriate abstract contract.
 
-`PlaneCouetteFlow` now dispatches on both layouts. Full-channel state ordering
-is `(u,v,w)` with the base in component one; the 2D3C ordering is `(v,w,u)`
-with the base in component three. `PlanePoiseuilleFlow` and
-`RayleighBenardFlow` require the full 3D layout.
+`PlaneCouetteFlow` and `PlanePoiseuilleFlow` dispatch on all three layouts.
+Full-channel state ordering is `(u,v,w)` with the streamwise base and force in
+component one; the streamwise-invariant 2D3C ordering is `(v,w,u)` with them
+in component three. The two-dimensional layout uses state `(u,v)` and base `(U,nothing)`.
+`RayleighBenardFlow` accepts the two-dimensional and full 3D layouts. Their
+states are `(u,v,θ)` and `(u,v,w,θ)`, respectively; the streamwise-invariant
+`(y,z)` layout is intentionally not a Rayleigh–Bénard case.
 
-The 2D3C axis map is computational: its `x` coordinate is physical
-wall-normal position and its `y` coordinate is physical spanwise position, as
-required by `CartesianPrimitive2D3C`. Thus MPI decomposition of this layout
-uses computational physical symbol `:x`; full-channel wall-normal decomposition
-uses `:y`.
+The streamwise-invariant 2D3C axis map is `(nothing,1,2,3)`: physical
+streamwise `x` is absent, wall-normal `y` occupies storage dimension 1,
+spanwise `z` occupies dimension 2, and `t` occupies dimension 3. Thus `ddy!`
+is the wall-normal derivative, `ddz!` is the spanwise derivative, and MPI
+wall-normal decomposition uses physical symbol `:y`, just as it does for the two-dimensional and
+full layouts.
 
 ## Function-valued field construction
 
 Functions passed to `Field` and `VectorField` no longer follow array storage
-order. They always receive four arguments in the grid's logical `(x,y,z,t)`
+order. They always receive four arguments in physical `(x,y,z,t)`
 order, with `nothing` for an absent coordinate. In particular, migrate a full
 channel initializer from
 
@@ -83,11 +90,12 @@ to
 u(x, y, z, t) = (1 - y^2) * cos(x) * sin(z)
 ```
 
-A 2D-cavity callable receives `(x,y,nothing,t)`, while a computational 2D3C
-channel callable receives `(y,z,nothing,t)` because its logical `x` and `y`
-coordinates intentionally represent wall-normal and spanwise position.
-`points(grid)` itself remains in storage order; only the function-valued field
-constructors perform this permutation.
+A 2D-cavity or two-dimensional channel callable receives
+`(x,y,nothing,t)`. A streamwise-invariant 2D3C callable receives
+`(nothing,y,z,t)`: the first argument records the absent physical streamwise
+coordinate rather than relabelling the active wall-normal and spanwise
+coordinates. `points(grid)` itself remains in storage order; only the
+function-valued field constructors perform this permutation.
 
 ## Other grid factories
 
@@ -150,7 +158,7 @@ explicit:
 ```julia
 ConstantBodyForce(value; component=1)       # full-channel streamwise force
 CoriolisForce(Ro)                           # full-channel pair (1,2)
-CoriolisForce(Ro; components=(3,1))         # 2D3C Couette pair
+CoriolisForce(Ro; components=(3,1))         # streamwise-invariant 2D3C pair
 ```
 
 The flow constructors select these conventions automatically.

@@ -8,9 +8,10 @@ Rectangular wall-bounded cases are included directly. Separate geometry
 packages are no longer required for:
 
 - plane Couette and plane Poiseuille flow;
+- streamwise-invariant rotating plane Couette flow;
+- two-dimensional plane Poiseuille flow;
 - square-duct flow;
 - lid-driven cavities;
-- streamwise-independent rotating plane Couette flow (RPCF); and
 - Rayleigh–Bénard convection.
 
 All of these cases use one concrete `RectangularGrid{NI}` backed by FDGrids.
@@ -45,6 +46,17 @@ poiseuille = PlanePoiseuilleFlow(grid, 500; f=1, fftw_flags=FFTW.ESTIMATE, deali
 `grid` stores arrays as `(y,x,z,t)`, builds the wall-normal FDGrids operators
 and quadrature-weighted adjoints, and uses Fourier periods `2π/α`, `2π/β`,
 and `1`. The flow constructors return `ProjectedNSE` operator bundles.
+
+Dimensionally reduced channels use constructors that state their physical formulation explicitly:
+
+```julia
+streamwise_invariant = StreamwiseInvariantChannelGrid(17, 9; β=0.5, width=5)
+two_dimensional = TwoDimensionalChannelGrid(9, 17; α=0.5, width=5)
+```
+
+The first is a wall-normal–spanwise 2D3C grid with state `(v,w,u)`. The second
+is a streamwise–wall-normal 2D grid: hydrodynamic cases use `(u,v)`, while
+Rayleigh–Bénard convection uses `(u,v,θ)`.
 
 See [`examples/`](examples/) for runnable constructors for every bundled case
 and [`docs/`](docs/) for conventions, custom-grid construction, boundary-condition

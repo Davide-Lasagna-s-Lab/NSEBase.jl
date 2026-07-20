@@ -6,8 +6,8 @@ provides physical and spectral field types, and assembles nonlinear, linearised,
 continuous-adjoint, and discrete-adjoint primitive-variable equations.
 
 The package now includes concrete rectangular grids and complete case
-constructors. Users can build channels, square ducts, cavities, RPCF, and
-Rayleigh–Bénard systems without installing a geometry-specific grid package.
+constructors. Users can build full, streamwise-invariant, and two-dimensional channels, square
+ducts, cavities, and Rayleigh–Bénard systems without installing a geometry-specific grid package.
 
 ## First example
 

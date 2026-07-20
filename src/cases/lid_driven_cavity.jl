@@ -1,4 +1,71 @@
 # ////////////////////////////////////////////////////////////////////////////////////////////// #
+# ///   Lid-driven-cavity grids and flows                                                    /// #
+# ////////////////////////////////////////////////////////////////////////////////////////////// #
+#
+# This file defines the complete lid-driven-cavity family: layout constants and contracts, 2D and
+# 3D `LidDrivenCavityGrid` factories, and the matching `LidDrivenCavityFlow` constructors. A cavity
+# is a viscous enclosure driven by tangential motion of a wall—conventionally the upper `y` wall
+# moving in `x`. The supplied case has no inlet, outlet, or pressure-gradient forcing.
+#
+# Physical and numerical variants
+#
+# - The planar case stores `(x,y,t)` and evolves `(u,v)`. Both spatial directions are bounded and
+#   use FDGrids; `t` is unit-period Fourier time or phase, with `Nt=1` for no dependence on it.
+# - The periodic-spanwise 3D case stores `(x,y,z,t)` and evolves `(u,v,w)`. The bounded `(x,y)`
+#   cross-section uses FDGrids, while `z` is Fourier-periodic with physical length `Lz`.
+# - The bounded 3D case has the same storage and state order, but all of `(x,y,z)` use FDGrids and
+#   only the unit-period time or phase coordinate is Fourier transformed.
+#
+# Bounded intervals default to `[0,1]` and may independently override their point distribution and
+# stencil width. `Nt=1` gives the usual steady problem. The factories construct coordinates,
+# product quadrature, first and second derivatives, and quadrature-weighted adjoints.
+#
+# Boundary data and base lifting
+#
+# A moving lid is an inhomogeneous boundary condition, not grid metadata. `LidDrivenCavityFlow`
+# therefore requires `base=(U,V)` in 2D or `base=(U,V,W)` in 3D; `nothing` skips a component. This
+# lifting carries the prescribed lid values and is added only to the zero Fourier slice, making it
+# independent of time or phase and, for a periodic 3D cavity, independent of `z`. The perturbation
+# basis or residual must then impose homogeneous wall conditions. NSEBase chooses no default lid
+# direction, speed, or corner regularisation because those are physical modelling decisions.
+#
+# Typical use
+#
+# On the default unit square, the following divergence-free polynomial lifting gives regularised
+# upper-lid velocity `u(x,1)=16x²(1-x)²` and zero velocity on the other walls:
+#
+#     grid = LidDrivenCavityGrid(65, 49; width=7)
+#     X, Y, _ = points(grid)
+#     U = @. 16X^2 * (1 - X)^2 * (3Y^2 - 2Y)
+#     V = @. -32X * (1 - X) * (1 - 2X) * Y^2 * (Y - 1)
+#     equations = LidDrivenCavityFlow(grid, 1000; base=(U, V), fftw_flags=FFTW.ESTIMATE)
+#
+# The 3D constructor selects its spanwise model explicitly. A spanwise-independent lifting can reuse
+# the arrays above and omit its third component:
+#
+#     periodic = LidDrivenCavityGrid(65, 49, 31; spanwise=:periodic, Lz=2, width=7)
+#     bounded = LidDrivenCavityGrid(65, 49, 33; spanwise=:bounded, width=7)
+#     equations3d = LidDrivenCavityFlow(periodic, 1000; base=(U, V, nothing),
+#                                       fftw_flags=FFTW.ESTIMATE)
+#
+# Extending the cases
+#
+# The aliases below distinguish planar, bounded-3D, and periodic-3D layouts. A compatible serial or
+# distributed grid must subtype `AbstractGrid` with the exact axis-map and FFT-order parameters and
+# implement its interface. Shared utilities should dispatch on `AbstractLidDrivenCavityGrid`, while
+# equation factories should use the dimension-specific contract so their formulation is unambiguous:
+#
+#     function ForcedCavityFlow(g::NSEBase.AbstractLidDrivenCavity2DGrid, Re; base,
+#                               force=NoForce(), mode=AdjointDiscrete(),
+#                               fftw_flags=FFTW.EXHAUSTIVE, dealias=true)
+#         return construct_equations(g, Re, base, CartesianPrimitive2D(); force, mode,
+#                                    flags=fftw_flags, dealias)
+#     end
+#
+# The 3D extension dispatches on `AbstractLidDrivenCavity3DGrid` and passes
+# `CartesianPrimitive3D()` to `construct_equations`.
+#
+# ////////////////////////////////////////////////////////////////////////////////////////////// #
 # ///   Two-dimensional lid-driven-cavity layout                                             /// #
 # ////////////////////////////////////////////////////////////////////////////////////////////// #
 

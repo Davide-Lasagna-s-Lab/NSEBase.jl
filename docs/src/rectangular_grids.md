@@ -11,7 +11,8 @@ defaults:
 
 ```julia
 channel = ChannelGrid(63, 65, 63; Nt=1, α=0.5, β=1.0, width=7)
-reduced_channel = ChannelGrid(65, 63; Nt=1, β=1.0, width=7)
+streamwise_invariant = StreamwiseInvariantChannelGrid(65, 63; Nt=1, β=1.0, width=7)
+two_dimensional = TwoDimensionalChannelGrid(63, 65; Nt=1, α=0.5, width=7)
 duct = SquareDuctGrid(49, 63, 1, 0.5; width=7)
 cavity = LidDrivenCavityGrid(65, 49; xlim=(-1,1), ylim=(0,1))
 cavity3d = LidDrivenCavityGrid(65, 49, 31; spanwise=:periodic, Lz=2)
@@ -20,8 +21,9 @@ cavity3d = LidDrivenCavityGrid(65, 49, 31; spanwise=:periodic, Lz=2)
 The constructors build collocation points, quadrature, first and second
 derivatives, and quadrature-weighted adjoints. `dist` and `width` set defaults;
 multi-direction cavity grids also accept per-direction forms such as `xdist`,
-`ydist`, `xwidth`, and `ywidth`. The channel factory selects its 2D3C or 3D
-layout from the number of positional spatial resolutions.
+`ydist`, `xwidth`, and `ywidth`. The reduced channel constructors name the
+invariant physical direction explicitly; `ChannelGrid` denotes the full 3D
+layout.
 
 ## Stored data
 

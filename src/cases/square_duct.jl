@@ -1,4 +1,68 @@
 # //////////////////////////////////////////////////////////////////////////// #
+# ///              Square-duct grids and pressure-driven flow              /// #
+# //////////////////////////////////////////////////////////////////////////// #
+#
+# This file defines the complete square-duct case: its layout constants and contracts, the bundled
+# `SquareDuctGrid` factory, and the pressure-driven `SquareDuctFlow` equation constructor.
+#
+# Physical case and equations
+#
+# The domain has bounded cross-section `(x,y)∈[0,1]²`, periodic streamwise direction
+# `z∈[0,2π/α)`, and a unit-period time or phase coordinate `t`; `Nt=1` represents no dependence
+# on that coordinate. The Cartesian velocity state is `(u,v,w)=(u_x,u_y,u_z)`, so component three
+# `w` is streamwise. `SquareDuctFlow` constructs the three-dimensional primitive equations with
+# viscous coefficient `1/Re`.
+#
+# Its default base `(nothing,nothing,nothing)` means that no reference flow is prescribed. To
+# linearise about a laminar duct solution, place its cross-section values in the third entry of
+# `base=(U,V,W)`. The pressure-gradient amplitude `f` is a spatially constant force on component
+# three at the zero `(z,t)` Fourier mode and every cross-section point. Nondimensionalisation remains
+# the caller's choice; with the documented friction scaling, `Re=Reτ` and `f=1` is conventional.
+#
+# Numerical layout
+#
+# `SquareDuctGrid` is a `RectangularGrid{2}` stored as `(x,y,z,t)`. Both bounded directions use one
+# deliberately shared FDGrids discretisation: points, first and second derivatives, quadrature
+# weights, and weighted adjoints have identical object identity in `x` and `y`. The cached product
+# quadrature satisfies `weights(g)[i,j] = g.ws[1][i] * g.ws[2][j]`, while derivatives remain
+# one-dimensional matrix products. Streamwise `z` is the real-to-complex transform with wavenumbers
+# `kα`; `t` is a complex transform with wavenumbers `2πn`. Dealiasing changes only Fourier sizes.
+#
+# Boundary conditions
+#
+# The grid owns geometry, quadrature, and differentiation operators, not boundary conditions. The
+# default Gauss–Lobatto distribution includes the four walls. The caller must supply any base profile
+# with the required wall values; the basis or residual formulation imposes the perturbation or full
+# residual boundary conditions appropriate to the chosen representation.
+#
+# Typical use
+#
+#     grid = SquareDuctGrid(49, 63, 1, 0.5; width=7)
+#     equations = SquareDuctFlow(grid, 2000; f=1, fftw_flags=FFTW.ESTIMATE)
+#
+# To supply a streamwise reference profile:
+#
+#     x, y = grid.xs
+#     W = (x .* (1 .- x)) * transpose(y .* (1 .- y))
+#     equations = SquareDuctFlow(grid, 2000; base=(nothing, nothing, W), f=1,
+#                                fftw_flags=FFTW.ESTIMATE)
+#
+# Extending the case
+#
+# The `AbstractSquareDuctGrid` alias is the exact numerical-layout contract used by the flow
+# constructor. A compatible serial or distributed grid must subtype
+# `AbstractGrid{T,4,SQUARE_DUCT_AXES,SQUARE_DUCT_FFT_ORDER}` and implement its interface. Equal side
+# lengths and shared operator identity are factory guarantees, not abstract-contract requirements. A
+# related duct case can retain the layout while changing its base or forcing policy:
+#
+#     function MyDuctFlow(g::AbstractSquareDuctGrid, Re;
+#                         base=(nothing, nothing, nothing), force=NoForce(),
+#                         mode=AdjointDiscrete(), fftw_flags=FFTW.EXHAUSTIVE, dealias=true)
+#         return construct_equations(g, Re, base, CartesianPrimitive3D(); force, mode,
+#                                    flags=fftw_flags, dealias)
+#     end
+#
+# //////////////////////////////////////////////////////////////////////////// #
 # ///                     Square-duct layout constants                     /// #
 # //////////////////////////////////////////////////////////////////////////// #
 

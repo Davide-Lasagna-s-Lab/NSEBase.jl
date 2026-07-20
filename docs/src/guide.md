@@ -36,9 +36,13 @@ Use `storage_dim`, `physical_dim`, and the `*_physical_dims`/
 Functions passed to `Field(grid, func)` and `VectorField(grid, funcs...)` always
 receive four arguments in physical `(x,y,z,t)` order; absent coordinates are
 `nothing`, and the constructors perform the storage permutation internally.
-The streamwise-independent 2D3C channel is the deliberate exception in physical
-naming: its computational `x` and `y` are physical wall-normal and spanwise
-coordinates so the 2D3C formulation can use `ddx!` and `ddy!` directly.
+There are no coordinate-name exceptions. The streamwise-invariant 2D3C channel
+uses axis map `(nothing,1,2,3)`: physical `x` is absent, `y` is the wall-normal
+storage dimension 1, and `z` is the spanwise storage dimension 2. Its active
+derivatives are therefore `ddy!` and `ddz!`, and a function-valued field
+receives `(nothing,y,z,t)`. `TwoDimensionalChannelGrid` represents only the physical `(x,y)`
+channel, stores it as `(y,x,t)`, and has no spanwise coordinate. Hydrodynamic cases use velocity
+state `(u,v)`; two-dimensional Boussinesq flow adds temperature as `(u,v,θ)`.
 
 ## Homogeneous directions and wavenumbers
 
@@ -142,10 +146,12 @@ constructors select the appropriate formulation:
 | Case | Formulation | State order |
 |:--|:--|:--|
 | Full channel and square duct | `CartesianPrimitive3D` | `(u,v,w)` |
+| Streamwise-invariant channel | `CartesianPrimitive2D3C` | `(v,w,u)` |
+| Two-dimensional channel | `CartesianPrimitive2D` | `(u,v)` |
 | 2D cavity | `CartesianPrimitive2D` | `(u,v)` |
 | 3D cavity | `CartesianPrimitive3D` | `(u,v,w)` |
-| Streamwise-independent channel (RPCF) | `CartesianPrimitive2D3C` | `(v,w,u)` |
-| Rayleigh–Bénard | `CartesianPrimitive3DBoussinesq` | `(u,v,w,θ)` |
+| 2D Rayleigh–Bénard | `CartesianPrimitive2DBoussinesq` | `(u,v,θ)` |
+| 3D Rayleigh–Bénard | `CartesianPrimitive3DBoussinesq` | `(u,v,w,θ)` |
 
 The default linearised mode is `AdjointDiscrete`, appropriate when an exact
 adjoint of the discretised operator is required. `AdjointContinuous` remains
@@ -164,10 +170,11 @@ nonlinear form before the three-argument form when reusing the cached base-flow
 gradients, as required by the current `ProjectedNSE` interface. The underlying
 full operators remain available as `equations.nl` and `equations.ln`.
 
-To add another formulation, define a tag and implement `ncomp`, both
-`cache_length` methods, `nonlinear_operator`, and `linearised_operator`; then
-pass the tag to `construct_equations`. The bundled case constructors are thin
-specialisations of this factory.
+To add a formulation handled by the generic factory, define a tag and implement `ncomp`, both
+`cache_length` methods, `nonlinear_operator`, and `linearised_operator`. A parameterised
+formulation whose operator constructors need additional coefficients can instead overload
+`construct_equations`, as the two Boussinesq formulations do. Bundled case constructors select
+the appropriate factory method and physical defaults.
 
 ## Allocation policy
 

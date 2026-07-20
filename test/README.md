@@ -7,7 +7,7 @@ The suite separates implementation contracts from physical-case regressions. Gen
 - `helpers/rectangular.jl` contains concrete-grid factories and small numerical reference helpers. It defines no grid subtype.
 - `helpers/case_contracts.jl` contains shared assertion harnesses. Calling a harness from two cases executes the assertions twice, so common code does not reduce case coverage.
 - `implementation/` tests accessors, fields, transforms, operators, and equation wrappers independently of a particular flow.
-- `cases/` owns the numerical regressions migrated from the channel, square-duct, lid-driven-cavity, RPCF, and Rayleigh–Bénard packages. Channel tests are split by concern because that legacy suite already had six focused files.
+- `cases/` owns the numerical regressions for full, streamwise-invariant, and two-dimensional channels, square ducts, lid-driven cavities, and Rayleigh–Bénard convection. Channel tests are split by concern because the legacy full-channel suite already had six focused files.
 - `integration/` covers persistence and runnable examples.
 - `performance/` contains warmed allocation contracts.
 - `ext/MPIExt/` runs the production `ChannelGrid` through decomposed-grid subprocess tests.
@@ -28,7 +28,7 @@ Every active regression from the former flow packages has an explicit home:
 
 - ReSolver-ChannelFlow's grid, derivative, shift, norm, weighting, and Cartesian-primitive files map to `cases/channel/`; its hot-loop assertions map to `performance/allocations.jl`, and forcing behavior maps to `cases/forcings.jl`.
 - Resolver-LidDrivenCavity's suite maps to `cases/lid_driven_cavity.jl`.
-- ReSolver-RPCF's suite maps to `cases/rpcf.jl`.
+- ReSolver-RPCF's suite maps to `cases/streamwise_invariant_channel.jl`.
 - ReSolver-RayleighBenard's suite maps to `cases/rayleigh_benard.jl`.
 - ReSolver-SquareDuct's suite maps to `cases/square_duct.jl`.
 
