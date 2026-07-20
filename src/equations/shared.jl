@@ -1,9 +1,9 @@
 # NSE formulation tag types and the `construct_equations` factory function.
 #
-# Each formulation is a plain singleton struct (no fields) that acts as a
-# compile-time tag, selecting which operator types and cache sizes to use.
-# Downstream packages can add new formulations (polar, cylindrical, …) by
-# defining a new struct and implementing the four interface methods below.
+# The velocity-only formulations are singleton tags that select operator types
+# and cache sizes through the four interface methods below. Parameterised
+# formulations such as the 2D and 3D Boussinesq tags carry physical
+# coefficients and specialise `construct_equations` directly.
 #
 # `construct_equations` is the single entry point for building a `ProjectedNSE`
 # object: it allocates shared cache pools, creates FFTW plans, and wires
@@ -14,7 +14,7 @@
 # -------------------------- #
 # Navier-Stokes formulations #
 # -------------------------- #
-"""
+@doc raw"""
     CartesianPrimitive3D
 
 Tag selecting the three-component (u, v, w) Cartesian primitive-variable NSE
@@ -22,10 +22,23 @@ formulation.  Pass `CartesianPrimitive3D()` to [`construct_equations`](@ref) to
 build [`CartesianPrimitive3DNSE`](@ref) and [`CartesianPrimitive3DLNSE`](@ref)
 operators with three velocity components, four spectral-space caches, and eight
 physical-space caches.
+
+For ``\boldsymbol u=(u,v,w)`` and ``\nabla=(\partial_x,\partial_y,\partial_z)``,
+the nonlinear spatial residual is
+
+```math
+\mathcal N_i(\boldsymbol u)=\frac{1}{Re}\nabla^2u_i
+-\sum_{j=1}^3u_j\partial_ju_i+\mathcal F_i(\boldsymbol u),
+\qquad i=1,2,3.
+```
+
+The raw primitive operator does not compute pressure. In a
+[`ProjectedNSE`](@ref), expansion into an admissible divergence-free basis and
+projection of this residual remove the pressure contribution.
 """
 struct CartesianPrimitive3D end
 
-"""
+@doc raw"""
     CartesianPrimitive2D
 
 Tag selecting the two-component (u, v) planar Cartesian primitive-variable NSE
@@ -33,19 +46,47 @@ formulation.  Pass `CartesianPrimitive2D()` to [`construct_equations`](@ref) to
 build [`CartesianPrimitive2DNSE`](@ref) and [`CartesianPrimitive2DLNSE`](@ref)
 operators with two velocity components, three spectral-space caches, and six
 physical-space caches.
+
+For ``\boldsymbol u=(u,v)`` and ``\nabla=(\partial_x,\partial_y)``, the
+implemented residual is
+
+```math
+\mathcal N_i(\boldsymbol u)=\frac{1}{Re}\nabla^2u_i
+-\sum_{j=1}^2u_j\partial_ju_i+\mathcal F_i(\boldsymbol u),
+\qquad i=1,2.
+```
+
+Pressure is omitted from the raw operator and is eliminated by the admissible
+basis when the equation is wrapped in [`ProjectedNSE`](@ref).
 """
 struct CartesianPrimitive2D end
 
-"""
+@doc raw"""
     CartesianPrimitive2D3C
 
-Tag selecting the 2D-3C (u, v, w) Cartesian primitive-variable NSE
-formulation.  Pass `CartesianPrimitive2D3C()` to [`construct_equations`](@ref)
-to build [`CartesianPrimitive2D3CNSE`](@ref) and [`CartesianPrimitive2D3CLNSE`](@ref)
-operators with three velocity components on a two-dimensional spatial grid.
-The in-plane pair (u, v) satisfies the standard incompressible 2D NSE; the
-out-of-plane component w is advected by (u, v) without contributing to the
-pressure or to its own advection.
+Tag selecting the streamwise-invariant Cartesian primitive-variable formulation with three
+velocity components. Pass `CartesianPrimitive2D3C()` to [`construct_equations`](@ref) to build
+[`CartesianPrimitive2D3CNSE`](@ref) and [`CartesianPrimitive2D3CLNSE`](@ref).
+
+Physical `x` must be absent and the active plane is always `(y,z)`. The state is `(v,w,u)`: the
+wall-normal and spanwise velocities satisfy the incompressible two-dimensional equations, while
+the streamwise velocity is advected without contributing to pressure or advection. Ordinary
+two-dimensional `(x,y)` channels use [`CartesianPrimitive2D`](@ref), not this formulation.
+
+Writing the state as ``\boldsymbol q=(v,w,u)`` and
+``\nabla_{yz}=(\partial_y,\partial_z)``, the three residual equations are
+
+```math
+\begin{aligned}
+\mathcal N_v &= Re^{-1}\nabla_{yz}^2v-v\partial_yv-w\partial_zv+\mathcal F_v,\\
+\mathcal N_w &= Re^{-1}\nabla_{yz}^2w-v\partial_yw-w\partial_zw+\mathcal F_w,\\
+\mathcal N_u &= Re^{-1}\nabla_{yz}^2u-v\partial_yu-w\partial_zu+\mathcal F_u.
+\end{aligned}
+```
+
+Thus ``u`` is advected but never acts as an advecting velocity. Pressure is
+absent from the raw residual and is handled by projection of the in-plane
+``(v,w)`` dynamics.
 """
 struct CartesianPrimitive2D3C end
 
@@ -61,16 +102,17 @@ struct PolarPrimitive end
 # ------------------------------------------------------------------ #
 # Formulation interface                                               #
 # ------------------------------------------------------------------ #
-# New formulations must implement all four methods below for their tag
-# type.  The `CartesianPrimitive3D` and `CartesianPrimitive2D` methods
-# are defined immediately after these stubs and serve as canonical examples.
+# Formulations using the generic factory implement all four methods below for
+# their tag type. `CartesianPrimitive3D` and `CartesianPrimitive2D` are the
+# canonical examples. A formulation whose operator constructor needs extra
+# coefficients may instead provide a specialised `construct_equations` method.
 
 """
     ncomp(formulation) -> Int
 
-Return the number of velocity components for `formulation` (e.g. 3 for a
-three-component flow, 2 for a planar flow).  Used by [`construct_equations`](@ref)
-to size the cache `VectorField`s.
+Return the number of state components for a formulation handled by the generic
+factory (e.g. 3 for a three-component velocity flow, 2 for a planar flow).
+Used by [`construct_equations`](@ref) to size cache `VectorField`s.
 """
 function ncomp end
 
@@ -130,7 +172,7 @@ nonlinear_operator( ::PolarPrimitive)                    = throw(error("polar pr
 linearised_operator(::PolarPrimitive, ::M) where {M}     = throw(error("polar primitive Navier-Stokes formulation has not been implemented"))
 
 
-"""
+@doc raw"""
     construct_equations(grid::AbstractGrid, Re, base, formulation=CartesianPrimitive3D();
                         force=NoForce(), mode=AdjointDiscrete(), flags=FFTW.EXHAUSTIVE,
                         dealias=true)
@@ -141,11 +183,12 @@ formulation tag, pre-allocating all operator caches and FFTW plans.
 # Arguments
 - `grid`: computational grid defining the domain geometry and spectral structure.
 - `Re`: Reynolds number.
-- `base`: laminar base flow as a tuple with one entry per velocity component.
+- `base`: laminar base state as a tuple with one entry per state component.
   Each entry is either an array on the inhomogeneous grid or `nothing` when
   that component has no base flow: a vector for a channel profile, a matrix for
   a duct profile, and so on. For example, `(U, nothing, nothing)` represents a
-  streamwise-only Couette or Poiseuille base flow.
+  streamwise-only Couette or Poiseuille base flow. Parameterised Boussinesq
+  overloads append temperature as their final state component.
 - `formulation`: NSE formulation tag, defaulting to `CartesianPrimitive3D()`.
 
 # Keyword arguments
@@ -161,6 +204,33 @@ formulation tag, pre-allocating all operator caches and FFTW plans.
 # Returns
 A [`ProjectedNSE`](@ref) bundling the nonlinear operator, linearised operator,
 and base flow, ready for use in optimisation or time-stepping routines.
+
+# Projected equations
+
+Let ``E`` denote [`expand!`](@ref), ``P`` denote [`project!`](@ref), and
+``\boldsymbol U_b`` denote the inhomogeneous base tuple inserted by
+[`add_base_flow!`](@ref). For modal coefficients ``a``, the nonlinear call
+computes
+
+```math
+R(a)=P\,\mathcal N(Ea+\boldsymbol U_b).
+```
+
+The corresponding reduced forward map, whose adjoint is requested from this
+adjoint-oriented factory, is
+
+```math
+J(a)b=P\,L_{Ea+\boldsymbol U_b}\,Eb
+```
+
+After the nonlinear call has cached ``Ea+\boldsymbol U_b``, the returned
+linearised call computes ``P L^\dagger_{h,Ea+\boldsymbol U_b}Eb`` for
+`AdjointDiscrete()`, or the analogous discretised continuous-adjoint action
+for `AdjointContinuous()`. Since ``P=E^\dagger`` under the full and projected
+discrete inner products, the discrete expression is the adjoint of the
+reduced forward map whenever the force policy implements matching linear
+forward and discrete-adjoint actions. See [`AdjointDiscrete`](@ref) for the
+complete derivation.
 
 # Cache layout
 Two shared scratch pools are allocated (and reused by both operators):

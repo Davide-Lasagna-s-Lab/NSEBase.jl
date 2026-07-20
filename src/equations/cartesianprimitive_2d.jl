@@ -15,14 +15,40 @@
 # ----------------------- #
 # concrete 2D NSE struct  #
 # ----------------------- #
-"""
+@doc raw"""
     CartesianPrimitive2DNSE{T, FFT, S, P, BF}
+    CartesianPrimitive2DNSE(grid, Re; force=NoForce(), flags=FFTW.EXHAUSTIVE)
 
 Nonlinear Navier-Stokes operator for two-component planar Cartesian flows.
 
-Evaluates `out = Δu/Re − (u·∇)u + force(out, u, Forward())` in spectral space.
-Identical structure to [`CartesianPrimitive3DNSE`](@ref) with the spanwise
-velocity component and all z-derivatives removed.
+For state ``Q=(U,V)``, ``\nabla=(\partial_x,\partial_y)``, and
+``\nu=Re^{-1}``, `eq(t,Q,out)` evaluates the pressure-free spatial residual
+
+```math
+\begin{aligned}
+\mathcal N_1(Q) &= \nu\nabla_h^2U-U\partial_xU-V\partial_yU
+                  +\mathcal F_{N,1}(Q),\\
+\mathcal N_2(Q) &= \nu\nabla_h^2V-U\partial_xV-V\partial_yV
+                  +\mathcal F_{N,2}(Q).
+\end{aligned}
+```
+
+Derivatives are evaluated spectrally or by the matrices supplied by the grid;
+products are formed in physical space, with transform padding when dealiasing
+is enabled. The force term denotes the actual call
+`force(out,Q,Forward())` and may act on either component.
+
+The grid must map [`ddx!`](@ref) and [`ddy!`](@ref) to physical ``x`` and
+``y``, and physical ``z`` must be absent. Otherwise [`laplacian!`](@ref) would
+include a spatial direction that is missing from advection. The low-level
+constructor trusts that grid contract; the bundled two-dimensional channel
+and cavity grids provide it.
+
+The argument `t` is accepted for time-stepper compatibility and is not used.
+A transformed logical `t` direction participates in field storage and inner
+products but not in this spatial residual or its Laplacian. Pressure is not
+computed here; a divergence-free [`ProjectedNSE`](@ref) basis removes its
+gradient after projection.
 """
 mutable struct CartesianPrimitive2DNSE{T, FFT, S, P, BF}
               Re::T
@@ -44,15 +70,68 @@ end
 # ----------------------- #
 # concrete 2D LNSE struct #
 # ----------------------- #
-"""
+@doc raw"""
     CartesianPrimitive2DLNSE{MODE, T, FFT, S, P, BF}
+    CartesianPrimitive2DLNSE(grid, Re; mode=AdjointDiscrete(),
+                             force=NoForce(), flags=FFTW.EXHAUSTIVE)
 
-Linearised Navier-Stokes operator for two-component planar Cartesian flows,
-parameterised on `MODE <: Mode`.
+Forward or adjoint linearisation of [`CartesianPrimitive2DNSE`](@ref) about a
+cached state ``Q=(U,V)``. Let ``q=(u,v)`` be a forward perturbation,
+``p=(a,b)`` an adjoint field, and ``\nu=Re^{-1}``.
 
-Identical structure to [`CartesianPrimitive3DLNSE`](@ref) with z-derivative
-terms absent.  The three-argument `(t, u, v, out)` form caches base-flow
-gradients from `u` then delegates to the two-argument `(t, v, out)` form.
+For `MODE == Forward`, the two equations are
+
+```math
+\begin{aligned}
+(L_Qq)_1 &= \nu\nabla_h^2u-U\partial_xu-V\partial_yu
+            -u\partial_xU-v\partial_yU+\mathcal F_{F,1}(q),\\
+(L_Qq)_2 &= \nu\nabla_h^2v-U\partial_xv-V\partial_yv
+            -u\partial_xV-v\partial_yV+\mathcal F_{F,2}(q).
+\end{aligned}
+```
+
+For `MODE == AdjointContinuous`, integration by parts before discretisation
+gives
+
+```math
+\begin{aligned}
+(L_Q^{\dagger,c}p)_1 &= \nu\nabla^2a+U\partial_xa+V\partial_ya
+                        -a\partial_xU-b\partial_xV+\mathcal F_{C,1}(p),\\
+(L_Q^{\dagger,c}p)_2 &= \nu\nabla^2b+U\partial_xb+V\partial_yb
+                        -a\partial_yU-b\partial_yV+\mathcal F_{C,2}(p).
+\end{aligned}
+```
+
+This continuous formula assumes ``\partial_xU+\partial_yV=0`` and boundary
+conditions that eliminate the integration-by-parts terms. For
+`MODE == AdjointDiscrete`, let ``D_x,D_y`` be the derivative matrices actually
+used by the forward code, let ``M_f`` denote the configured numerical
+multiplication by a real field ``f`` (including padding and truncation when
+dealiasing is enabled), and let ``\dagger`` denote the weighted
+adjoint under [`dot`](@ref). The implementation evaluates
+
+```math
+\begin{aligned}
+(L_{h,Q}^{\dagger}p)_1
+ &= \nu(\nabla_h^2)^\dagger a-D_x^\dagger M_Ua-D_y^\dagger M_Va
+    -M_{D_xU}a-M_{D_xV}b+\mathcal F_{D,1}(p),\\
+(L_{h,Q}^{\dagger}p)_2
+ &= \nu(\nabla_h^2)^\dagger b-D_x^\dagger M_Ub-D_y^\dagger M_Vb
+    -M_{D_yU}a-M_{D_yV}b+\mathcal F_{D,2}(p).
+\end{aligned}
+```
+
+In particular, the transpose of ``-M_UD_x`` is ``-D_x^\dagger M_U``: the
+physical multiplication is performed before the adjoint derivative. This is
+the exact transpose of the discretised hydrodynamic operator, including the
+FFT padding/truncation pipeline. See [`AdjointDiscrete`](@ref) for the full
+inner-product derivation. A force is included in that identity only when its
+`AdjointDiscrete()` action is the weighted transpose of its `Forward()` action.
+
+The four-argument call `eq(t,Q,q,out)` prepares the base-state transforms and
+gradients, then applies the selected operator. Subsequent three-argument calls
+`eq(t,q,out)` reuse that base cache. The object owns mutable workspaces and is
+not reentrant or safe for concurrent calls.
 """
 mutable struct CartesianPrimitive2DLNSE{MODE, T, FFT, S, P, BF}
               Re::T
@@ -110,7 +189,7 @@ end
 # -------------- #
 # linearised NSE #
 # -------------- #
-# 3-arg: set up base-flow cache then delegate to 2-arg
+# Four arguments: prepare the base-flow cache, then delegate to the cached three-argument action.
 function (eq::CartesianPrimitive2DLNSE)(::Real,
                                        u::VectorField{2, F},
                                        v::VectorField{2, F},

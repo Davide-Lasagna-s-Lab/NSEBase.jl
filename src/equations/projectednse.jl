@@ -2,8 +2,8 @@
 #
 # `ProjectedNSE` wraps a pair of NSE operators (nonlinear and linearised) and
 # adds the expand→operate→project sandwich that maps between the modal
-# coefficient space of a `ProjectedField` and the full spectral velocity space
-# of a `VectorField{N, FTField}`.
+# coefficient space of a `ProjectedField` and the full spectral state space of
+# a `VectorField{N, FTField}`.
 #
 # Two pre-allocated `VectorField` caches (`cache1`, `cache2`) are held by the
 # struct so that no allocations occur during the operator calls. The wrapped
@@ -11,16 +11,36 @@
 # evaluating the nonlinear action prepares those caches for the subsequent
 # linearised action.
 
-"""
+@doc raw"""
     ProjectedNSE{EQ, LEQ, B, N, S1, S2}
 
 Reduced-order Navier-Stokes operator operating in the modal coefficient space
 of a [`ProjectedField`](@ref).
 
 Wraps a nonlinear operator `nl` and a linearised operator `ln` (both acting on
-full spectral `VectorField`s) with expand/project steps so that the combined
+full spectral state `VectorField`s) with expand/project steps so that the combined
 operator maps `ProjectedField → ProjectedField` without exposing the full
 spectral representation to the caller.
+
+Let ``E`` be [`expand!`](@ref), ``P`` be the weighted [`project!`](@ref), and
+``U_b`` be the stored base state. The wrapped nonlinear residual is
+
+```math
+R(a)=P\,\mathcal N(Ea+U_b).
+```
+
+At the same cached state, the reduced forward and discrete-adjoint actions are
+
+```math
+J(a)b=P\,L_{Ea+U_b}Eb,
+\qquad
+J(a)^\dagger c=P\,L_{h,Ea+U_b}^\dagger Ec.
+```
+
+Projection is the discrete weighted adjoint of expansion, ``P=E^\dagger``.
+The second expression is therefore the exact adjoint of the first under the
+[`ProjectedField`](@ref) inner product whenever the basis and force policy meet
+their documented adjoint contracts. See [`AdjointDiscrete`](@ref).
 
 Use [`construct_equations`](@ref) to build a `ProjectedNSE` with correctly
 sized caches and FFTW plans rather than constructing it directly.
@@ -28,7 +48,7 @@ sized caches and FFTW plans rather than constructing it directly.
 # Fields
 - `nl`: nonlinear NSE operator; called as `nl(t, u, N_u)`
 - `ln`: linearised NSE operator; called as `ln(t, v, M_uv)`
-- `base`: laminar base flow tuple, passed to [`add_base_flow!`](@ref)
+- `base`: base-state tuple, passed to [`add_base_flow!`](@ref)
 - `cache1`, `cache2`: pre-allocated full spectral `VectorField` workspaces
 
 The object is stateful because `nl` and `ln` share workspaces. In particular,
@@ -49,12 +69,25 @@ end
 ProjectedNSE(grid::AbstractGrid, N::Int, nl, ln, base) =
     ProjectedNSE{N}(nl, ln, base, ntuple(_->VectorField(grid, FTField, N=N), 2))
 
-"""
+@doc raw"""
     (eq::ProjectedNSE)(out::ProjectedField, a::ProjectedField) -> out
 
-Nonlinear action: expand `a` to a full spectral velocity field, add the laminar
-base flow, apply the nonlinear NSE operator, and project the result back onto
+Nonlinear action: expand `a` to a full spectral state, add the stored base
+state, apply the nonlinear NSE operator, and project the result back onto
 the basis, writing modal coefficients into `out`.
+
+In operator notation this evaluates
+
+```math
+\mathrm{out}=P\,\mathcal N(Ea+U_b).
+```
+
+The raw Cartesian operators contain diffusion, advection,
+formulation-specific couplings, and forcing but no pressure solve. When the
+velocity part of the basis is divergence-free and boundary-compatible,
+projection removes the pressure gradient from the reduced equations. Scalar
+components such as Boussinesq temperature are expanded and projected but are
+not subject to the divergence constraint.
 
 Besides producing `out`, this call prepares the shared physical-field and
 derivative caches consumed by the three-argument linearised action. Therefore,
@@ -78,13 +111,24 @@ function (eq::ProjectedNSE)(out::ProjectedField, a::ProjectedField)
     return out
 end
 
-"""
+@doc raw"""
     (eq::ProjectedNSE)(out::ProjectedField,
                        cached_state::ProjectedField,
                        b::ProjectedField) -> out
 
 Apply the linearised or adjoint operator at `cached_state` to the perturbation
 `b`, writing the projected result into `out`.
+
+If ``U=E\,\mathtt{cached\_state}+U_b`` is the state prepared by the preceding
+nonlinear call, this method evaluates
+
+```math
+\mathrm{out}=P\,L_U E b
+```
+
+when `eq.ln` is forward, and ``P L_{h,U}^\dagger E b`` when it uses
+[`AdjointDiscrete`](@ref). The base is not differentiated or recomputed during
+this call.
 
 This is a cache-reuse interface. A preceding call to
 `eq(nonlinear_out, cached_state)` expands the state, adds `eq.base`, and leaves

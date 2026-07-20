@@ -20,41 +20,67 @@
 #   scache[1]  dudx          spectral ∂u/∂x (all 4 components)
 #   scache[2]  dudy / u1v    spectral ∂u/∂y  /  U₁·v (physical→spectral)
 #   scache[3]  dudz / u2v    spectral ∂u/∂z  /  U₂·v
-#   scache[4]  dvdx / u3v    spectral ∂v/∂x  /  U₃·v
+#   scache[4]  dvdz / u3v    spectral ∂v/∂z  /  U₃·v
 #   pcache[1]  U             physical base-flow state
 #   pcache[2]  dUdx          physical ∂U/∂x
 #   pcache[3]  dUdy          physical ∂U/∂y
 #   pcache[4]  dUdz          physical ∂U/∂z
-#   pcache[5]  V  / U1V      physical perturbation state  /  U₁·q (for adjoint)
+#   pcache[5]  V             physical perturbation/adjoint state
 #   pcache[6]  dVdx / U1V    physical ∂v/∂x
 #   pcache[7]  dVdy / U2V    physical ∂v/∂y
 #   pcache[8]  dVdz / U3V    physical ∂v/∂z
 
 
-# ----------------------------------- #
-# formulation tag                     #
-# ----------------------------------- #
-"""
-    CartesianPrimitive3DBoussinesq
+# //////////////////////////////////////////////////////////////////////////////////////////////// #
+# // Formulation tag                                                                            // #
+# //////////////////////////////////////////////////////////////////////////////////////////////// #
 
-Tag selecting the four-component `(u, v, w, θ)` Boussinesq (thermally
-stratified) NSE formulation.  Pass `CartesianPrimitive3DBoussinesq(Pr, Ri)`
-to [`construct_equations`](@ref) to build
-[`CartesianPrimitive3DBoussinesqNSE`](@ref) and
-[`CartesianPrimitive3DBoussinesqLNSE`](@ref) operators.
+@doc raw"""
+    CartesianPrimitive3DBoussinesq(Pr, Ri; grav=2)
 
-The temperature field occupies component 4 of the state `VectorField`; velocity
-components 1–3 follow the standard `CartesianPrimitive3D` convention.
+Select the four-component three-dimensional Boussinesq formulation with state
+`Q=(U₁,U₂,U₃,Θ)`, where `U=(U₁,U₂,U₃)` is velocity and `Θ` is temperature. Use this tag with
+[`construct_equations`](@ref) to build the nonlinear and adjoint-linearised projected equations.
 
-# Fields
-- `Pr`: Prandtl number.
-- `Ri`: Richardson number `Ra/(Re²·Pr)`.  Set to zero for passive-scalar transport.
-- `grav`: velocity component index for the gravity direction. Default `2` (wall-normal).
+Before spatial discretisation, the dimensionless equations represented by this formulation are
+
+```math
+\begin{aligned}
+\partial_t \boldsymbol U +(\boldsymbol U\!\cdot\!\nabla)\boldsymbol U
+  &= -\nabla p + \frac{1}{Re}\nabla^2\boldsymbol U
+     +Ri\,\Theta\,\boldsymbol e_{\mathrm{grav}}+\boldsymbol f_U,\\
+\partial_t\Theta +(\boldsymbol U\!\cdot\!\nabla)\Theta
+  &= \frac{1}{Re\,Pr}\nabla^2\Theta+f_\Theta,\\
+\nabla\!\cdot\!\boldsymbol U&=0.
+\end{aligned}
+```
+
+The primitive operators documented below evaluate the pressure-free right-hand sides. The
+[`ProjectedNSE`](@ref) wrapper supplies the divergence-free expansion and projection through the
+grid basis, so pressure is not stored as a fifth state component.
+
+# Parameters
+
+- `Pr` is the Prandtl number. Temperature diffuses with coefficient `1/(Re*Pr)`, while momentum
+  diffuses with coefficient `1/Re`.
+- `Ri` is the Richardson number multiplying buoyancy. Under the scaling used by the bundled
+  Rayleigh–Bénard cases, `Ri=Ra/(Re^2*Pr)`; `Ri=0` leaves a passively advected scalar.
+- `grav` selects the velocity component parallel to gravity and must be `1`, `2`, or `3`. It
+  defaults to `2`, the usual wall-normal direction. This low-level tag stores the index without
+  validating it, so callers constructing the tag directly are responsible for that constraint.
+
+# State and base order
+
+Spectral states and base tuples both follow `(u,v,w,θ)` / `(U₁,U₂,U₃,Θ)` order. A `nothing` entry
+in a base tuple denotes a zero component; motionless thermal conduction can therefore be written
+as `(nothing,nothing,nothing,Θ)`.
 
 # Example
+
 ```julia
-f  = CartesianPrimitive3DBoussinesq(0.71, 100.0)   # air, Ri = Ra/(Re²·Pr)
-eq = construct_equations(grid, Re, (nothing, nothing, nothing, Θ), f)
+formulation = CartesianPrimitive3DBoussinesq(0.71, 100.0; grav=2)
+equations = construct_equations(grid, Re, (nothing, nothing, nothing, Θ), formulation;
+                                flags=FFTW.ESTIMATE)
 ```
 """
 struct CartesianPrimitive3DBoussinesq
@@ -66,24 +92,61 @@ CartesianPrimitive3DBoussinesq(Pr, Ri; grav::Int=2) =
     CartesianPrimitive3DBoussinesq(Float64(Pr), Float64(Ri), grav)
 
 
-# ----------------------------------- #
-# concrete 3D Boussinesq NSE struct   #
-# ----------------------------------- #
-"""
+# //////////////////////////////////////////////////////////////////////////////////////////////// #
+# // Nonlinear operator                                                                         // #
+# //////////////////////////////////////////////////////////////////////////////////////////////// #
+
+@doc raw"""
     CartesianPrimitive3DBoussinesqNSE{T, FFT, S, P, BF}
 
-Nonlinear Navier-Stokes operator for 3D Boussinesq flows.
+Nonlinear primitive-variable Boussinesq operator for a three-dimensional Cartesian state
+`Q=(U₁,U₂,U₃,Θ)`.
 
-State vector `(u, v, w, θ)`: velocity components 1–3 and temperature (component 4).
+Let `D_j` and `Δ_h` denote the grid's discrete first derivatives and spatial Laplacian, and let
+`M_h(a)b` denote multiplication in the physical workspace followed by the configured transform
+back to spectral space, including padding and truncation when dealiasing is enabled. With
 
-Evaluates:
-- `out[1:3] = Δu/Re − (u·∇)u + Ri·θ·ê_grav + force`
-- `out[4]   = Δθ/(Re·Pr) − (u·∇)θ`
+```math
+c_n=\begin{cases}1/Re,&n=1,2,3,\\1/(Re\,Pr),&n=4,\end{cases}
+```
+
+the call `eq(t,Q,out)` evaluates
+
+```math
+\mathcal N_h(Q)_n
+  =c_n\Delta_hQ_n-\sum_{j=1}^3M_h(Q_j)D_jQ_n
+   +Ri\,\delta_{n,\mathrm{grav}}Q_4+\mathcal F^{\mathrm{Forward}}_n(Q),
+\qquad n=1,\ldots,4,
+```
+
+where the buoyancy Kronecker delta is nonzero only for velocity components. Thus component four
+is explicitly
+
+```math
+\mathcal N_h(Q)_4=\frac{1}{Re\,Pr}\Delta_h\Theta
+                   -M_h(U_1)D_x\Theta-M_h(U_2)D_y\Theta-M_h(U_3)D_z\Theta
+                   +\mathcal F^{\mathrm{Forward}}_4(Q).
+```
+
+No pressure gradient is evaluated here: projection in [`ProjectedNSE`](@ref) enforces the
+velocity constraint. The leading `t` argument is accepted for the time-integrator interface and
+is currently ignored. A transformed logical time coordinate, when present in a grid description,
+is not included in `D_x,D_y,D_z` or `Δ_h`.
+
+`force` is called after diffusion, advection, and buoyancy. Its `Forward()` action is therefore
+part of the returned right-hand side, but its mathematical meaning is defined by the selected
+force policy.
 
 # Fields
-- `Re`, `Pr`, `Ri`: Reynolds number, Prandtl number, Richardson number (`Ra/(Re²·Pr)`)
-- `grav`: velocity component index for the gravity direction (default 2 = wall-normal)
-- `plans`, `scache`, `pcache`, `force`: as for [`CartesianPrimitive3DNSE`](@ref)
+
+- `Re`, `Pr`, and `Ri`: Reynolds, Prandtl, and Richardson numbers.
+- `grav`: velocity component receiving `Ri*Θ`.
+- `plans`: forward and inverse transforms used by `M_h`.
+- `scache`, `pcache`: preallocated spectral and physical `VectorField{4}` workspaces.
+- `force`: callable body-force policy.
+
+The operator mutates its caches and `out`; one instance is neither reentrant nor safe for
+concurrent calls.
 """
 mutable struct CartesianPrimitive3DBoussinesqNSE{T, FFT, S, P, BF}
               Re :: T
@@ -96,21 +159,107 @@ mutable struct CartesianPrimitive3DBoussinesqNSE{T, FFT, S, P, BF}
     const  force :: BF
 end
 
-# ----------------------------------- #
-# concrete 3D Boussinesq LNSE struct  #
-# ----------------------------------- #
-"""
+# //////////////////////////////////////////////////////////////////////////////////////////////// #
+# // Linearised operator                                                                        // #
+# //////////////////////////////////////////////////////////////////////////////////////////////// #
+
+@doc raw"""
     CartesianPrimitive3DBoussinesqLNSE{MODE, T, FFT, S, P, BF}
 
-Linearised Navier-Stokes operator for 3D Boussinesq flows, parameterised on
-`MODE <: Mode`.
+Forward, continuous-adjoint, or discrete-adjoint linearisation of
+[`CartesianPrimitive3DBoussinesqNSE`](@ref) about a base state `Q=(U₁,U₂,U₃,Θ)`. `MODE` is
+[`Forward`](@ref), [`AdjointContinuous`](@ref), or [`AdjointDiscrete`](@ref).
 
-The three-argument call `eq(t, u, v, out)` caches physical base-flow gradients
-from `u` (VectorField{4}) and then delegates to the two-argument form which
-applies the chosen linearised operator to the perturbation `v` (VectorField{4}).
+# Base-state cache contract
+
+The call `eq(t,Q,q,out)` transforms and caches `Q` and `D_xQ,D_yQ,D_zQ`, then applies the selected
+operator to `q`. Once primed, `eq(t,q,out)` may be called repeatedly for perturbations about the
+same base; another four-argument call replaces the cached base. The leading `t` is accepted for
+the time-integrator interface and ignored. These mutable caches make an instance non-reentrant
+and unsafe for concurrent calls.
+
+# Forward linearisation
+
+Let `q=(u,v,w,θ)`, let `c₁=c₂=c₃=1/Re` and `c₄=1/(Re*Pr)`, and let `M_h` be the actual physical
+multiplication/dealiasing map used by the FFT plans. The forward discrete action is
+
+```math
+(L_{h,Q}q)_n=c_n\Delta_hq_n
+ -\sum_{j=1}^3\left[M_h(Q_j)D_jq_n+M_h(q_j)D_jQ_n\right]
+ +Ri\,\delta_{n,\mathrm{grav}}q_4+\mathcal F^{\mathrm{Forward}}_n(q),
+\qquad n=1,\ldots,4.
+```
+
+The equation with `n=4` includes `D_jQ₄=D_jΘ`: velocity perturbations therefore advect the
+base temperature.
+
+# Continuous adjoint
+
+For adjoint state `p=(p₁,p₂,p₃,p₄)`, the implementation of the continuous `L²` adjoint is
+
+```math
+\begin{aligned}
+(L_Q^{\dagger,c}p)_j
+ &=\frac{1}{Re}\nabla^2p_j
+   +\sum_{\ell=1}^3U_\ell\partial_\ell p_j
+   -\sum_{n=1}^4p_n\partial_jQ_n
+   +\mathcal F^{\dagger,c}_j(p), &&j=1,2,3,\\
+(L_Q^{\dagger,c}p)_4
+ &=\frac{1}{Re\,Pr}\nabla^2p_4
+   +\sum_{\ell=1}^3U_\ell\partial_\ell p_4
+   +Ri\,p_{\mathrm{grav}}+\mathcal F^{\dagger,c}_4(p).
+\end{aligned}
+```
+
+The `n=4` term in the velocity sum is the transpose of perturbation advection of the base
+temperature. The `Ri*p_grav` term is the transpose of buoyancy. This continuous formula assumes
+`∇·U=0` and boundary conditions that remove the integration-by-parts boundary terms; otherwise
+the adjoint of `-U·∇` also contains `(∇·U)p` and boundary contributions.
+
+# Discrete weighted adjoint
+
+For the discrete inner product represented by the grid quadrature, Fourier Hermitian
+multiplicities, and component sum,
+
+```math
+\langle a,b\rangle_h=\sum_{n=1}^4\sum_{\boldsymbol k}\omega_{\boldsymbol k}
+\operatorname{Re}\!\left(\overline{a_{n,\boldsymbol k}}b_{n,\boldsymbol k}\right),
+\qquad L_{h,Q}^\dagger=W^{-1}L_{h,Q}^{H}W,
+```
+
+where `W` contains the weights `ω_k`. Writing `D_j^†` and `Δ_h^†` for the stored weighted
+adjoints of the numerical derivative operators, the code evaluates
+
+```math
+\begin{aligned}
+(L_{h,Q}^\dagger p)_j
+ &=\frac{1}{Re}\Delta_h^\dagger p_j
+   -\sum_{\ell=1}^3D_\ell^\dagger M_h(U_\ell)p_j
+   -\sum_{n=1}^4M_h(D_jQ_n)p_n
+   +\mathcal F^{\dagger,h}_j(p), &&j=1,2,3,\\
+(L_{h,Q}^\dagger p)_4
+ &=\frac{1}{Re\,Pr}\Delta_h^\dagger p_4
+   -\sum_{\ell=1}^3D_\ell^\dagger M_h(U_\ell)p_4
+   +Ri\,p_{\mathrm{grav}}+\mathcal F^{\dagger,h}_4(p).
+\end{aligned}
+```
+
+This is computed by reversing the numerical graph of the forward action: physical products use
+the same transform/dealiasing path, each derivative is replaced by its weighted adjoint, product
+order is reversed, the base-gradient products are transposed component-by-component, and
+buoyancy is transposed from velocity component `grav` into temperature component four. This is
+why discrete base advection is `-D_j^†M_h(U_j)p`, not the pointwise continuous expression
+`+M_h(U_j)D_jp`.
+
+The equality `⟨p,Lq⟩_h=⟨L^†p,q⟩_h` includes forcing only when the force policy's
+`AdjointDiscrete()` action is the weighted transpose of its `Forward()` linear action. An
+input-independent body force is an affine nonlinear source, not a linear map, and should be
+excluded from a homogeneous LNSE adjoint identity.
 
 # Fields
-- Same as [`CartesianPrimitive3DBoussinesqNSE`](@ref)
+
+The physical parameters, plans, caches, and force policy have the same meanings as in
+[`CartesianPrimitive3DBoussinesqNSE`](@ref).
 """
 mutable struct CartesianPrimitive3DBoussinesqLNSE{MODE, T, FFT, S, P, BF}
               Re :: T
@@ -134,9 +283,9 @@ mutable struct CartesianPrimitive3DBoussinesqLNSE{MODE, T, FFT, S, P, BF}
 end
 
 
-# ------------- #
-# nonlinear NSE #
-# ------------- #
+# //////////////////////////////////////////////////////////////////////////////////////////////// #
+# // Nonlinear action                                                                           // #
+# //////////////////////////////////////////////////////////////////////////////////////////////// #
 function (eq::CartesianPrimitive3DBoussinesqNSE)(::Real,
                                                   u::VectorField{4, F},
                                                 out::VectorField{4, F}) where {F<:FTField}
@@ -164,10 +313,10 @@ function (eq::CartesianPrimitive3DBoussinesqNSE)(::Real,
 end
 
 
-# -------------- #
-# linearised NSE #
-# -------------- #
-# 3-arg: cache base-flow physical gradients then delegate to 2-arg
+# //////////////////////////////////////////////////////////////////////////////////////////////// #
+# // Base-state cache                                                                           // #
+# //////////////////////////////////////////////////////////////////////////////////////////////// #
+# Four arguments: prepare the base-flow cache, then delegate to the cached three-argument action.
 function (eq::CartesianPrimitive3DBoussinesqLNSE)(::Real,
                                                    u::VectorField{4, F},
                                                    v::VectorField{4, F},
@@ -182,7 +331,11 @@ function (eq::CartesianPrimitive3DBoussinesqLNSE)(::Real,
     return out
 end
 
-# forward linearised: L·v
+# //////////////////////////////////////////////////////////////////////////////////////////////// #
+# // Forward linearisation                                                                      // #
+# //////////////////////////////////////////////////////////////////////////////////////////////// #
+
+# Forward linearised action: L·v.
 function (eq::CartesianPrimitive3DBoussinesqLNSE{Forward})(::Real,
                                                             v::VectorField{4, F},
                                                           out::VectorField{4, F}) where {F<:FTField}
@@ -215,7 +368,11 @@ function (eq::CartesianPrimitive3DBoussinesqLNSE{Forward})(::Real,
     return out
 end
 
-# continuous adjoint: L†_cont · v
+# //////////////////////////////////////////////////////////////////////////////////////////////// #
+# // Continuous adjoint                                                                         // #
+# //////////////////////////////////////////////////////////////////////////////////////////////// #
+
+# Continuous adjoint action: L†_cont·v.
 #
 # Adjoint of the forward Boussinesq LNSE under the L² (continuous) inner product.
 # Key differences from the velocity-only 3D adjoint:
@@ -261,11 +418,15 @@ function (eq::CartesianPrimitive3DBoussinesqLNSE{AdjointContinuous})(::Real,
     return out
 end
 
-# discrete adjoint: L†_disc · v
+# //////////////////////////////////////////////////////////////////////////////////////////////// #
+# // Discrete adjoint                                                                           // #
+# //////////////////////////////////////////////////////////////////////////////////////////////// #
+
+# Discrete weighted-adjoint action: L†_disc·v.
 #
 # Exact transpose of the forward LNSE in the discrete inner product.
 # Cross-gradient summation over n=1:4 ensures the Θ-coupling
-# (temperature perturbation advecting base temperature) is correctly transposed.
+# (velocity perturbations advecting base temperature) is correctly transposed.
 function (eq::CartesianPrimitive3DBoussinesqLNSE{AdjointDiscrete})(::Real,
                                                                      v::VectorField{4, F},
                                                                    out::VectorField{4, F}) where {F<:FTField}
@@ -311,29 +472,80 @@ function (eq::CartesianPrimitive3DBoussinesqLNSE{AdjointDiscrete})(::Real,
 end
 
 
-# ------------------------------------------------------------------ #
-# Specialised construct_equations for CartesianPrimitive3DBoussinesq #
-# ------------------------------------------------------------------ #
-"""
+# //////////////////////////////////////////////////////////////////////////////////////////////// #
+# // Equation construction                                                                      // #
+# //////////////////////////////////////////////////////////////////////////////////////////////// #
+
+@doc raw"""
     construct_equations(grid, Re, base, f::CartesianPrimitive3DBoussinesq;
                         force=NoForce(), mode=AdjointDiscrete(),
-                        flags=FFTW.EXHAUSTIVE, dealias=true)
+                        flags=FFTW.EXHAUSTIVE, dealias=true) -> ProjectedNSE
 
-Construct a [`ProjectedNSE`](@ref) for 3D Boussinesq (thermally stratified) flow.
+Construct nonlinear and adjoint-linearised three-dimensional Boussinesq operators and wrap them
+in a four-component [`ProjectedNSE`](@ref).
 
-The state vector is `(u, v, w, θ)` — three velocity components plus temperature.
-Physical parameters (Pr, Ri, and the gravity direction) are carried by the
-formulation tag `f`; see [`CartesianPrimitive3DBoussinesq`](@ref).
+# Projected equations
+
+Let `E` expand a reduced, divergence-free state into the primitive state, let `P=E^†` be its
+weighted-adjoint projection, and let `B` be the primitive base state constructed from `base`. The
+returned nonlinear residual is
+
+```math
+R_h(a)=P\,\mathcal N_h(Ea+B).
+```
+
+If `L_{h,Ea+B}` is the raw forward linearisation documented by
+[`CartesianPrimitive3DBoussinesqLNSE`](@ref), its reduced forward and discrete-adjoint actions
+are
+
+```math
+J_h(a)b=P\,L_{h,Ea+B}Eb,
+\qquad
+J_h(a)^\dagger c=P\,L_{h,Ea+B}^\dagger Ec.
+```
+
+For `mode=AdjointContinuous()`, the final expression instead uses the discretised continuous
+adjoint `L_{Ea+B}^{†,c}`. Expansion and projection impose the velocity constraint and account for
+pressure; temperature is carried as the fourth state component and is not divergence constrained.
+
+# Arguments
+
+- `grid`: a three-dimensional Cartesian grid whose physical spatial directions are `x`, `y`, and
+  `z`. A transformed logical time coordinate is never included in the spatial derivatives.
+- `Re`: Reynolds number used in both momentum and thermal diffusivities.
+- `base`: four entries in `(U₁,U₂,U₃,Θ)` order. Each entry is an inhomogeneous-grid array or
+  `nothing` for a zero component.
+- `f`: [`CartesianPrimitive3DBoussinesq`](@ref), supplying `Pr`, `Ri`, and `grav`.
+
+# Keywords
+
+- `force`: callable force policy supporting `VectorField{4}` and the selected mode. Its adjoint
+  action must be the weighted transpose of its forward linear action for the discrete-adjoint
+  identity to include forcing.
+- `mode`: [`AdjointDiscrete`](@ref) or [`AdjointContinuous`](@ref). This projected constructor is
+  adjoint-oriented and rejects [`Forward`](@ref).
+- `flags`: FFTW planning flags.
+- `dealias`: whether physical products use padded transforms.
 
 # Base flow
-`base` should be a 4-tuple `(U₁, U₂, U₃, Θ)` where each entry is either a
-vector of values at the inhomogeneous grid points or `nothing` for a zero
-base-flow component.  For pure Rayleigh-Bénard (no mean velocity) pass
-`(nothing, nothing, nothing, Θ_profile)`.
+
+For motionless Rayleigh–Bénard conduction, pass `(nothing,nothing,nothing,Θ_profile)`. A velocity
+base may be supplied in any or all of the first three entries; perturbation velocity then advects
+both that velocity base and `Θ_profile`.
 
 # Cache layout
-Four spectral-space and eight physical-space `VectorField{4}` scratch arrays
-are allocated and shared between the nonlinear and linearised operators.
+
+Four spectral and eight physical `VectorField{4}` workspaces are allocated and shared by the
+nonlinear and linearised operators. The returned object is stateful; see [`ProjectedNSE`](@ref)
+for its nonlinear/linearised call ordering.
+
+# Example
+
+```julia
+formulation = CartesianPrimitive3DBoussinesq(Pr, Ra / (Re^2 * Pr); grav=2)
+equations = construct_equations(grid, Re, (nothing, nothing, nothing, Θ), formulation;
+                                mode=AdjointDiscrete(), flags=FFTW.ESTIMATE)
+```
 """
 function construct_equations(grid   :: AbstractGrid{T},
                                Re,
