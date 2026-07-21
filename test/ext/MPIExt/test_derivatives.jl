@@ -159,4 +159,32 @@ end
     @test parent(out_a) ≈ parent(out_b)
 end
 
+@testset verbose=true "dd! on a non-decomposed FD direction (multiple FD dims)      " begin
+    # A grid with more than one FD direction where only one of them (:z) is
+    # decomposed: :x and :y are plain, fully-local FD directions on every
+    # rank, exercising the `STORAGE_DIM ∉ DDIMS, ∉ FFT_DIMS_ORDER` branch of
+    # `dd!`. Low-degree polynomials are differentiated exactly by the 5-point
+    # stencil.
+    cavity_parent = LidDrivenCavityGrid(13, 13, 32; spanwise=:bounded, width=5)
+    cavity = distributed(cavity_parent, MPI.Comm_dup(MPI.COMM_WORLD);
+                         decomposed_physical_dims=(:z,), nprocesses=(nranks,), nhalo=(NHALO,))
+    cavity_plans = NSEBase.FFTPlans(cavity; dealias=false, flags=NSEBase.FFTW.ESTIMATE)
+
+    cav_fun(x, y, z, _)     = x^2 * y^2 * z^2
+    dcav_dx_fun(x, y, z, _) = 2x * y^2 * z^2
+    dcav_dy_fun(x, y, z, _) = x^2 * 2y * z^2
+
+    v = NSEBase.FTField(cavity); cavity_plans(v, NSEBase.Field(cavity, cav_fun))
+
+    outx = NSEBase.FTField(cavity)
+    NSEBase.dd!(outx, v, Val(storage_dim(cavity, :x)))
+    expected_x = NSEBase.FTField(cavity); cavity_plans(expected_x, NSEBase.Field(cavity, dcav_dx_fun))
+    @test parent(outx) ≈ parent(expected_x) rtol=1e-10
+
+    outy = NSEBase.FTField(cavity)
+    NSEBase.dd!(outy, v, Val(storage_dim(cavity, :y)))
+    expected_y = NSEBase.FTField(cavity); cavity_plans(expected_y, NSEBase.Field(cavity, dcav_dy_fun))
+    @test parent(outy) ≈ parent(expected_y) rtol=1e-10
+end
+
 MPI.free(base_comm)

@@ -122,9 +122,15 @@ end
 In-place derivative of the distributed field `u` along the storage
 dimension encoded by `Val(STORAGE_DIM)`.
 
-For `STORAGE_DIM ∉ DDIMS` the code falls back to the standard
-derivative method [`dd!`](@ref) which uses the default non-distributed
-routines for the derivative computation.
+For `STORAGE_DIM ∈ FFT_DIMS_ORDER` the code falls back to the standard
+spectral derivative. For an inhomogeneous `STORAGE_DIM ∉ DDIMS` — a
+finite-difference direction that is *not* decomposed, so every rank already
+owns its full extent — it applies the (undecomposed) derivative matrix
+directly over the whole local range, exactly as
+[`interior_laplacian!`](@ref)/[`boundary_laplacian!`](@ref) already do for a
+non-decomposed FD direction; no halo exchange is needed. A generic
+[`NSEBase.inhomogeneous_dd!`](@ref) has no method for `DecomposedGrid`, so
+that single-domain fallback cannot be used here.
 """
 function NSEBase.dd!(out::F,
                        u::F,
@@ -136,12 +142,12 @@ function NSEBase.dd!(out::F,
 
     if STORAGE_DIM ∈ DDIMS
         _distributed_dd!(out, u, Val(STORAGE_DIM); adjoint=adjoint)
+    elseif STORAGE_DIM ∈ FFT_DIMS_ORDER
+        NSEBase._spectral_dd!(out, u, Val(STORAGE_DIM); adjoint=adjoint)
     else
-        if STORAGE_DIM ∈ FFT_DIMS_ORDER
-            NSEBase._spectral_dd!(out, u, Val(STORAGE_DIM); adjoint=adjoint)
-        else
-            NSEBase.inhomogeneous_dd!(out, u, Val(STORAGE_DIM); adjoint=adjoint)
-        end
+        g = NSEBase.grid(u)
+        _dd_over!(out, u, g, Val(STORAGE_DIM), Val(1),
+                 (local_interior_range(g, STORAGE_DIM),); adjoint=adjoint, accumulate=Val(false))
     end
 
     return out
