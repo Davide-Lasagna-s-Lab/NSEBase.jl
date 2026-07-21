@@ -471,3 +471,22 @@ function _rectangular_points(g::AbstractGrid{T, D}, homogeneous_size::NTuple{N, 
         reshape(values, reshape_dims(dim, length(values)))
     end
 end
+
+"""
+    _fd_direction(N, lim, dist, width, T) -> (x, D₁, D₂, D₁⁺, D₂⁺, w)
+
+Build one bounded finite-difference direction and its quadrature-weighted adjoints, shared by every
+case grid factory (`ChannelGrid`, `SquareDuctGrid`, `LidDrivenCavityGrid`, and their variants).
+
+Returns the collocation points `x`, first- and second-derivative operators `D₁` and `D₂`, their
+weighted adjoints `D₁⁺` and `D₂⁺`, and the quadrature weights `w`, all converted to `T`. This is the
+same six-tuple order accepted by [`RectangularGrid`](@ref) for one inhomogeneous direction.
+"""
+function _fd_direction(N::Int, lim::NTuple{2, <:Real}, dist::FDGrids.AbstractGridDistribution,
+                       width::Int, ::Type{T}) where {T<:Real}
+    grid = FDGrids.grid(N, lim[1], lim[2], dist)
+    x, w = Vector{T}(grid.xs), Vector{T}(grid.ws)
+    D₁ = FDGrids.DiffMatrix(x, width, 1; eltype=T)
+    D₂ = FDGrids.DiffMatrix(x, width, 2; eltype=T)
+    return x, D₁, D₂, LinearAlgebra.adjoint(D₁, w), LinearAlgebra.adjoint(D₂, w), w
+end

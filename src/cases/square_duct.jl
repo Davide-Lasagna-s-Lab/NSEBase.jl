@@ -184,11 +184,7 @@ g = SquareDuctGrid(49, 63, 1, 0.5; width=7)
 """
 function SquareDuctGrid(N::Int, Nz::Int, Nt::Int, α::Real;
                         dist=FDGrids.GaussLobattoGrid(), width=5, T::Type{<:Real}=Float64)
-    grid = FDGrids.grid(N, 0, 1, dist)
-    xs, ws = Vector{T}(grid.xs), Vector{T}(grid.ws)
-    D₁ = FDGrids.DiffMatrix(xs, width, 1; eltype=T)
-    D₂ = FDGrids.DiffMatrix(xs, width, 2; eltype=T)
-    D₁⁺, D₂⁺ = LinearAlgebra.adjoint(D₁, ws), LinearAlgebra.adjoint(D₂, ws)
+    xs, D₁, D₂, D₁⁺, D₂⁺, ws = _fd_direction(N, (0, 1), dist, width, T)
     return RectangularGrid((xs, xs), (D₁, D₁), (D₂, D₂), (D₁⁺, D₁⁺), (D₂⁺, D₂⁺),
                            (ws, ws), (α, 2π), (N, N, Nz, Nt), SQUARE_DUCT_AXES, SQUARE_DUCT_FFT_ORDER, T)
 end

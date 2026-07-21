@@ -180,20 +180,6 @@ const AbstractLidDrivenCavityGrid{T} = Union{
 # ///   Finite-difference construction                                                       /// #
 # ////////////////////////////////////////////////////////////////////////////////////////////// #
 
-"""
-    _lid_driven_cavity_fd(N, lim, dist, width, T)
-
-Build one bounded FDGrids direction and its quadrature-weighted adjoints. The
-returned tuple is ordered as `(points, D₁, D₂, D₁⁺, D₂⁺, weights)`.
-"""
-function _lid_driven_cavity_fd(N, lim, dist, width, ::Type{T}) where {T}
-    grid = FDGrids.grid(N, lim[1], lim[2], dist)
-    xs, ws = Vector{T}(grid.xs), Vector{T}(grid.ws)
-    D₁ = FDGrids.DiffMatrix(xs, width, 1; eltype=T)
-    D₂ = FDGrids.DiffMatrix(xs, width, 2; eltype=T)
-    return xs, D₁, D₂, LinearAlgebra.adjoint(D₁, ws), LinearAlgebra.adjoint(D₂, ws), ws
-end
-
 # ////////////////////////////////////////////////////////////////////////////////////////////// #
 # ///   Two-dimensional lid-driven-cavity grid factory                                      /// #
 # ////////////////////////////////////////////////////////////////////////////////////////////// #
@@ -246,8 +232,8 @@ g3p = LidDrivenCavityGrid(65, 49, 31; spanwise=:periodic, Lz=2)
 function LidDrivenCavityGrid(Nx::Int, Ny::Int; Nt::Int=1, lim=(0, 1), xlim=lim, ylim=lim,
                              dist=FDGrids.UniformGrid(), xdist=dist, ydist=dist,
                              width=5, xwidth=width, ywidth=width, T::Type{<:Real}=Float64)
-    x, Dₓ, Dₓₓ, Dₓ⁺, Dₓₓ⁺, wₓ = _lid_driven_cavity_fd(Nx, xlim, xdist, xwidth, T)
-    y, Dᵧ, Dᵧᵧ, Dᵧ⁺, Dᵧᵧ⁺, wᵧ = _lid_driven_cavity_fd(Ny, ylim, ydist, ywidth, T)
+    x, Dₓ, Dₓₓ, Dₓ⁺, Dₓₓ⁺, wₓ = _fd_direction(Nx, xlim, xdist, xwidth, T)
+    y, Dᵧ, Dᵧᵧ, Dᵧ⁺, Dᵧᵧ⁺, wᵧ = _fd_direction(Ny, ylim, ydist, ywidth, T)
     return RectangularGrid((x, y), (Dₓ, Dᵧ), (Dₓₓ, Dᵧᵧ), (Dₓ⁺, Dᵧ⁺), (Dₓₓ⁺, Dᵧᵧ⁺), (wₓ, wᵧ),
                            (2π,), (Nx, Ny, Nt), LID_DRIVEN_CAVITY_2D_AXES, LID_DRIVEN_CAVITY_2D_FFT_ORDER, T)
 end
@@ -260,14 +246,14 @@ function LidDrivenCavityGrid(Nx::Int, Ny::Int, Nz::Int; Nt::Int=1, spanwise=:bou
                              lim=(0, 1), xlim=lim, ylim=lim, zlim=lim,
                              dist=FDGrids.UniformGrid(), xdist=dist, ydist=dist, zdist=dist,
                              width=5, xwidth=width, ywidth=width, zwidth=width, T::Type{<:Real}=Float64)
-    x, Dₓ, Dₓₓ, Dₓ⁺, Dₓₓ⁺, wₓ = _lid_driven_cavity_fd(Nx, xlim, xdist, xwidth, T)
-    y, Dᵧ, Dᵧᵧ, Dᵧ⁺, Dᵧᵧ⁺, wᵧ = _lid_driven_cavity_fd(Ny, ylim, ydist, ywidth, T)
+    x, Dₓ, Dₓₓ, Dₓ⁺, Dₓₓ⁺, wₓ = _fd_direction(Nx, xlim, xdist, xwidth, T)
+    y, Dᵧ, Dᵧᵧ, Dᵧ⁺, Dᵧᵧ⁺, wᵧ = _fd_direction(Ny, ylim, ydist, ywidth, T)
     if spanwise === :periodic
         Lz > 0 || throw(ArgumentError("Lz must be positive"))
         return RectangularGrid((x, y), (Dₓ, Dᵧ), (Dₓₓ, Dᵧᵧ), (Dₓ⁺, Dᵧ⁺), (Dₓₓ⁺, Dᵧᵧ⁺), (wₓ, wᵧ),
                                (2π / Lz, 2π), (Nx, Ny, Nz, Nt), LID_DRIVEN_CAVITY_3D_AXES, LID_DRIVEN_CAVITY_3D_PERIODIC_FFT_ORDER, T)
     elseif spanwise === :bounded
-        z, D_z, D_zz, D_z⁺, D_zz⁺, w_z = _lid_driven_cavity_fd(Nz, zlim, zdist, zwidth, T)
+        z, D_z, D_zz, D_z⁺, D_zz⁺, w_z = _fd_direction(Nz, zlim, zdist, zwidth, T)
         return RectangularGrid((x, y, z), (Dₓ, Dᵧ, D_z), (Dₓₓ, Dᵧᵧ, D_zz), (Dₓ⁺, Dᵧ⁺, D_z⁺), (Dₓₓ⁺, Dᵧᵧ⁺, D_zz⁺),
                                (wₓ, wᵧ, w_z), (2π,), (Nx, Ny, Nz, Nt), LID_DRIVEN_CAVITY_3D_AXES, LID_DRIVEN_CAVITY_3D_BOUNDED_FFT_ORDER, T)
     end
@@ -309,7 +295,6 @@ eq = LidDrivenCavityFlow(g, 1000; base=(ψᵧ, -ψₓ), fftw_flags=FFTW.ESTIMATE
 """
 function LidDrivenCavityFlow(g::AbstractLidDrivenCavity2DGrid, Re; base, mode=AdjointDiscrete(),
                              fftw_flags=FFTW.EXHAUSTIVE, dealias=true)
-    length(base) == 2 || throw(ArgumentError("a 2D cavity base must contain (U, V)"))
     construct_equations(g, Re, base, CartesianPrimitive2D(); mode, flags=fftw_flags, dealias)
 end
 
@@ -319,6 +304,5 @@ end
 
 function LidDrivenCavityFlow(g::AbstractLidDrivenCavity3DGrid, Re; base, mode=AdjointDiscrete(),
                              fftw_flags=FFTW.EXHAUSTIVE, dealias=true)
-    length(base) == 3 || throw(ArgumentError("a 3D cavity base flow must contain (U, V, W)"))
     construct_equations(g, Re, base, CartesianPrimitive3D(); mode, flags=fftw_flags, dealias)
 end

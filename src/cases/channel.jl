@@ -278,41 +278,6 @@ const ChannelGrid{T, S, XS, D1, D2, A1, A2, WS, WP} = RectangularGrid{
 # // Wall-normal finite-difference discretisation                                               // #
 # //////////////////////////////////////////////////////////////////////////////////////////////// #
 
-"""
-    _channel_fd(Ny, lim, dist, width, T) -> (y, Dy, Dy2, Dya, Dy2a, ws)
-
-Build the wall-normal finite-difference discretisation shared by every channel
-layout.
-
-# Arguments
-
-- `Ny`: number of wall-normal collocation points.
-- `lim`: physical wall locations `(y₋,y₊)`.
-- `dist`: FDGrids point distribution on `lim`.
-- `width`: stencil width passed to `FDGrids.DiffMatrix`.
-- `T`: real scalar type of the returned points, weights, and operators.
-
-# Returns
-
-The collocation points `y`, first- and second-derivative operators `Dy` and
-`Dy2`, their quadrature-weighted adjoints `Dya` and `Dy2a`, and the quadrature
-weights `ws`. The ordering is the same as the corresponding fields of
-[`RectangularGrid`](@ref).
-
-FDGrids validates the interval, point count, distribution, and stencil width.
-The adjoints satisfy the weighted inner-product convention used by NSEBase's
-discrete-adjoint operators.
-"""
-function _channel_fd(Ny::Int, lim::NTuple{2, <:Real}, dist::FDGrids.AbstractGridDistribution,
-                     width::Int, ::Type{T}) where {T<:Real}
-    grid = FDGrids.grid(Ny, lim[1], lim[2], dist)
-    y, ws = Vector{T}(grid.xs), Vector{T}(grid.ws)
-    Dy = FDGrids.DiffMatrix(y, width, 1; eltype=T)
-    Dy2 = FDGrids.DiffMatrix(y, width, 2; eltype=T)
-    Dya, Dy2a = LinearAlgebra.adjoint(Dy, ws), LinearAlgebra.adjoint(Dy2, ws)
-    return y, Dy, Dy2, Dya, Dy2a, ws
-end
-
 # //////////////////////////////////////////////////////////////////////////////////////////////// #
 # // High-level channel-grid factories                                                          // #
 # //////////////////////////////////////////////////////////////////////////////////////////////// #
@@ -356,7 +321,7 @@ function StreamwiseInvariantChannelGrid(Ny::Int, Nz::Int; Nt::Int=1, β::Real=1,
                                         lim::NTuple{2, <:Real}=(-1, 1),
                                         dist::FDGrids.AbstractGridDistribution=FDGrids.GaussLobattoGrid(),
                                         width::Int=5, T::Type{<:Real}=Float64)
-    y, Dy, Dy2, Dya, Dy2a, ws = _channel_fd(Ny, lim, dist, width, T)
+    y, Dy, Dy2, Dya, Dy2a, ws = _fd_direction(Ny, lim, dist, width, T)
     return RectangularGrid((y,), (Dy,), (Dy2,), (Dya,), (Dy2a,), (ws,), (β, 2π),
                            (Ny, Nz, Nt), STREAMWISE_INVARIANT_CHANNEL_AXES,
                            STREAMWISE_INVARIANT_CHANNEL_FFT_ORDER, T)
@@ -397,7 +362,7 @@ function TwoDimensionalChannelGrid(Nx::Int, Ny::Int; Nt::Int=1, α::Real=1,
                                       lim::NTuple{2, <:Real}=(-1, 1),
                                       dist::FDGrids.AbstractGridDistribution=FDGrids.GaussLobattoGrid(),
                                       width::Int=5, T::Type{<:Real}=Float64)
-    y, Dy, Dy2, Dya, Dy2a, ws = _channel_fd(Ny, lim, dist, width, T)
+    y, Dy, Dy2, Dya, Dy2a, ws = _fd_direction(Ny, lim, dist, width, T)
     return RectangularGrid((y,), (Dy,), (Dy2,), (Dya,), (Dy2a,), (ws,), (α, 2π),
                            (Ny, Nx, Nt), TWO_DIMENSIONAL_CHANNEL_AXES,
                            TWO_DIMENSIONAL_CHANNEL_FFT_ORDER, T)
@@ -429,7 +394,7 @@ function ChannelGrid(Nx::Int, Ny::Int, Nz::Int; Nt::Int=1, α::Real=1, β::Real=
                      lim::NTuple{2, <:Real}=(-1, 1),
                      dist::FDGrids.AbstractGridDistribution=FDGrids.GaussLobattoGrid(),
                      width::Int=5, T::Type{<:Real}=Float64)
-    y, Dy, Dy2, Dya, Dy2a, ws = _channel_fd(Ny, lim, dist, width, T)
+    y, Dy, Dy2, Dya, Dy2a, ws = _fd_direction(Ny, lim, dist, width, T)
     return RectangularGrid((y,), (Dy,), (Dy2,), (Dya,), (Dy2a,), (ws,), (α, β, 2π),
                            (Ny, Nx, Nz, Nt), CHANNEL_3D_AXES, CHANNEL_3D_FFT_ORDER, T)
 end
@@ -474,6 +439,21 @@ end
 # //////////////////////////////////////////////////////////////////////////////////////////////// #
 
 """
+    _couette_profile(y, y₋, y₊) -> Vector
+
+Map wall-normal points `y` from wall locations `(y₋,y₊)` onto `η∈[-1,1]` and return `U(η)=η`.
+
+This is the shared arithmetic behind [`plane_couette_base`](@ref): a serial grid supplies its own
+points and extrema, while the MPI extension's `DecomposedGrid` method supplies rank-local points
+together with the undecomposed parent's global extrema. Keeping the formula in one place guarantees
+both agree on the profile.
+"""
+function _couette_profile(y::AbstractVector{T}, y₋, y₊) where {T}
+    y₊ > y₋ || throw(ArgumentError("channel walls must have distinct coordinates"))
+    return @. T(2) * (y - T(y₋)) / (T(y₊) - T(y₋)) - one(T)
+end
+
+"""
     plane_couette_base(g::AbstractChannelGrid) -> Vector
 
 Return the canonical Couette profile `U(η)=η`. The wall-normal points are
@@ -486,9 +466,7 @@ wall locations while evaluating the profile only at the rank-local points.
 function plane_couette_base(g::AbstractChannelGrid{T}) where {T}
     dim = only(inhomogeneous_storage_dims(g))
     y = copy(vec(points(g)[dim]))
-    y₋, y₊ = extrema(y)
-    y₊ > y₋ || throw(ArgumentError("channel walls must have distinct coordinates"))
-    return @. T(2) * (y - y₋) / (y₊ - y₋) - one(T)
+    return _couette_profile(y, extrema(y)...)
 end
 
 """
@@ -537,7 +515,6 @@ the responsibility of the basis or residual formulation.
 function PlaneCouetteFlow(g::AbstractChannel3DGrid, Re; Ro=0,
                           base=(plane_couette_base(g), nothing, nothing), mode=AdjointDiscrete(),
                           fftw_flags=FFTW.EXHAUSTIVE, dealias=true)
-    length(base) == 3 || throw(ArgumentError("a 3D channel base must contain (U, V, W)"))
     force = iszero(Ro) ? NoForce() : CoriolisForce(eltype(g)(Ro))
     return construct_equations(g, Re, base, CartesianPrimitive3D(); force, mode, flags=fftw_flags, dealias)
 end
@@ -545,7 +522,6 @@ end
 function PlaneCouetteFlow(g::AbstractStreamwiseInvariantChannelGrid, Re; Ro=0,
                           base=(nothing, nothing, plane_couette_base(g)), mode=AdjointDiscrete(),
                           fftw_flags=FFTW.EXHAUSTIVE, dealias=true)
-    length(base) == 3 || throw(ArgumentError("a streamwise-invariant channel base must contain (V, W, U)"))
     force = iszero(Ro) ? NoForce() : CoriolisForce(eltype(g)(Ro); components=(3, 1))
     return construct_equations(g, Re, base, CartesianPrimitive2D3C(); force, mode, flags=fftw_flags, dealias)
 end
@@ -553,7 +529,6 @@ end
 function PlaneCouetteFlow(g::AbstractTwoDimensionalChannelGrid, Re; Ro=0,
                           base=(plane_couette_base(g), nothing), mode=AdjointDiscrete(),
                           fftw_flags=FFTW.EXHAUSTIVE, dealias=true)
-    length(base) == 2 || throw(ArgumentError("a two-dimensional channel base must contain (U, V)"))
     force = iszero(Ro) ? NoForce() : CoriolisForce(eltype(g)(Ro))
     return construct_equations(g, Re, base, CartesianPrimitive2D(); force, mode, flags=fftw_flags, dealias)
 end
@@ -582,7 +557,6 @@ adds spanwise-axis Coriolis forcing.
 function PlanePoiseuilleFlow(g::AbstractChannel3DGrid, Re; Ro=0, f=1,
                              base=(plane_poiseuille_base(g), nothing, nothing), mode=AdjointDiscrete(),
                              fftw_flags=FFTW.EXHAUSTIVE, dealias=true)
-    length(base) == 3 || throw(ArgumentError("a 3D channel base must contain (U, V, W)"))
     pressure = ConstantBodyForce(eltype(g)(f); component=1)
     force = iszero(Ro) ? pressure : CompoundForcing(pressure, CoriolisForce(eltype(g)(Ro)))
     return construct_equations(g, Re, base, CartesianPrimitive3D(); force, mode, flags=fftw_flags, dealias)
@@ -591,7 +565,6 @@ end
 function PlanePoiseuilleFlow(g::AbstractStreamwiseInvariantChannelGrid, Re; Ro=0, f=1,
                              base=(nothing, nothing, plane_poiseuille_base(g)), mode=AdjointDiscrete(),
                              fftw_flags=FFTW.EXHAUSTIVE, dealias=true)
-    length(base) == 3 || throw(ArgumentError("a streamwise-invariant channel base must contain (V, W, U)"))
     pressure = ConstantBodyForce(eltype(g)(f); component=3)
     force = iszero(Ro) ? pressure : CompoundForcing(pressure, CoriolisForce(eltype(g)(Ro); components=(3, 1)))
     return construct_equations(g, Re, base, CartesianPrimitive2D3C(); force, mode, flags=fftw_flags, dealias)
@@ -600,7 +573,6 @@ end
 function PlanePoiseuilleFlow(g::AbstractTwoDimensionalChannelGrid, Re; Ro=0, f=1,
                              base=(plane_poiseuille_base(g), nothing), mode=AdjointDiscrete(),
                              fftw_flags=FFTW.EXHAUSTIVE, dealias=true)
-    length(base) == 2 || throw(ArgumentError("a two-dimensional channel base must contain (U, V)"))
     pressure = ConstantBodyForce(eltype(g)(f); component=1)
     force = iszero(Ro) ? pressure : CompoundForcing(pressure, CoriolisForce(eltype(g)(Ro)))
     return construct_equations(g, Re, base, CartesianPrimitive2D(); force, mode, flags=fftw_flags, dealias)
@@ -638,7 +610,6 @@ Those remain the responsibility of the basis or residual formulation.
 function RayleighBenardFlow(g::AbstractTwoDimensionalChannelGrid, Re, Pr, Ra;
                             base=(nothing, nothing, rbc_base_temperature(g)),
                             mode=AdjointDiscrete(), fftw_flags=FFTW.EXHAUSTIVE, dealias=true)
-    length(base) == 3 || throw(ArgumentError("a 2D Rayleigh–Bénard base must contain (U, V, Θ)"))
     formulation = CartesianPrimitive2DBoussinesq(Pr, Ra / (Re^2 * Pr); grav=2)
     return construct_equations(g, Re, base, formulation; mode, flags=fftw_flags, dealias)
 end
@@ -646,7 +617,6 @@ end
 function RayleighBenardFlow(g::AbstractChannel3DGrid, Re, Pr, Ra;
                             base=(nothing, nothing, nothing, rbc_base_temperature(g)),
                             mode=AdjointDiscrete(), fftw_flags=FFTW.EXHAUSTIVE, dealias=true)
-    length(base) == 4 || throw(ArgumentError("a 3D Rayleigh–Bénard base must contain (U, V, W, Θ)"))
     formulation = CartesianPrimitive3DBoussinesq(Pr, Ra / (Re^2 * Pr); grav=2)
     return construct_equations(g, Re, base, formulation; mode, flags=fftw_flags, dealias)
 end

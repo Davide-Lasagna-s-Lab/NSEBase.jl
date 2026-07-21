@@ -364,8 +364,7 @@ function NSEBase.plane_couette_base(g::Union{
     dim = only(NSEBase.inhomogeneous_storage_dims(g))
     y = copy(vec(NSEBase.points(g)[dim]))
     y₋, y₊ = extrema(vec(NSEBase.points(parent(g))[dim]))
-    y₊ > y₋ || throw(ArgumentError("channel walls must have distinct coordinates"))
-    return @. T(2) * (y - y₋) / (y₊ - y₋) - one(T)
+    return NSEBase._couette_profile(y, y₋, y₊)
 end
 
 """
