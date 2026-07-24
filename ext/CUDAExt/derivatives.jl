@@ -55,14 +55,14 @@ Obtain the wave number for dimension `DIM` of the index `I` applied to
 a matrix with size `sz`, with `RFFT_DIM` being the first transformed
 direction of the array.
 """
-@inline @generated function _get_freq(I::CartesianIndex,
-                                     sz::NTuple,
-                                       ::Val{DIM},
-                                       ::Val{RFFT_DIM}) where {DIM, RFFT_DIM}
+@generated function _get_freq(I::CartesianIndex,
+                             sz::NTuple,
+                               ::Val{DIM},
+                               ::Val{RFFT_DIM}) where {DIM, RFFT_DIM}
     return if DIM == RFFT_DIM
-        :(I[$DIM] - 1)
+        :(@inline; I[$DIM] - 1)
     else
-        :(ifelse(I[$DIM] ≤ (sz[$DIM] >> 1) + 1, I[$DIM] - 1, I[$DIM] - 1 - sz[$DIM]))
+        :(@inline; ifelse(I[$DIM] ≤ (sz[$DIM] >> 1) + 1, I[$DIM] - 1, I[$DIM] - 1 - sz[$DIM]))
     end
 end
 
@@ -111,11 +111,11 @@ end
 Compute the (squared) frequency contribution to the Laplacian operator
 for all the homogeneous directions at index `I` of an array with size `sz`.
 """
-@inline @generated function _get_laplacian_freq(I::CartesianIndex,
-                                               sz::NTuple,
-                                           scales::NTuple,
-                                                 ::Val{SPATIAL_FFT_DIMS_ORDER},
-                                                 ::Val{RFFT_DIM}) where {SPATIAL_FFT_DIMS_ORDER, RFFT_DIM}
+@generated function _get_laplacian_freq(I::CartesianIndex,
+                                       sz::NTuple,
+                                   scales::NTuple,
+                                         ::Val{SPATIAL_FFT_DIMS_ORDER},
+                                         ::Val{RFFT_DIM}) where {SPATIAL_FFT_DIMS_ORDER, RFFT_DIM}
     terms = map(enumerate(SPATIAL_FFT_DIMS_ORDER)) do (i, d)
         n = if d == RFFT_DIM
             :(Int32(I[$d] - 1))
@@ -131,5 +131,5 @@ for all the homogeneous directions at index `I` of an array with size `sz`.
         terms
     )
 
-    return :(Float32($sum_expr))
+    return :(@inline; Float32($sum_expr))
 end

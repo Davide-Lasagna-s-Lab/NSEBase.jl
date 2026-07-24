@@ -26,8 +26,7 @@ avoids any allocation cost at the call site.
 # Constructors
     DotTwoStage(a::GPUProjectedField)
 
-- `a`: a representative `ProjectedField` used to determine array size
-       (not mutated)
+- `a`: `ProjectedField` the dot product is computed from
 
     DotTwoStage(sz::NTuple{D, Int}, order::NTuple, ::Type{T}=Float32)
 
@@ -71,14 +70,13 @@ autotune.
 
 # Fields
 - `result::A`: pre-allocated single-element `CuArray` accumulator
-- `sz::NTuple{D, Int32}`: size of `ProjectedField` arrays
-- `nelem::Int32`: total number of elements of `ProjectedField` arrays (`nelem=prod(sz)`)
+- `sz::NTuple{D, Int32}`: size of `ProjectedField`
+- `nelem::Int32`: total number of elements of `ProjectedField` (`nelem=prod(sz)`)
 
 # Constructor
     DotAtomic(a::GPUProjectedField)
 
-- `a`: a representative `ProjectedField` used to determine array size
-       (not mutated)
+- `a`: `ProjectedField` the dot product is computed from
 
 # Example
 ```julia
@@ -86,6 +84,7 @@ method = DotAtomic(a)
 dot(a, b, method)
 ```
 """
+# ! remove sz and nelem as cached variables
 struct DotAtomic{RFFT_DIM, D, A} <: DotMethod
     result::A
         sz::NTuple{D, Int32}
@@ -123,14 +122,13 @@ method may still win due to its optimised memory access pattern - use
 
 # Fields
 - `result`: pre-allocated single-element `CuArray` accumulator
-- `sz::NTuple{D, Int32}`: size of `ProjectedField` arrays
-- `nelem::Int32`: total number of elements of `ProjectedField` arrays (`nelem=prod(sz)`)
+- `sz::NTuple{D, Int32}`: size of `ProjectedField`
+- `nelem::Int32`: total number of elements of `ProjectedField` (`nelem=prod(sz)`)
 
 # Constructor
     DotShared(a::GPUProjectedField)
 
-- `a`: a representative `ProjectedField` used to determine array size and
-  query optimal thread count (not mutated)
+- `a`: `ProjectedField` the dot product is computed from
 
 # Example
 ```julia
@@ -192,13 +190,14 @@ up once to trigger compilation before timing. Timing uses [`CUDA.@elapsed`](@ref
 to measure device-side execution time, taking the minimum over 5 trials to reduce
 noise.
 
-If `show_autotune_info(true)` has been set then the winner and all trial times via
-`@info`.
+If [`show_tuning_info`](@ref) has been set to `true` then the winner and all trial
+times via `@info`. The number of samples used to benchmark to the kernels can be
+controlled via [`set_tuning_samples`](@ref).
 
     autotune_dot(a) -> best::DotMethod
 """
 function autotune_dot(a::GPUProjectedField)
-    b  = similar(a)  # dummy field for benchmarking
+    b = similar(a)  # dummy field for benchmarking
 
     # Construct all candidate methods
     candidates = DotMethod[
@@ -310,8 +309,8 @@ s = dot(a, b) # uses cached optimal method, returns Float32
 See also: [`initialise_dot!`](@ref), [`DotTwoStage`](@ref), [`DotShared`](@ref),
 [`DotAtomic`](@ref)
 """
-LinearAlgebra.dot(a::GPUProjectedField,
-                  b::GPUProjectedField) = dot(a, b, dot_method(a))
+LinearAlgebra.dot(a::GPUProjectedField, b::GPUProjectedField) =
+    dot(a, b, dot_method(a))
 
 """
     dot(a::GPUProjectedField, b::GPUProjectedField, method::DotMethod) -> real(eltype(a))
@@ -336,9 +335,9 @@ method = DotTwoStage(a)
 s = dot(a, b, method)
 ```
 """
-LinearAlgebra.dot(a::GPUProjectedField,
-                  b::GPUProjectedField,
-             method::DotMethod) = _dot(parent(a), parent(b), method)
+# TODO: don't pass parent and get RFFT_DIM from grid type directly rather than type parameter of method
+LinearAlgebra.dot(a::GPUProjectedField, b::GPUProjectedField, method::DotMethod) =
+    _dot(parent(a), parent(b), method)
 
 """
     _dot(a::CuArray{T}, b::CuArray{T}, cache::DotTwoStage) -> T

@@ -69,6 +69,8 @@ function distributed end
 
 # dummy function definition for CUDA extension
 export initialise_dot!, reset_dot_cache!
+export initialise_project!, reset_project_cache!
+export initialise_expand!, reset_expand_cache!
 
 function show_tuning_info! end
 function set_tuning_samples! end
@@ -77,5 +79,11 @@ function reset_launch_params! end
 
 function initialise_dot! end
 function reset_dot_cache! end
+
+function initialise_project! end
+function reset_project_cache! end
+
+function initialise_expand! end
+function reset_expand_cache! end
 
 end

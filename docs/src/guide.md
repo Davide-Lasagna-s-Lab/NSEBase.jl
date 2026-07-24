@@ -332,9 +332,9 @@ reset_dot_cache!() # -> clears all saved tuned methods
 reset_dot_cache!(a::ProjectedField) # -> clears the tuned method for only the type `typeof(a)`
 
 # Galerkin projection
-initialise_project!(a::ProjectedField, u::VectorField)
+initialise_project!(a::ProjectedField)
 reset_project_cache!() # -> clears all saved tuned methods
-reset_project_cache!(a::ProjectedField, u::VectorField) # -> clears the tuned method for only the types `typeof(a)` and `typeof(u)`
+reset_project_cache!(a::ProjectedField) # -> clears the tuned method for only the types `typeof(a)` and `typeof(u)`
 
 # Galerkin expansion
 initialise_expand!(a::ProjectedField, u::VectorField)

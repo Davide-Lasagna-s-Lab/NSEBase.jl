@@ -301,10 +301,10 @@ spectral wavenumber indices without touching the inhomogeneous dimensions.
 `D` is inferred from `ndims(u)`.
 """
 @generated function homogeneous_axes(u::AbstractArray, ::Val{FFT_DIMS_ORDER}) where {FFT_DIMS_ORDER}
-    return Expr(:tuple, (:(axes(u, $d)) for d in FFT_DIMS_ORDER)...)
+    return Expr(:block, Expr(:meta, :inline), Expr(:tuple, (:(axes(u, $d)) for d in FFT_DIMS_ORDER)...))
 end
 
-homogeneous_axes(u::FTField) = homogeneous_axes(parent(u), Val(fft_storage_dims(grid(u))))
+@inline homogeneous_axes(u::FTField) = homogeneous_axes(parent(u), Val(fft_storage_dims(grid(u))))
 
 """
     inhomogeneous_axes(u::FTField)                              -> Tuple
@@ -316,7 +316,7 @@ Return a tuple of `axes(u, d)` for each dimension `d` in `1:D` that is
 """
 @generated function inhomogeneous_axes(u::AbstractArray{<:Any, D}, ::Val{FFT_DIMS_ORDER}) where {D, FFT_DIMS_ORDER}
     inh_dims = [d for d in 1:D if d ∉ FFT_DIMS_ORDER]
-    return Expr(:tuple, (:(axes(u, $d)) for d in inh_dims)...)
+    return Expr(:block, Expr(:meta, :inline), Expr(:tuple, (:(axes(u, $d)) for d in inh_dims)...))
 end
 
-inhomogeneous_axes(u::FTField) = inhomogeneous_axes(parent(u), Val(fft_storage_dims(grid(u))))
+@inline inhomogeneous_axes(u::FTField) = inhomogeneous_axes(parent(u), Val(fft_storage_dims(grid(u))))

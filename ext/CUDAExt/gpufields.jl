@@ -1,7 +1,5 @@
 # Specialised constructors and methods for fields defined on a GPUGrid.
 
-# ! could define some default methods that just don't work for GPUGrids (such as getindex, etc.)?
-
 # useful type aliases
 const GPUFTField        = NSEBase.FTField{<:GPUGrid}
 const GPUField          = NSEBase.Field{<:GPUGrid}

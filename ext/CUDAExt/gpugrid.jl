@@ -9,9 +9,6 @@
 # 
 #   ChannelGrid              - host-side grid defined by the user
 #   CUDA.cu(g)               - returns a `GPUGrid` wrapping the parent `g`
-# 
-# ! these methods need to be defined by the user:
-# !     - Adapt.adapt_structure(to, g::AbstractGrid)
 
 """
     GPUGrid{T, D, AXES, FFT_DIMS_ORDER, GP} <:
@@ -37,9 +34,11 @@ struct GPUGrid{T,
         new{T, D, AXES, FFT_DIMS_ORDER, GP}(g)
 end
 
+# required to be able to pass custom field types over `GPUGrid`'s directly to kernels
+Adapt.adapt_structure(to, g::GPUGrid) = GPUGrid(adapt_structure(to, parent(g)))
+
 CUDA.cu(g::NSEBase.AbstractGrid) = GPUGrid(adapt_structure(CuArray{Float32}, convert(Float32, g)))
 Adapt.adapt_structure(to, g::NSEBase.AbstractGrid) = throw(NSEBase.NotImplementedError(g))
-# ! could I do Adapt.@adapt_structure(ChannelFlow{S, T} where {S, T}) in the child package?
 
 """
     parent(g::GPUGrid) -> NSEBase.AbstractGrid

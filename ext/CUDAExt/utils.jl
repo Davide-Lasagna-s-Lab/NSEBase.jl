@@ -56,8 +56,10 @@ NSEBase.reset_launch_params!() = empty!(LAUNCH_PARAMS)
 Convert a linear index `idx` to the corresponding `CartesianIndex` for a
 multidimensional array with a size of `sz`.
 """
-@inline @generated function _linear_to_cart(idx::Int32, sz::NTuple{D, Int32}) where {D}
+# FIXME: change to a tuple to retain Int32 types
+@generated function _linear_to_cart(idx::Int32, sz::NTuple{D, Int32}) where {D}
     return quote
+        @inline
         rem = idx - 1i32
         $(ntuple(d -> d < D ? quote
             $(Symbol(:i_, d)) = rem % sz[$d] + 1i32
