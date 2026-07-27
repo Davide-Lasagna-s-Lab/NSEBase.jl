@@ -166,12 +166,12 @@ end
 # Adapt.@adapt_structure(MockChannelGrid{S, T} where {S, T})
 # eval(@macroexpand(Adapt.@adapt_structure(MockChannelGrid{S, T} where {S, T})))
 
-function Adapt.adapt_structure(to, g::MockChannelGrid{S, T}) where {S, T}
+function Adapt.adapt_structure(to, g::MockChannelGrid{S}) where {S}
     y  = Adapt.adapt_structure(to, g.y)
     ws = Adapt.adapt_structure(to, g.ws)
     D₁ = Adapt.adapt_structure(to, g.D₁)
     D₂ = Adapt.adapt_structure(to, g.D₂)
-    return MockChannelGrid{S, T}(y, ws, D₁, D₂, g.α, g.β)
+    return MockChannelGrid{S, Float32}(y, ws, D₁, D₂, Float32(g.α), Float32(g.β))
 end
 
 # ------------------------------------------------------------------ #
