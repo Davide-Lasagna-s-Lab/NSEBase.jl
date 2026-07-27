@@ -37,7 +37,7 @@ end
 # required to be able to pass custom field types over `GPUGrid`'s directly to kernels
 Adapt.adapt_structure(to, g::GPUGrid) = GPUGrid(adapt_structure(to, parent(g)))
 
-CUDA.cu(g::NSEBase.AbstractGrid) = GPUGrid(adapt_structure(CuArray{Float32}, convert(Float32, g)))
+CUDA.cu(g::NSEBase.AbstractGrid) = GPUGrid(adapt_structure(CuArray{Float32}, g))
 Adapt.adapt_structure(to, g::NSEBase.AbstractGrid) = throw(NSEBase.NotImplementedError(g))
 
 """

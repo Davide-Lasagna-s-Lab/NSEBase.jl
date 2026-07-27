@@ -81,7 +81,7 @@ function NSEBase._add_homogeneous_laplacian!(out::GPUFTField,
                    parent(u),
                    sz, nelem,
                    scales,
-                   Val(Int32.(spatial_fft_storage_dims(NSEBase.grid(u)))),
+                   Val(Int32.(NSEBase.spatial_fft_storage_dims(NSEBase.grid(u)))),
                    Val(Int32(NSEBase.rfft_storage_dim(NSEBase.grid(u)))))
     nthreads = _get_launch_params(_add_homogeneous_laplacian_kernel!, kernel_args...)
     @cuda threads=nthreads blocks=Int32(cld(nelem, nthreads)) _add_homogeneous_laplacian_kernel!(kernel_args...)
