@@ -155,7 +155,7 @@ function _project_component!(    a::AbstractArray,
         for Iinh in CartesianIndices(inhomogeneous_axes(u, Val(FFT_DIMS_ORDER)))
             wuj = ws[Iinh] * u[combine_indices(Val(FFT_DIMS_ORDER), Iinh, Ih)...]
             for m in 1:Nm
-                a[m, Ih] += conj(modes[m, Iinh, Ih]) * wuj
+                @inbounds a[m, Ih] += dot(modes[m, Iinh, Ih], wuj)
             end
         end
     end
@@ -266,6 +266,7 @@ function project!(a::ProjectedField{G},
     return a
 end
 
+# ! why no @inbounds?
 function expand!(u::VectorField{N, <:FTField{G}},
                  a::ProjectedField{G},
                  ::GemmGalerkin) where {N, G<:AbstractGrid{T}} where {T}

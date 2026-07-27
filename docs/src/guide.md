@@ -26,14 +26,14 @@ runtime dispatch and no runtime allocation in the hot paths.
 A concrete grid must implement exactly four methods:
 
 ```julia
-Base.size(grid)                       # → NTuple{D, Int}
-points(grid; dealias=false)           # → one array per dimension
-wavenumber_scale(grid, dim::Int)      # → Real (2π/L for spatial, 1 for temporal)
-weights(grid)                         # → AbstractArray (quadrature weights)
+Base.size(grid)                                                     # → NTuple{D, Int}
+points(grid; dealias=false)                                         # → one array per dimension
+wavenumber_scale(grid, dim::Int)                                    # → Real (2π/L for spatial, 1 for temporal)
+weights(grid)                                                       # → AbstractArray (quadrature weights)
+derivative_matrix(grid, storage_dim::Int, ::Val{ORDER}, ::Val{ADD}) # -> AbstractArray (differentiation operator for inhomogeneous directions)
 ```
 
-`weights` must have one axis per entry in `inhomogeneous_dims(grid)` in ascending
-array-dimension order.
+`weights` must have one axis per entry in `inhomogeneous_dims(grid)` in ascending array-dimension order, and `derivative_matrix` should be defined for all `storage_dim ∉ FFT_DIMS_ORDER`.
 
 ### Homogeneous vs. inhomogeneous dimensions
 
@@ -62,7 +62,7 @@ real element type `T`.  Used as a scratch buffer for de-aliased nonlinear
 products.
 
 ```julia
-u = Field(grid)                       # zero field
+u = Field(grid)                      # zero field
 u = Field(grid, (x, y) -> sin(x)*y)  # initialise from a function
 ```
 
@@ -133,19 +133,17 @@ Downstream grids must implement `wavenumber_scale` for every dimension in
 
 ---
 
-## Spectral derivative convention
+## Derivative convention
 
 `dd!(out, u, Val{STORAGE_DIM})` computes the in-place spectral derivative along array
-dimension `STORAGE_DIM`:
+dimension `STORAGE_DIM ∈ FFT_DIMS_ORDER`:
 
 ```
 out[k] = +im · n · wavenumber_scale(grid, DIM) · u[k]     (adjoint=false)
 out[k] = -im · n · wavenumber_scale(grid, DIM) · u[k]     (adjoint=true)
 ```
 
-The `adjoint=true` form is the L² adjoint of the spectral derivative operator.
-`STORAGE_DIM` must lie in `FFT_DIMS_ORDER`; passing an inhomogeneous dimension throws
-`NotImplementedError`.
+The `adjoint=true` form is the L² adjoint of the spectral derivative operator. For the case that `STORAGE_DIM ∉ FFT_DIMS_ORDER` the direction trying to differentiated is inhomogeneous (non-periodic). For this to work the user is required to have implemented the `derivative_matrix` method, which will fetch the differentiation operator being used and then use it for the differentiation via `LinearAlgebra.mul!`.
 
 Four named wrappers pick the array dimension from `AXES`:
 
@@ -203,16 +201,41 @@ dimensions in `FFT_DIMS_ORDER` order.  Shifts are given in **physical units**
 
 ---
 
+## FFT Transforms and Plans
+
+The main mechanism to transform between `FTField`'s and `Field`'s is via `FFT`, `IFFT`, and `FFTPlans`. Both `FFT` and `IFFT` are allocating transforms and are most useful for interactive developement and exploration. If the `growto` method is defined for a subtype of `AbstractGrid`, then fields that are built on this subtype also have access to resolution altering `FFT` and `IFFT` methods. This allow the user to pad or truncate the spectral components (homogeneous directions) of the field, useful for creating better resolved plots.
+
+```julia
+u = Field(g) # g isa AbstractGrid
+û = FFT(u)
+IFFT(û) # ≈ u
+
+û_padded  = FFT(u, target_size) # target_size isa NTuple{N, Int}
+u_refined = IFFT(u, target_size) # u_refined is subsampled in the homogeneous directions
+```
+
+In hot loops, where operators are evaluated many times over, using `FFTPlans` is strongly preferred as it does not allocate any new data. `FFTPlans` are primarily constructed via a concrete implementation of `AbstractGrid`, and can be optionally be constructed to pad the transforms for the purpose of dealiasing. The primarily backend for all the transforms is FFTW, and therefore FFTW flags (`FFTW.ESTIMATE`, `FFT.TIMELIMIT`, etc.) can be passed to modify the plans being constructed.
+
+```julia
+g = ChannelGrid(...) # <: AbstractGrid
+F = FFTPlans(u; flags=FFTW.EXHAUSTIVE, timelimit=FFTW.NO_TIMELIMIT)
+
+û = FTField(g)
+u = Field(g)
+F(û, u) # forward transform u -> û
+F(u, û) # backward transform û -> u
+```
+
+---
+
 ## De-aliasing
 
 Physical-space nonlinear products are computed on a padded grid using the **3/2
 rule**: the physical-space arrays in `pcache` are allocated with `dealias=true`,
-which asks `growto(grid, target_size)` to extend each homogeneous dimension to
-`3N/2`.  NSEBase zero-pads the spectral coefficients before transforming to the
-padded grid and symmetrically truncates after transforming back, eliminating
-aliasing errors from quadratic nonlinearities.
-
-Downstream grids must implement `growto` to support de-aliasing.
+which extends each homogeneous dimension to `3N/2`.  NSEBase zero-pads the
+spectral coefficients before transforming to the padded grid and symmetrically
+truncates after transforming back, eliminating aliasing errors from quadratic
+nonlinearities.
 
 ---
 
@@ -285,6 +308,56 @@ operations.  The allocating wrappers (`FFT`, `IFFT`, `shift`, `project`,
 
 ---
 
+# GPU Acceleration
+
+NSEBase supports GPU accelerations, via CUDA, for any subtype of `AbstractGrid`. This is achieved via the `CUDA.cu` method which is responsible for moving all the contents of a grid and all fields built on top it to the GPU. For these routines to work the user must implement the following:
+
+```julia
+Adapt.adapt_structure(to, grid)
+Base.convert(T, grid)
+```
+
+The `CUDA.cu` method is opinionated: it forcefully converts all numeric types to `Float32`. If this is not desired it is also possible use `Adapt.adapt_structure` directly which retains the same numeric types while moving all the data to the GPU. Once grids can be moved onto the GPU then simply calling operator constructors (`CartesianPrimitive3DNSE(::GPUGrid, ...)`, `construct_equations(::GPUGrid, ...)`) will automatically construct all caches and plans required with the appropriate memory placements and backends.
+
+`CUDA.cu` returns a `GPUGrid` type which is used primarily to modify the dispatch path such that the specialised CUDA kernels are used where appropriate. This includes:
+ - constructing `FFTPlans` using cuFFT for the backend (instead of FFTW)
+ - derivatives, galerkin project and expand, dot products.
+
+The first time some of these methods are run for particular input types, the code automatically benchmarks all the available kernels and chooses the fastest as the preferred method for all future calls with the same input types. This autotuning process can be controlled via the following methods:
+
+```julia
+# ProjectedField dot product
+initialise_dot!(a::ProjectedField)
+reset_dot_cache!() # -> clears all saved tuned methods
+reset_dot_cache!(a::ProjectedField) # -> clears the tuned method for only the type `typeof(a)`
+
+# Galerkin projection
+initialise_project!(a::ProjectedField)
+reset_project_cache!() # -> clears all saved tuned methods
+reset_project_cache!(a::ProjectedField) # -> clears the tuned method for only the types `typeof(a)` and `typeof(u)`
+
+# Galerkin expansion
+initialise_expand!(a::ProjectedField, u::VectorField)
+reset_expand_cache!() # -> clears all saved tuned methods
+reset_expand_cache!(a::ProjectedField, u::VectorField) # -> clears the tuned method for only the types `typeof(a)` and `typeof(u)`
+```
+
+Alternatively, a particular kernel method can be chosen manually by passing it directly to the method call:
+
+```julia
+CUDAExt = Base.get_extension(NSEBase, :CUDAExt)
+method = CUDAExt.DotAtomic(a)
+dot(a, b, method)
+
+# similarly for galerkin project and expand
+```
+
+To toggle the information output from the autotuning process use `NSEBase.show_tuning_info!(true)`. The number of samples taken during autotuning can also be controlled via the `NSEBase.set_tuning_samples!(::Int)` method.
+
+Finally, all kernels are configured before they run with the optimal number of threads given their input types. This stored for proceeding calls to the kernel such that it doesn't have to regenerated anew each time the kernel is run. To reset this global cache use `NSEBase.reset_launch_cache!()`.
+
+---
+
 ## MPI and Distributed Computations
 
 MPI parallelisation is supported, and can be accessed by loading [MPI.jl](https://github.com/JuliaParallel/MPI.jl) and [FDGrids.jl](https://github.com/Davide-Lasagna-s-Lab/FDGrids.jl) into the current Julia session alongside NSEBase.
@@ -307,7 +380,3 @@ op = CartesianPrimitive3DNSE(g_dist, Re)
 The variable `nhalo` is used to tell the fields how much to pad the local arrays to accomodate data from neighbouring processes required to compute derivatives. This functionality is enabled via [HaloArrays.jl](https://github.com/Davide-Lasagna-s-Lab/HaloArrays.jl). Note that it is required to use [FDGrids.jl](https://github.com/Davide-Lasagna-s-Lab/FDGrids.jl) for the differentiation over the decomposed directions as the package implements the (somewhat fiddly) methods to compute derivatives using finite-differences with arbitrary stencil widths and thus order of accuracy. See the package for extra details.
 
 ---
-
-# GPU Accelerations
-
-*TODO: this*

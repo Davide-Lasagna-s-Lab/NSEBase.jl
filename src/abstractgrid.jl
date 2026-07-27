@@ -219,7 +219,7 @@ inhomogeneous_indices(I::CartesianIndex, g::AbstractGrid) = inhomogeneous_indice
 @generated function inhomogeneous_indices(I::CartesianIndex{D}, 
                                            ::Val{FFT_DIMS_ORDER}) where {D, FFT_DIMS_ORDER}
     idxs = [d for d in 1:D if d ∉ FFT_DIMS_ORDER]
-    return Expr(:tuple, (:(I[$idx]) for idx in idxs)...)
+    return Expr(:block, Expr(:meta, :inline), Expr(:tuple, (:(I[$idx]) for idx in idxs)...))
 end
 
 """
@@ -228,10 +228,12 @@ end
 Extract the FFT indices from the Cartesian index `I` and return them as a
 tuple, i.e. the entries of `I` along the homogeneous dimensions.
 """
+homogeneous_indices(I::CartesianIndex, g::AbstractGrid) = homogeneous_indices(I, Val(fft_storage_dims(g)))
+
 @generated function homogeneous_indices(I::CartesianIndex{D},
-                                         ::AbstractGrid{<:Any,<:Any, <:Any, FFT_DIMS_ORDER}) where {D, FFT_DIMS_ORDER}
+                                         ::Val{FFT_DIMS_ORDER}) where {D, FFT_DIMS_ORDER}
     idxs = [d for d in 1:D if d ∈ FFT_DIMS_ORDER]
-    return Expr(:tuple, (:(I[$idx]) for idx in idxs)...)
+    return Expr(:block, Expr(:meta, :inline), Expr(:tuple, (:(I[$idx]) for idx in idxs)...))
 end
 
 """
@@ -243,13 +245,13 @@ single index tuple of length `D = Dnh + Dh`, interleaving them according to
 `FFT_DIMS_ORDER`.  Dimensions in `FFT_DIMS_ORDER` draw from `Ih`; all
 others draw from `Inh`.
 """
-combine_indices(   ::AbstractGrid{T,D,AXES,FFT_DIMS_ORDER}, 
+combine_indices(   ::AbstractGrid{T, D, AXES, FFT_DIMS_ORDER}, 
                 Inh::CartesianIndex, 
-                 Ih::CartesianIndex) where {T,D,AXES,FFT_DIMS_ORDER} =
+                 Ih::CartesianIndex) where {T, D, AXES, FFT_DIMS_ORDER} =
     combine_indices(Val(FFT_DIMS_ORDER), Inh, Ih)
 
-@generated function combine_indices(   ::Val{FFT_DIMS_ORDER}, 
-                                    Inh::CartesianIndex{Dnh}, 
+@generated function combine_indices(   ::Val{FFT_DIMS_ORDER},
+                                    Inh::CartesianIndex{Dnh},
                                      Ih::CartesianIndex{Dh}) where {Dnh, Dh, FFT_DIMS_ORDER}
     D = Dnh + Dh
     inds = []
@@ -264,7 +266,7 @@ combine_indices(   ::AbstractGrid{T,D,AXES,FFT_DIMS_ORDER},
             i += 1
         end
     end
-    return :(($(inds...),))
+    return :(@inline; ($(inds...),))
 end
 
 """
@@ -272,7 +274,7 @@ end
 
 Combine homogeneous indices `Ih` with `Colon` for the non-homogeneous dimensions, returning a tuple 
 of length `D` suitable for indexing into a `FTField`.  This is mostly used to create views of `FTField`s
-that span all inhomogeneous indices at a particular homogeneous index.
+that span all indices at a particular homogeneous index.
 """
 @generated function combine_indices(::AbstractGrid{T,D,AXES,FFT_DIMS_ORDER}, ::Colon, Ih) where {T,D,AXES,FFT_DIMS_ORDER}
     inds = []
@@ -285,7 +287,7 @@ that span all inhomogeneous indices at a particular homogeneous index.
             push!(inds, :(Colon()))
         end
     end
-    return Expr(:tuple, inds...)
+    return Expr(:block, Expr(:meta, :inline), Expr(:tuple, inds...))
 end
 
 """
@@ -383,9 +385,9 @@ returns `Val(2)`, `physical_to_storage_dim(g, Val(:y))` returns
 @generated function physical_to_storage_dim(::AbstractGrid{<:Any, <:Any, AXES},
                                             ::Val{PHYSICAL_DIM}) where {AXES, PHYSICAL_DIM}
     idx = if PHYSICAL_DIM === :x; 1
-    elseif PHYSICAL_DIM === :y; 2
-    elseif PHYSICAL_DIM === :z; 3
-    elseif PHYSICAL_DIM === :t; 4
+      elseif PHYSICAL_DIM === :y; 2
+      elseif PHYSICAL_DIM === :z; 3
+      elseif PHYSICAL_DIM === :t; 4
     else
         msg = "physical direction must be :x, :y, :z, or :t; got $(repr(PHYSICAL_DIM))"
         return :(throw(ArgumentError($msg)))

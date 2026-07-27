@@ -1,4 +1,4 @@
-# Paired FFTW plans for in-place physical↔spectral transforms with optional dealiasing.
+# Paired transform plans for in-place physical↔spectral transforms with optional dealiasing.
 #
 # `FFTPlans` bundles an rfft plan and a brfft plan that share a spectral-space
 # staging cache.  Transforms are dispatched through callable syntax:
@@ -16,7 +16,7 @@
 # the spectral input, transforms, and returns the full dealiased physical field.
 # This eliminates aliasing errors from quadratic nonlinearities.
 #
-# Cache routing: FFTW's `unsafe_execute!` writes directly into whatever buffer
+# Cache routing: backend's `unsafe_execute!` writes directly into whatever buffer
 # it is given, bypassing layout checks.  A staging cache (`f.cache`) is used
 # whenever the output is non-contiguous, dealiasing is active, or the result
 # must be accumulated rather than overwritten.  The private helpers
@@ -41,9 +41,9 @@ const NO_TIMELIMIT = FFTW.NO_TIMELIMIT
 """
     FFTPlans{DEALIAS, D, T, FFT_DIMS_ORDER, PLAN, IPLAN}
 
-Paired FFTW real-to-complex (rfft) and complex-to-real (brfft) plans for
-in-place transformations between physical and spectral representations of a
-scalar field on a `D`-dimensional grid.
+Paired real-to-complex (rfft) and complex-to-real (brfft) plans for in-place
+transformations between physical and spectral representations of a scalar
+field on a `D`-dimensional grid.
 
 # Type parameters
 - `DEALIAS`: `Bool`; when `true`, the physical array used for planning is larger
@@ -56,17 +56,23 @@ scalar field on a `D`-dimensional grid.
   complex FFT dimensions applied in sequence
 
 # Fields
-- `plan`: FFTW rfft plan (physical → spectral)
-- `iplan`: FFTW brfft plan (spectral → physical)
+- `plan`: rfft plan (physical → spectral)
+- `iplan`: brfft plan (spectral → physical)
 - `cache`: scratch array in spectral space, sized for the padded physical grid
   when `DEALIAS == true` and for the standard spectral grid otherwise; used as
   a staging buffer during forward/backward transforms
 - `norm`: normalisation factor `1 / prod(shape[FFT_DIMS_ORDER])` applied after each
   forward transform so that coefficients represent the true Fourier amplitudes
+- `backend`: module used for use for backend plans and transforms, defaults to FFTW
+  for fields using simple subtypes of `AbstractGrid`
 
 # Constructor
-
     FFTPlans(size, order, T=Float64; dealias=true, padded_size=nothing, flags=EXHAUSTIVE, timelimit=NO_TIMELIMIT)
+    FFTPlans(g::AbstractGrid; kwargs...)
+    FFTPlans(u::FTField; kwargs...)
+    FFTPlans(u::Field; kwargs...)
+    FFTPlans(u::VectorField; kwargs...)
+    FFTPlans(a::ProjectedField; kwargs...)
 
 # Arguments
 - `size::Dims`: size of the physical domain
@@ -81,56 +87,68 @@ scalar field on a `D`-dimensional grid.
 - `timelimit::Real`: maximum planner wall-time in seconds (`NO_TIMELIMIT` to
   disable)
 """
-struct FFTPlans{DEALIAS, D, T, FFT_DIMS_ORDER, PLAN, IPLAN}
+struct FFTPlans{DEALIAS, D, T, FFT_DIMS_ORDER, PLAN, IPLAN, CA}
      plan::PLAN
     iplan::IPLAN
-    cache::Array{Complex{T}, D}
+    cache::CA
      norm::T
+  backend::Module
 
-    function FFTPlans(size::Dims{D},
-                     order::NTuple{H, Int},
-                          ::Type{T}=Float64;
-                   dealias::Bool                =true,
-               padded_size::Union{Nothing, Dims}=nothing,
-                     flags::UInt32              =EXHAUSTIVE,
-                 timelimit::Real                =NO_TIMELIMIT) where {D, H, T}
-        all(1 ≤ d ≤ D for d in order) || throw(ArgumentError("order indices must be in 1:$D, got $order"))
-        allunique(order)              || throw(ArgumentError("order indices must be unique, got $order"))
-        padded_size !== nothing && !dealias &&
-            throw(ArgumentError("cannot set padded_size with dealias=false"))
+    FFTPlans{DEALIAS, D, T, FFT_DIMS_ORDER}(plan::PLAN,
+                                           iplan::IPLAN,
+                                           cache::CA,
+                                            norm::T,
+                                         backend::Module) where {
+             DEALIAS, D, T, FFT_DIMS_ORDER, PLAN, IPLAN, CA} =
+        new{DEALIAS, D, T, FFT_DIMS_ORDER, PLAN, IPLAN, CA}(plan, iplan, cache, norm, backend)
+end
 
-        grid_size = if padded_size !== nothing
-            length(padded_size) == D ||
-                throw(ArgumentError("padded_size must have $D elements, got $(length(padded_size))"))
-            all(padded_size[d] >= size[d] for d in order) ||
-                throw(ArgumentError("padded_size must be ≥ size along each transformed dimension"))
-            padded_size
-        elseif dealias
-            get_padded_size(size, order)
-        else
-            size
-        end
+function FFTPlans(size::Dims{D},
+                 order::NTuple{H, Int},
+                      ::Type{T}=Float64;
+               dealias::Bool                =true,
+           padded_size::Union{Nothing, Dims}=nothing,
+                 flags::UInt32              =EXHAUSTIVE,
+             timelimit::Real                =NO_TIMELIMIT) where {D, H, T}
+    all(1 ≤ d ≤ D for d in order) || throw(ArgumentError("order indices must be in 1:$D, got $order"))
+    allunique(order)              || throw(ArgumentError("order indices must be unique, got $order"))
+    padded_size !== nothing && !dealias &&
+        throw(ArgumentError("cannot set padded_size with dealias=false"))
 
-        computed_dealias = any(grid_size[d] != size[d] for d in order)
-        spectral_array   = zeros(Complex{T}, _get_transform_size(grid_size, order[1]))
-        physical_array   = zeros(T, grid_size)
-        norm             = T(1 / prod(grid_size[i] for i in order))
-
-        plan  = FFTW.plan_rfft( physical_array,                      order, flags=flags, timelimit=timelimit)
-        iplan = FFTW.plan_brfft(spectral_array, grid_size[order[1]], order, flags=flags, timelimit=timelimit)
-
-        return new{computed_dealias, D, T, order, typeof(plan), typeof(iplan)}(plan, iplan, spectral_array, norm)
+    grid_size = if padded_size !== nothing
+        length(padded_size) == D ||
+            throw(ArgumentError("padded_size must have $D elements, got $(length(padded_size))"))
+        all(padded_size[d] >= size[d] for d in order) ||
+            throw(ArgumentError("padded_size must be ≥ size along each transformed dimension"))
+        padded_size
+    elseif dealias
+        get_padded_size(size, order)
+    else
+        size
     end
+
+    computed_dealias = any(grid_size[d] != size[d] for d in order)
+    spectral_array   = zeros(Complex{T}, _get_transform_size(grid_size, order[1]))
+    physical_array   = zeros(T, grid_size)
+    norm             = 1/prod(grid_size[i] for i in order)
+
+    plan  = FFTW.plan_rfft( physical_array,                      order, flags=flags, timelimit=timelimit)
+    iplan = FFTW.plan_brfft(spectral_array, grid_size[order[1]], order, flags=flags, timelimit=timelimit)
+
+    return FFTPlans{computed_dealias, D, T, order}(plan, iplan, spectral_array, T(norm), FFTW)
 end
 
 FFTPlans(g::AbstractGrid{T}; kwargs...) where {T} = FFTPlans(_fft_size(g), fft_storage_dims(g), T; kwargs...)
-FFTPlans(u::FTField; kwargs...) = FFTPlans(grid(u); kwargs...)
-FFTPlans(u::Field; kwargs...) = FFTPlans(grid(u); kwargs...)
+
+FFTPlans(u::FTField; kwargs...)                   = FFTPlans(grid(u); kwargs...)
+FFTPlans(u::Field; kwargs...)                     = FFTPlans(grid(u); kwargs...)
+FFTPlans(u::VectorField; kwargs...)               = FFTPlans(grid(u); kwargs...)
+FFTPlans(a::ProjectedField; kwargs...)            = FFTPlans(grid(a); kwargs...)
 
 """
     _fft_size(g::AbstractGrid) -> Dims
 
-Return the physical-array shape used to construct FFTW plans for `g`.
+Return the physical-array shape used to construct transform plans for `g`.
 
 The default is `size(g)`. Grid wrappers whose fields store extra physical
 allocation around the logical grid, such as halo cells, can extend this hook so
@@ -142,11 +160,11 @@ _fft_size(g::AbstractGrid) = size(g)
 """
     _fft_data(x)
 
-Return the concrete array storage that FFTW should transform.
+Return the concrete array storage that the backend should transform.
 
 The default is the object itself. Downstream packages that wrap array storage
 can extend this hook so `FFTPlans`, [`FFT`](@ref), and [`IFFT`](@ref) all use
-the same FFTW-compatible buffer.
+the same buffer compatible with the backend being used.
 """
 _fft_data(x) = x
 
@@ -168,8 +186,8 @@ Forward in-place transform: physical array `u` → spectral array `û`.
 - `add`: add the transform result into `û` rather than overwriting it. Useful
   when accumulating multiple physical-space contributions into the same spectral
   array (e.g. nonlinear terms) without allocating a temporary.
-- `use_cache`: route the FFTW output through `f.cache` before writing to `û`.
-  `unsafe_execute!` bypasses FFTW's buffer checks and assumes the output has
+- `use_cache`: route the transform output through `f.cache` before writing to `û`.
+  `unsafe_execute!` bypasses the backend's buffer checks and assumes the output has
   the same memory layout as the array used during planning; set `use_cache=true`
   when `û` is non-contiguous (e.g. a strided view) to avoid undefined behaviour.
 """
@@ -219,7 +237,7 @@ Routes through `f.cache` whenever `DEALIAS`, `use_cache`, or `add` is true
 `unsafe_execute!` writes into whatever buffer it is handed without layout checks,
 so a non-contiguous `û` requires a staging buffer (`use_cache`); the 3/2-rule
 padded plan outputs a larger spectrum than `û` can hold (`DEALIAS`); and
-accumulation (`add`) needs `û` separate from the FFTW output buffer to avoid
+accumulation (`add`) needs `û` separate from the backend output buffer to avoid
 reading a partially-overwritten target.
 
 When `through_cache` is false, the plan writes directly into `û` — valid only
@@ -232,7 +250,7 @@ same-size arrays make the truncation a no-op that covers all elements).
 function _forward_transform!(û, u, f::FFTPlans{DEALIAS, D, <:Any, FFT_DIMS_ORDER}, add::Bool, use_cache::Bool) where {DEALIAS, D, FFT_DIMS_ORDER}
     through_cache = DEALIAS | use_cache | add
     buf = through_cache ? f.cache : û
-    FFTW.unsafe_execute!(f.plan, u, buf)
+    f.backend.unsafe_execute!(f.plan, u, buf)
     buf .*= f.norm
     if through_cache
         add ? _add_from_padded!(û, f.cache, FFT_DIMS_ORDER) : _copy_from_padded!(û, f.cache, FFT_DIMS_ORDER)
@@ -249,14 +267,13 @@ Backward in-place transform: spectral array `û` → physical array `u`.
 # Arguments
 - `u`: output physical array
 - `û`: input spectral array
-- `preserve_input`: FFTW's C2R (brfft) transform is permitted to overwrite its
-  complex input buffer as scratch during computation — this is a fundamental
-  property of the FFTW algorithm, not a bug. When `preserve_input=true`
+- `preserve_input`: backend's brfft transform is permitted to overwrite its
+  complex input buffer as scratch during computation. When `preserve_input=true`
   (default), `û` is copied into `f.cache` first so it is never touched. Set
   `preserve_input=false` only when `û` is no longer needed after the transform,
   saving one full spectral-array copy.
 - `use_cache`: when `preserve_input=false` and not dealiasing, set this to
-  `true` to still stage through `f.cache` — useful when `û` is not a valid FFTW
+  `true` to still stage through `f.cache` - useful when `û` is not a valid backend
   input buffer (non-contiguous layout) but the caller does not want to pay for
   the full safe-copy path.
 """
@@ -276,7 +293,7 @@ end
 Backward transform for `Field`/`FTField` inputs with keyword arguments.
 
 Unwraps both fields to their `parent` arrays and delegates to the `AbstractArray`
-method. Symmetric to the forward `FTField`/`Field` overload — `parent` unwrapping
+method. Symmetric to the forward `FTField`/`Field` overload - `parent` unwrapping
 is required for the same reason: `unsafe_execute!` needs a plain contiguous array
 matching the planning layout.
 """
@@ -307,7 +324,7 @@ is true (`through_cache = DEALIAS | preserve_input | use_cache`). This is
 required because: brfft is permitted to overwrite its complex input buffer during
 computation, so preserving `û` requires a staging copy (`preserve_input`); the
 3/2-rule padded plan needs a larger input buffer than `û` provides (`DEALIAS`);
-and a non-contiguous `û` cannot serve as a valid FFTW input buffer (`use_cache`).
+and a non-contiguous `û` cannot serve as a valid transform input buffer (`use_cache`).
 
 When `through_cache` is false, the plan runs directly on `û`, which brfft may
 silently destroy — the caller accepts this side effect.
@@ -321,10 +338,10 @@ function _backward_transform!(u, û, f::FFTPlans{DEALIAS, D, <:Any, FFT_DIMS_ORD
     if through_cache
         DEALIAS && _apply_mask!(f.cache)
         _copy_to_padded!(f.cache, û, FFT_DIMS_ORDER)
-        FFTW.unsafe_execute!(f.iplan, f.cache, u)
+        f.backend.unsafe_execute!(f.iplan, f.cache, u)
     else
         # brfft destroys its input; caller accepts this when preserve_input=false, use_cache=false
-        FFTW.unsafe_execute!(f.iplan, û, u)
+        f.backend.unsafe_execute!(f.iplan, û, u)
     end
     return u
 end
@@ -560,4 +577,4 @@ Zero all elements of `cache` in-place and return it. Called before
 `_copy_to_padded!` to ensure that padding-zone entries in the spectral cache
 do not pollute the backward transform output.
 """
-_apply_mask!(cache::Array{T}) where {T} = (cache .= zero(T); return cache)
+_apply_mask!(cache::AbstractArray{T}) where {T} = (cache .= zero(T); return cache)

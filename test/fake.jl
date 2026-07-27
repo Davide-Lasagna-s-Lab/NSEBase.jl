@@ -40,5 +40,11 @@ end
 # ------------------ #
 # derivative methods #
 # ------------------ #
-NSEBase.dd!(out::FTField{FakeGrid}, u::FTField{FakeGrid}, ::Val{1}; adjoint=false) = (out .= u; return out)
-NSEBase.inhomogeneous_laplacian!(out::FTField{FakeGrid}, u::FTField{FakeGrid}; adjoint=false) = (out .= u; return out)
+struct FakeDerivativeMatrix end
+
+function LinearAlgebra.mul!(out, ::FakeDerivativeMatrix, u, ::Val, ::Val{ADD}=Val(false)) where {ADD}
+    !ADD && (out .= u; return out)
+     ADD && (out .+= u; return out)
+end
+
+NSEBase.derivative_matrix(::FakeGrid, ::Int, ::Val, ::Val) = FakeDerivativeMatrix()

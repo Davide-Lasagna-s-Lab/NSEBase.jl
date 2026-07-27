@@ -1,5 +1,5 @@
 # Tests for the spectral-derivative wrappers `ddx!`, `ddy!`, `ddz!`, `ddt!`,
-# `add_homogeneous_laplacian!`, and `laplacian!`.
+# `_add_homogeneous_laplacian!`, and `laplacian!`.
 #
 # Contract (from src/derivatives.jl):
 #
@@ -10,11 +10,11 @@
 #
 #   - `dd!` on an absent direction (`:z` on a 2D grid) is a compile-time no-op.
 #
-#   - `add_homogeneous_laplacian!(out, u)`  adds `-Σ_{d∈ORDER} (k_d · σ_d)² · u`
+#   - `_add_homogeneous_laplacian!(out, u)`  adds `-Σ_{d∈ORDER} (k_d · σ_d)² · u`
 #     into `out` (note the `+=`, not `=`).
 #
-#   - `laplacian!(out, u)` = `inhomogeneous_laplacian!(out, u)` followed by
-#     `add_homogeneous_laplacian!(out, u)`.  On a fully-homogeneous grid the
+#   - `laplacian!(out, u)` = `_inhomogeneous_laplacian!(out, u)` followed by
+#     `_add_homogeneous_laplacian!(out, u)`.  On a fully-homogeneous grid the
 #     inhomogeneous part is identity-equivalent if the user defines it that
 #     way; FakeGrid does so (see fake.jl).
 
@@ -89,7 +89,7 @@
         @test parent(NSEBase.ddt!(out2, u)) == data
     end
 
-    @testset "add_homogeneous_laplacian! adds −(k σ)² u (not =, +=)" begin
+    @testset "_add_homogeneous_laplacian! adds −(k σ)² u (not =, +=)" begin
         # The function accumulates into `out`, it does not overwrite.  The
         # added value at wavenumber k is `-(k·σ)² · u[k]` on FakeGrid (only
         # one FFT dim).
@@ -101,13 +101,13 @@
         u = FTField(g, randn(ComplexF64, Nx, (Ny >> 1) + 1))
 
         # Seed `out` with some initial value to verify that
-        # add_homogeneous_laplacian! accumulates.  Read the seed back from
+        # _add_homogeneous_laplacian! accumulates.  Read the seed back from
         # `parent(out)` *after* FTField has applied its Hermitian-symmetry
         # invariant (so the comparison sees the same starting state).
         out  = FTField(g, randn(ComplexF64, Nx, (Ny >> 1) + 1))
         seed = copy(parent(out))
 
-        NSEBase.add_homogeneous_laplacian!(out, u)
+        NSEBase._add_homogeneous_laplacian!(out, u)
 
         pu, po = parent(u), parent(out)
         for k in 1:(Ny >> 1) + 1
@@ -117,8 +117,8 @@
         end
     end
 
-    @testset "laplacian! = inhomogeneous_laplacian! + add_homogeneous_laplacian!" begin
-        # On FakeGrid, `inhomogeneous_laplacian!(out, u)` is defined in
+    @testset "laplacian! = _inhomogeneous_laplacian! + _add_homogeneous_laplacian!" begin
+        # On FakeGrid, `_inhomogeneous_laplacian!(out, u)` is defined in
         # fake.jl as `out .= u`, so `laplacian!(out, u)` = u − (kσ)² u
         # at every wavenumber k.
         Nx, Ny = 8, 12

@@ -18,9 +18,12 @@
 # `NotImplementedError` for those, and downstream packages must extend it
 # with a grid-specific method (typically a matrix–vector multiply).
 #
-# The full Laplacian combines `inhomogeneous_laplacian!` (provided by
-# downstream) with `add_homogeneous_laplacian!` (provided here), which
+# The full Laplacian combines `_inhomogeneous_laplacian!` (provided by
+# downstream) with `_add_homogeneous_laplacian!` (provided here), which
 # subtracts the spatial ‖k‖² · u contribution from each spectral coefficient.
+
+# ! needs to be implemented by user (needs to update docs for the newer inteface)
+derivative_matrix(g::AbstractGrid, ::Integer, ::Val, ::Val) = throw(NotImplementedError(g))
 
 """
     ddx!(out, u; adjoint=false) -> out
@@ -66,33 +69,33 @@ function dd!(out::F, u::F, ::Val{STORAGE_DIM};
         F<:Union{FTField{G}, ProjectedField{G}}}
 
     isnothing(STORAGE_DIM) && return out
-    STORAGE_DIM ∉ FFT_DIMS_ORDER ? inhomogeneous_dd!(out, u, Val(STORAGE_DIM); adjoint=adjoint) :
-                                       _spectral_dd!(out, u, Val(STORAGE_DIM); adjoint=adjoint)
+    STORAGE_DIM ∉ FFT_DIMS_ORDER ? _inhomogeneous_dd!(out, u, Val(STORAGE_DIM)                                ; adjoint=adjoint) :
+                                        _spectral_dd!(out, u, Val(STORAGE_DIM), Val(D), Val(FFT_DIMS_ORDER[1]); adjoint=adjoint)
 
     return out
 end
 
 """
-    _spectral_dd!(out, u, ::Val{STORAGE_DIM}; adjoint=false)
+    _spectral_dd!(out, u, ::Val{STORAGE_DIM}, ::Val{D}, ::Val{FFT_DIMS_ORDER};
+                    adjoint=false)
 
 In-place derivative of `u` along the storage dimension where
 `STORAGE_DIM ∈ FFT_DIMS_ORDER` using spectral methods.
 """
-function _spectral_dd!(out::F,
-                         u::F,
-                          ::Val{STORAGE_DIM};
-                   adjoint::Bool=false) where {
-        STORAGE_DIM, T, D, AXES, FFT_DIMS_ORDER,
-        G<:AbstractGrid{T, D, AXES, FFT_DIMS_ORDER},
-        F<:Union{FTField{G}, ProjectedField{G}}}
+function _spectral_dd!(out::Union{FTField, ProjectedField},
+                         u::Union{FTField, ProjectedField},
+                          ::Val{STORAGE_DIM},
+                          ::Val{D},
+                          ::Val{RFFT_DIM};
+                   adjoint::Bool=false) where {STORAGE_DIM, D, RFFT_DIM}
 
     scale = wavenumber_scale(grid(u), STORAGE_DIM)
-    coeff = adjoint ? -im * T(scale) : im * T(scale)
+    coeff = adjoint ? -im * real(eltype(u))(scale) : im * real(eltype(u))(scale)
     Nd    = size(u, STORAGE_DIM)
     pu    = parent(u)
     pout  = parent(out)
 
-    if STORAGE_DIM == FFT_DIMS_ORDER[1]
+    if STORAGE_DIM == RFFT_DIM
         @inbounds for I in CartesianIndices(pu)
             pout[I] = (coeff * (I[STORAGE_DIM] - 1)) * pu[I]
         end
@@ -109,12 +112,30 @@ function _spectral_dd!(out::F,
     return out
 end
 
-inhomogeneous_dd!(out, u, sd::Val; kwargs...) = throw(NotImplementedError(grid(u), sd))
+"""
+    _inhomogeneous_dd!(out, u, ::Val{STORAGE_DIM}; adjoint=false)
+
+Compute the derivative of the field `u` along the inhomogeneous
+direction using a stored differentation operator, storing the result
+in `out`.
+
+Requires `NSEBase.derivative_matrix` to be defined for input types.
+"""
+function _inhomogeneous_dd!(out::FTField{G},
+                              u::FTField{G},
+                               ::Val{STORAGE_DIM};
+                        adjoint::Bool=false) where {G<:AbstractGrid, STORAGE_DIM}
+
+    A = derivative_matrix(grid(u), STORAGE_DIM, Val(1), Val(adjoint))
+    LinearAlgebra.mul!(parent(out), A, parent(u), Val(STORAGE_DIM))
+
+    return out
+end
 
 
 """
-    add_homogeneous_laplacian!(out::FTField, u::FTField)
-    add_homogeneous_laplacian!(out::VectorField, u::VectorField)
+    _add_homogeneous_laplacian!(out::FTField, u::FTField)
+    _add_homogeneous_laplacian!(out::VectorField, u::VectorField)
 
 Add the homogeneous Laplacian contribution of `u` to `out`:
 
@@ -124,7 +145,7 @@ Call after computing the non-homogeneous (e.g. wall-normal) second derivative.
 If the grid includes a transformed logical time coordinate, that direction is
 not part of the spatial Laplacian.
 """
-function add_homogeneous_laplacian!(out::FTField{G}, u::FTField{G}) where {T, D, AXES, FFT_DIMS_ORDER, G<:AbstractGrid{T, D, AXES, FFT_DIMS_ORDER}}
+function _add_homogeneous_laplacian!(out::FTField{G}, u::FTField{G}) where {T, D, AXES, FFT_DIMS_ORDER, G<:AbstractGrid{T, D, AXES, FFT_DIMS_ORDER}}
     g = grid(u)
 
     H = spatial_fft_storage_dims(g)
@@ -146,20 +167,37 @@ function add_homogeneous_laplacian!(out::FTField{G}, u::FTField{G}) where {T, D,
     end
     return out
 end
-add_homogeneous_laplacian!(out::VectorField{N}, u::VectorField{N}) where {N} =
-    (for n in 1:N; add_homogeneous_laplacian!(out[n], u[n]); end; return out)
+_add_homogeneous_laplacian!(out::VectorField{N}, u::VectorField{N}) where {N} =
+    (for n in 1:N; _add_homogeneous_laplacian!(out[n], u[n]); end; return out)
 
 """
-    inhomogeneous_laplacian!(out::FTField, u::FTField; kwargs...) -> out
+    _inhomogeneous_laplacian!(out::FTField, u::FTField; kwargs...) -> out
 
 Apply the inhomogeneous (non-FFT) part of the Laplacian of `u` to `out`.
 
 This contribution contains the second derivatives along directions that are
-not in [`fft_storage_dims`](@ref), such as wall-normal collocation directions.  The
+not in [`fft_storage_dims`](@ref), such as wall-normal collocation directions. The
 full spatial Laplacian is the sum of this contribution and the homogeneous
-spectral contribution from [`add_homogeneous_laplacian!`](@ref).
+spectral contribution from [`_add_homogeneous_laplacian!`](@ref).
+
+Requires `NSEBase.derivative_matrix` to be defined for input types.
 """
-inhomogeneous_laplacian!(out::FTField, u::FTField) = throw(NotImplementedError(out, u))
+function _inhomogeneous_laplacian!(out::FTField{G},
+                                     u::FTField{G};
+                               adjoint::Bool=false) where {G<:AbstractGrid}
+    inh_spatial_dims = inhomogeneous_storage_dims(grid(u))
+    isempty(inh_spatial_dims) && (out .*= 0; return out)
+
+    A = derivative_matrix(grid(u), inh_spatial_dims[1], Val(2), Val(adjoint))
+    LinearAlgebra.mul!(parent(out), A, parent(u), Val(inh_spatial_dims[1]))
+
+    for dim in Base.tail(inh_spatial_dims)
+        A = derivative_matrix(grid(u), dim, Val(2), Val(adjoint))
+        LinearAlgebra.mul!(parent(out), A, parent(u), Val(dim), Val(true))
+    end
+
+    return out
+end
 
 """
     laplacian!(out::FTField{G}, u::FTField{G}; kwargs...)
@@ -174,8 +212,8 @@ Only spatial transformed directions enter the homogeneous sum; a transformed
 logical time coordinate is excluded through [`spatial_fft_storage_dims`](@ref).
 """
 function laplacian!(out::FTField{G}, u::FTField{G}; kwargs...) where {G}
-    inhomogeneous_laplacian!(out, u; kwargs...)
-    add_homogeneous_laplacian!(out, u)
+    _inhomogeneous_laplacian!(out, u; kwargs...)
+    _add_homogeneous_laplacian!(out, u)
     return out
 end
 laplacian!(out::VectorField{N}, u::VectorField{N}; kwargs...) where {N} =

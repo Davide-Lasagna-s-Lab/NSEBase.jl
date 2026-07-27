@@ -83,7 +83,7 @@ function interior_laplacian!(out::DecomposedFTField,
                   adjoint=adjoint, accumulate=Val(true))
     end
 
-    NSEBase.add_homogeneous_laplacian!(out, u)
+    NSEBase._add_homogeneous_laplacian!(out, u)
     return out
 end
 
@@ -132,15 +132,17 @@ function NSEBase.dd!(out::F,
                  adjoint::Bool=false) where {
     STORAGE_DIM, FFT_DIMS_ORDER, DDIMS, T, D, AXES,
     G<:DecomposedGrid{T, D, AXES, FFT_DIMS_ORDER, DDIMS},
-    F<:Union{NSEBase.FTField{G}, NSEBase.ProjectedField{G}}} # ! can I get rid of the ProjectedField part?
+    F<:Union{NSEBase.FTField{G}, NSEBase.ProjectedField{G}}} # ! how do I get rid of the ProjectedField part?
 
+    # ! can redefine NSEBase._inhomogeneous_dd! in the extension to use _distributed_dd! or basic version depending of `STORAGE_DIM`?
+    isnothing(STORAGE_DIM) && return out
     if STORAGE_DIM ∈ DDIMS
         _distributed_dd!(out, u, Val(STORAGE_DIM); adjoint=adjoint)
     else
         if STORAGE_DIM ∈ FFT_DIMS_ORDER
-            NSEBase._spectral_dd!(out, u, Val(STORAGE_DIM); adjoint=adjoint)
+            NSEBase._spectral_dd!(out, u, Val(STORAGE_DIM), Val(D), Val(FFT_DIMS_ORDER[1]); adjoint=adjoint)
         else
-            NSEBase.inhomogeneous_dd!(out, u, Val(STORAGE_DIM); adjoint=adjoint)
+            NSEBase._inhomogeneous_dd!(out, u, Val(STORAGE_DIM); adjoint=adjoint)
         end
     end
 
