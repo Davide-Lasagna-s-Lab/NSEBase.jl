@@ -1,6 +1,7 @@
 module MPICUDAExt
 
 import CUDA,
+       Adapt,
        MPI,
        FDGrids,
        HaloArrays,
@@ -31,14 +32,51 @@ const CUDAExt = Base.get_extension(NSEBase, :CUDAExt)
 
 const DecomposedGPUGrid{T, D, AXES, FFT_DIMS_ORDER, DDIMS, NHALO, S} = DecomposedGrid{T, D, AXES, FFT_DIMS_ORDER, GP} where {GP<:GPUGrid}
 
-function CUDA.cu(g::MPIExt.DecomposedGrid) end
 
-function NSEBase.distributed(g::NSEBase.AbstractGrid, comm::MPI.COMM, device::Bool; kwargs...) end
-function NSEBase.distributed(g::CUDAExt.GPUGrid, comm::MPI.COMM; kwargs...) end
+# TODO: this
+function Adapt.adapt_structure(to, g::DecomposedGPUGrid)
+    throw(error("needs to be implemented"))
+end
 
-function NSEBase.FTField(g::DecomposedGPUGrid) end
-function NSEBase.Field(g::DecomposedGPUGrid) end
-function NSEBase.FFTPlans(g::DecomposedGPUGrid; kwargs...) end
+function CUDA.cu(g::MPIExt.DecomposedGrid{T, D, AXES, FFT_DIMS_ORDER, DDIMS, NHALO, S, GP, W, P, COMM})
+    g_d = CUDA.cu(parent(g))
+    ws_d = CUDA.cu(NSEBase.weights(g))
+    inh_points_d = CUDA.cu(g.inh_points)
+    return MPIExt.DecomposedGrid{T, D, AXES, FFT_DIMS_ORDER, DDIMS, NHALO, S}(g_d, g.comm, ws_d, inh_points_d)
+end
+
+NSEBase.distributed(g::NSEBase.AbstractGrid, comm::MPI.COMM, device::Bool; kwargs...) =
+    device ? CUDA.cu(NSEBase.distributed(g, comm; kwargs...)) : NSEBase.distributed(g, comm; kwargs...)
+
+# ! allows the user to call NSEBase.distributed(::GPUGrid, ...) directly
+function MPIExt._local_inhomogeneous_points(g::CUDAExt.GPUGrid, cart)
+    parent_points = NSEBase.points(g)
+    return map(NSEBase.inhomogeneous_storage_dims(g)) do stor_dim
+        global_vec = CuVector(vec(parent_points[stor_dim]))
+        axis_inds  = _local_axis_indices(length(global_vec), stor_dim, cart)
+        axis_inds isa Colon ? global_vec : global_vec[axis_inds]
+    end
+end
+
+
+
+# TODO: requires CUDA extension on HaloArrays.jl
+NSEBase.FTField(g::DecomposedGPUGrid{T}) where {T} =
+    NSEBase.FTField(g, HaloArrays.HaloArray{Complex{T}}(comm(g), 
+                                                        local_transform_size(g), 
+                                                        nhalo(g); economic=true,
+                                                                  device=true))
+
+NSEBase.Field(g::DecomposedGPUGrid{T}) where {T} =
+    NSEBase.Field(g, HaloArrays.HaloArray{T}(comm(g), 
+                                             local_physical_size(g; dealias), 
+                                             nhalo(g); economic=true,
+                                                       device=true))
+
+NSEBase.FFTPlans(g::DecomposedGPUGrid{T}; kwargs...) where {T} =
+    _make_cufft_plans(NSEBase._fft_size(g), NSEBase.fft_storage_dims(g), T; kwargs...)
+
+
 
 function NSEBase.project!(a::ProjectedField{G}, u::VectorField{N, <:FTField{G}}) where {G<:DecomposedGPUGrid} end
 

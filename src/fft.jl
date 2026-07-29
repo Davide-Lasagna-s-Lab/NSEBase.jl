@@ -103,6 +103,7 @@ struct FFTPlans{DEALIAS, D, T, FFT_DIMS_ORDER, PLAN, IPLAN, CA}
         new{DEALIAS, D, T, FFT_DIMS_ORDER, PLAN, IPLAN, CA}(plan, iplan, cache, norm, backend)
 end
 
+# TODO: pretty sure some of this can be moved to the inner-constructor to avoid repition? Or allow passing the backend in this constructor?
 function FFTPlans(size::Dims{D},
                  order::NTuple{H, Int},
                       ::Type{T}=Float64;

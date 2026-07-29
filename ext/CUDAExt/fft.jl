@@ -10,7 +10,7 @@ The keyword arguments `flags` and `timelimit` are no supported
 by cuFFT so passing them have no effect in this case.
 """
 NSEBase.FFTPlans(g::GPUGrid{T}; kwargs...) where {T} =
-    _make_cufft_plans(size(g), NSEBase.fft_storage_dims(g), T; kwargs...)
+    _make_cufft_plans(NSEBase._fft_size(g), NSEBase.fft_storage_dims(g), T; kwargs...)
 
 function _make_cufft_plans(size::Dims{D},
                           order::NTuple{H, Int},
