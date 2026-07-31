@@ -1,30 +1,26 @@
-@testset "CUDA dot product                                                    " begin
-    # construct modes
-    M = 5
-    Ψ = ntuple(n -> zeros(ComplexF64, M, Ny, (Nx >> 1) + 1, Nz, Nt), 1)
+@testset verbose=true "CUDA dot product                                            " begin
+    g = CUDA_CHANNEL_GRID
+    a = cuda_test_projected_field(g; nmodes=5, seed=1)
+    b = cuda_test_projected_field(g; nmodes=5, seed=3)
+    ad, bd = CUDA.cu(a), CUDA.cu(b)
 
-    # construct projected fields
-    a = ProjectedField(g, randn(M, (Nx >> 1) + 1, Nz, Nt), Ψ); ad = CUDA.cu(a)
-    b = ProjectedField(g, randn(M, (Nx >> 1) + 1, Nz, Nt), Ψ); bd = CUDA.cu(b)
-
-    @testset "methods are correct" begin
-        # initialise dot product methods
+    @testset verbose=true "Explicit methods agree with the host dot product            " begin
         method_twostage = CUDAExt.DotTwoStage(ad)
         method_atomic   = CUDAExt.DotAtomic(ad)
         method_shared   = CUDAExt.DotShared(ad)
 
-        # test result
         res_host = dot(a, b)
         @test abs(res_host - dot(ad, bd, method_twostage)) < 4e-4
         @test abs(res_host - dot(ad, bd, method_atomic))   < 4e-4
         @test abs(res_host - dot(ad, bd, method_shared))   < 4e-4
     end
 
-    # second dummy field for testin auto-tuning
-    g2 = MockChannelGrid(16, 3, 1, 1)
-    ad2 = CUDA.cu(ProjectedField(g2, randn(2, (3 >> 1) + 1, 1, 1), Ψ))
+    # A distinct production-grid type provides a second autotuning cache key.
+    g2 = channel_grid(Nx=3, Ny=16, Nz=1, Nt=1)
+    ad2 = CUDA.cu(cuda_test_projected_field(g2; nmodes=2, seed=5))
 
-    @testset "auto-tuning" begin
+    @testset verbose=true "Autotuning caches methods by concrete field type            " begin
+        reset_dot_cache!()
         @test isempty(CUDAExt.DOT_METHODS)
         CUDAExt.dot_method(ad)
         @test length(CUDAExt.DOT_METHODS) == 1

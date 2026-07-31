@@ -17,81 +17,73 @@ function allocs_after_warmup(f)
 end
 
 function alloc_fixture()
-    g = TripleGrid(3, 8, 6; α=1.5, β=2.0)
-    u = FTField(g)
-    v = FTField(g)
-    parent(u) .= randn(ComplexF64, size(parent(u)))
-    parent(v) .= randn(ComplexF64, size(parent(v)))
+    g = steady_channel_grid(; Nx=9, Ny=9, Nz=7, α=1.5, β=2.0)
+    u = test_ftfield(g; seed=21)
+    v = test_ftfield(g; seed=22)
 
     q = VectorField(u, copy(u), zero(u))
     p = copy(q)
 
-    Nm = 4
-    modes = ntuple(_ -> randn(ComplexF64, Nm, 3, (8 >> 1) + 1, 6), 3)
-    a = ProjectedField(g, randn(ComplexF64, Nm, (8 >> 1) + 1, 6), modes)
+    modes = test_modes(g; ncomponents=3, nmodes=4, seed=23)
+    coefficient_size = (size(modes[1], 1), map(dim -> transform_size(g)[dim], fft_storage_dims(g))...)
+    a = ProjectedField(g, randn(MersenneTwister(24), ComplexF64, coefficient_size), modes)
     b = copy(a)
 
     return (; g, u, v, q, p, modes, a, b)
 end
 
-function alloc_polynomial_fixture()
-    g = PolynomialGrid([-1.0, -0.3, 0.2, 0.7, 1.0], 8)
-    u = FTField(g)
-    v = FTField(g)
-    parent(u) .= randn(ComplexF64, size(parent(u)))
-    parent(v) .= randn(ComplexF64, size(parent(v)))
+function alloc_planar_fixture()
+    g = planar_grid(; Nb=9, Nh=9)
+    u = test_ftfield(g; seed=31)
+    v = test_ftfield(g; seed=32)
     q = VectorField(u, copy(u))
     p = copy(q)
     return (; g, u, v, q, p)
 end
 
 function alloc_projected_2d_fixture()
-    g = PolynomialGrid([-1.0, -0.3, 0.2, 0.7, 1.0], 8)
-    Nm = 3
-    modes = ntuple(_ -> randn(ComplexF64, Nm, length(g.y), (g.Nx >> 1) + 1), 2)
-    a = ProjectedField(g, randn(ComplexF64, Nm, (g.Nx >> 1) + 1), modes)
+    g = planar_grid(; Nb=9, Nh=9)
+    modes = test_modes(g; ncomponents=2, nmodes=3, seed=41)
+    coefficient_size = (size(modes[1], 1), map(dim -> transform_size(g)[dim], fft_storage_dims(g))...)
+    a = ProjectedField(g, randn(MersenneTwister(42), ComplexF64, coefficient_size), modes)
     b = copy(a)
     q = VectorField(FTField(g), FTField(g))
-    parent(q[1]) .= randn(ComplexF64, size(parent(q[1])))
-    parent(q[2]) .= randn(ComplexF64, size(parent(q[2])))
+    parent(q[1]) .= parent(test_ftfield(g; seed=43))
+    parent(q[2]) .= parent(test_ftfield(g; seed=44))
     return (; g, q, modes, a, b)
 end
 
 function alloc_plans_fixture(; dealias=false)
-    g = PolynomialGrid([-1.0, -0.3, 0.2, 0.7, 1.0], 8)
+    g = planar_grid(; Nb=9, Nh=9)
     plans = FFTPlans(g; dealias=dealias, flags=FFTW.ESTIMATE)
-    u = Field(g, (y, x) -> sin(x) + y)
-    u_dealiased = Field(g, (y, x) -> sin(x) + y; dealias=dealias)
-    uhat = FTField(g)
-    parent(uhat) .= randn(ComplexF64, size(parent(uhat)))
+    u = Field(g, (x, y) -> x + sin(y))
+    u_dealiased = Field(g, (x, y) -> x + sin(y); dealias=dealias)
+    uhat = test_ftfield(g; seed=51)
     return (; g, plans, u, u_dealiased, uhat)
 end
+
+alloc_unimplemented_error(g) = NSEBase.NotImplementedError(g)
 
 function alloc_noop_force!(out, _, _)
     return out
 end
 
-@testset "Allocation contracts                                                " begin
+@testset verbose=true "Allocation contracts                                        " begin
 
-    @testset "src/NSEBase.jl" begin
+    @testset verbose=true "src/NSEBase.jl                                              " begin
         @test isdefined(NSEBase, :AbstractGrid)
         @test isdefined(NSEBase, :FTField)
         @test isdefined(NSEBase, :ProjectedNSE)
     end
 
-    @testset "src/notimplementederror.jl" begin
-        g = SpectralTestGrid{(4,), 1, (1, nothing, nothing, nothing), (1,)}()
-        err = try
-            NSEBase.points(g)
-        catch e
-            e
-        end
+    @testset verbose=true "src/notimplementederror.jl                                  " begin
+        err = alloc_unimplemented_error(line_grid())
 
         @test err isa NSEBase.NotImplementedError
         @test allocs_after_warmup(() -> sprint(showerror, err)) > 0
     end
 
-    @testset "src/abstractgrid.jl" begin
+    @testset verbose=true "src/abstractgrid.jl                                         " begin
         (; g) = alloc_fixture()
         values = (:x, :y, :z, :t)
 
@@ -108,12 +100,12 @@ end
 
         # Coordinate arrays are newly constructed by this fixture.
         @test allocs_after_warmup(() -> NSEBase.points(g)) > 0
-        grown = NSEBase.growto(g, (16, 12))
-        @test size(grown) == (size(g, 1), 16, 12)
-        @test allocs_after_warmup(() -> NSEBase.growto(g, (16, 12))) == 0
+        grown = NSEBase.growto(g, (11, 9))
+        @test size(grown) == (size(g, 1), 11, 9)
+        @test allocs_after_warmup(() -> NSEBase.growto(g, (11, 9))) > 0
     end
 
-    @testset "src/wavenumbervector.jl" begin
+    @testset verbose=true "src/wavenumbervector.jl                                     " begin
         (; g) = alloc_fixture()
         k = WaveNumberVector(1, -2)
         storage_indices = (2, 6)
@@ -127,7 +119,7 @@ end
         @test allocs_after_warmup(() -> NSEBase.to_wavenumber_vector(g, storage_indices)) == 0
     end
 
-    @testset "src/ftfield.jl" begin
+    @testset verbose=true "src/ftfield.jl                                              " begin
         (; g, u) = alloc_fixture()
         k = WaveNumberVector(1, -1)
 
@@ -154,12 +146,12 @@ end
         @test allocs_after_warmup(() -> u[k]) == 0
     end
 
-    @testset "src/field.jl" begin
-        (; g) = alloc_polynomial_fixture()
-        u = Field(g, (y, x) -> y + sin(x))
+    @testset verbose=true "src/field.jl                                                " begin
+        (; g) = alloc_planar_fixture()
+        u = Field(g, (x, y) -> x + sin(y))
 
         @test allocs_after_warmup(() -> Field(g)) > 0
-        @test allocs_after_warmup(() -> Field(g, (y, x) -> y + sin(x))) > 0
+        @test allocs_after_warmup(() -> Field(g, (x, y) -> x + sin(y))) > 0
         @test allocs_after_warmup(() -> Field(g, parent(u))) == 0
         @test allocs_after_warmup(() -> parent(u)) == 0
         @test allocs_after_warmup(() -> grid(u)) == 0
@@ -172,12 +164,12 @@ end
         @test allocs_after_warmup(() -> zero(u)) > 0
     end
 
-    @testset "src/vectorfield.jl" begin
-        (; g, q) = alloc_polynomial_fixture()
+    @testset verbose=true "src/vectorfield.jl                                          " begin
+        (; g, q) = alloc_planar_fixture()
         base = (range(-1.0, 1.0, length=size(g, 1)) |> collect, nothing)
 
         @test allocs_after_warmup(() -> VectorField(g, FTField; N=2)) > 0
-        @test allocs_after_warmup(() -> VectorField(g, (y, x) -> y, (y, x) -> sin(x))) > 0
+        @test allocs_after_warmup(() -> VectorField(g, (x, y) -> x, (x, y) -> sin(y))) > 0
         @test allocs_after_warmup(() -> parent(q)) == 0
         @test allocs_after_warmup(() -> grid(q)) == 0
         @test allocs_after_warmup(() -> q[1]) == 0
@@ -188,10 +180,10 @@ end
         @test allocs_after_warmup(() -> similar(q)) > 0
         @test allocs_after_warmup(() -> copy(q)) > 0
         @test allocs_after_warmup(() -> zero(q)) > 0
-        @test_throws NSEBase.NotImplementedError NSEBase.growto(q, (16,))
+        @test allocs_after_warmup(() -> NSEBase.growto(q, (11,))) > 0
     end
 
-    @testset "src/fft.jl" begin
+    @testset verbose=true "src/fft.jl                                                  " begin
         (; plans, u, u_dealiased, uhat) = alloc_plans_fixture(dealias=false)
         dealiased = alloc_plans_fixture(dealias=true)
         dealias_plans = dealiased.plans
@@ -217,7 +209,7 @@ end
         @test allocs_after_warmup(() -> IFFT(uhat)) > 0
     end
 
-    @testset "src/projectedfield.jl" begin
+    @testset verbose=true "src/projectedfield.jl                                       " begin
         (; g, modes, a) = alloc_fixture()
         k = WaveNumberVector(1, -1)
 
@@ -242,7 +234,7 @@ end
         @test allocs_after_warmup(() -> abs(a)) > 0
     end
 
-    @testset "src/galerkin.jl" begin
+    @testset verbose=true "src/galerkin.jl                                             " begin
         (; q, modes, a) = alloc_projected_2d_fixture()
         out = zero(q)
 
@@ -257,7 +249,7 @@ end
         @test allocs_after_warmup(() -> expand!(out, a, GemmGalerkin())) >= 0
     end
 
-    @testset "src/shifts.jl" begin
+    @testset verbose=true "src/shifts.jl                                               " begin
         (; u, q, a) = alloc_fixture()
 
         @test allocs_after_warmup(() -> shift!(u, (0.13, -0.21))) == 0
@@ -267,7 +259,7 @@ end
         @test allocs_after_warmup(() -> NSEBase._shift_phase(grid(u), (0.13, -0.21), WaveNumberVector(1, -1))) == 0
     end
 
-    @testset "src/norms.jl" begin
+    @testset verbose=true "src/norms.jl                                                " begin
         (; u, v, q, p, a, b) = alloc_fixture()
         tmp_ft = zero(v)
         tmp_vec1 = zero(p)
@@ -292,7 +284,7 @@ end
         @test allocs_after_warmup(() -> normdiff(a, b, (0.13, -0.21), tmp_a)) <= small_accumulator_alloc
     end
 
-    @testset "src/weighting.jl" begin
+    @testset verbose=true "src/weighting.jl                                            " begin
         (; g, a, b) = alloc_fixture()
         A = FarazmandWeight(g)
         k = WaveNumberVector(1, -1)
@@ -304,7 +296,7 @@ end
         @test allocs_after_warmup(() -> dot(a, A, b)) <= 32
     end
 
-    @testset "src/broadcasting.jl" begin
+    @testset verbose=true "src/broadcasting.jl                                         " begin
         (; u, v, q, p) = alloc_fixture()
         out = zero(u)
         qout = zero(q)
@@ -316,22 +308,22 @@ end
         @test allocs_after_warmup(() -> q .+ p) > 0
     end
 
-    @testset "src/derivatives.jl" begin
-        (; u, q) = alloc_polynomial_fixture()
+    @testset verbose=true "src/derivatives.jl                                          " begin
+        (; u, q) = alloc_planar_fixture()
         out = zero(u)
         qout = zero(q)
 
-        @test allocs_after_warmup(() -> ddx!(out, u)) == 0
-        # ddy!/dd! on dim 1 dispatches to PolynomialGrid's LinearAlgebra.mul! extension.
-        # On Julia < 1.11 mul! allocates when --check-bounds=yes is active; skip there.
+        # The finite-difference direction dispatches to FDGrids' `mul!`. On
+        # Julia < 1.11 it allocates with `--check-bounds=yes`, so skip it there.
         if VERSION >= v"1.11"
-            @test allocs_after_warmup(() -> ddy!(out, u)) == 0
+            @test allocs_after_warmup(() -> ddx!(out, u)) == 0
         end
+        @test allocs_after_warmup(() -> ddy!(out, u)) == 0
         @test allocs_after_warmup(() -> ddz!(out, u)) == 0
         @test allocs_after_warmup(() -> ddt!(out, u)) == 0
         @test allocs_after_warmup(() -> NSEBase.dd!(out, u, Val(2))) == 0
         @test allocs_after_warmup(() -> NSEBase.dd!(qout, q, Val(2))) == 0
-        # _inhomogeneous_laplacian! and laplacian! also go through mul! on PolynomialGrid.
+        # The inhomogeneous Laplacian follows the same FDGrids path.
         if VERSION >= v"1.11"
             @test allocs_after_warmup(() -> NSEBase._inhomogeneous_laplacian!(out, u)) == 0
         end
@@ -343,7 +335,7 @@ end
         end
     end
 
-    @testset "src/io.jl" begin
+    @testset verbose=true "src/io.jl                                                   " begin
         (; g, a, modes) = alloc_fixture()
         mktempdir() do dir
             grid_path = joinpath(dir, "grid.jld2")
@@ -355,7 +347,7 @@ end
         end
     end
 
-    @testset "src/equations/types.jl" begin
+    @testset verbose=true "src/equations/types.jl                                      " begin
         out = Ref(0)
         cf = CompoundForcing(NoForce(), alloc_noop_force!)
 
@@ -367,8 +359,8 @@ end
         @test allocs_after_warmup(() -> cf(out, nothing, Forward())) == 0
     end
 
-    @testset "src/equations/shared.jl" begin
-        (; g) = alloc_polynomial_fixture()
+    @testset verbose=true "src/equations/shared.jl                                     " begin
+        (; g) = alloc_planar_fixture()
         base = (zeros(size(g, 1)), nothing)
 
         @test allocs_after_warmup(() -> NSEBase.ncomp(CartesianPrimitive3D())) == 0
@@ -379,16 +371,17 @@ end
         @test allocs_after_warmup(() -> construct_equations(g, 100.0, base, CartesianPrimitive2D(); flags=FFTW.ESTIMATE, dealias=false)) > 0
     end
 
-    @testset "src/equations/cartesianprimitive_2d.jl" begin
-        (; g, q) = alloc_polynomial_fixture()
+    @testset verbose=true "src/equations/cartesianprimitive_2d.jl                      " begin
+        (; g, q) = alloc_planar_fixture()
         out = zero(q)
         eq = CartesianPrimitive2DNSE(g, 100.0; flags=FFTW.ESTIMATE)
         ln = CartesianPrimitive2DLNSE(g, 100.0; mode=AdjointDiscrete(), flags=FFTW.ESTIMATE)
+        ln(0.0, q, q, out) # Populate the base-state cache required by the shorter call.
 
         @test allocs_after_warmup(() -> CartesianPrimitive2DNSE(g, 100.0; flags=FFTW.ESTIMATE)) > 0
         @test allocs_after_warmup(() -> CartesianPrimitive2DLNSE(g, 100.0; mode=AdjointDiscrete(), flags=FFTW.ESTIMATE)) > 0
-        # Equation actions call PolynomialGrid's mul!-based derivatives internally;
-        # on Julia < 1.11 mul! allocates with --check-bounds=yes.
+        # Equation actions call FDGrids' `mul!`-based derivatives internally;
+        # on Julia < 1.11 `mul!` allocates with `--check-bounds=yes`.
         if VERSION >= v"1.11"
             @test allocs_after_warmup(() -> eq(0.0, q, out)) == 0
             @test allocs_after_warmup(() -> ln(0.0, q, out)) == 0
@@ -396,17 +389,16 @@ end
         end
     end
 
-    @testset "src/equations/cartesianprimitive_3d.jl                            " begin
+    @testset verbose=true "src/equations/cartesianprimitive_3d.jl                      " begin
         (; g) = alloc_fixture()
 
-        # Construction allocates caches and FFTW plans. The full 3-D operator
-        # requires a downstream inhomogeneous derivative implementation for
-        # `TripleGrid`, so operator action is covered by the 2-D section above.
+        # Construction allocates production-grid caches and FFTW plans. Full
+        # operator behavior is exercised in `test_operators.jl`.
         @test allocs_after_warmup(() -> CartesianPrimitive3DNSE(g, 100.0; flags=FFTW.ESTIMATE)) > 0
         @test allocs_after_warmup(() -> CartesianPrimitive3DLNSE(g, 100.0; mode=AdjointDiscrete(), flags=FFTW.ESTIMATE)) > 0
     end
 
-    @testset "src/equations/projectednse.jl" begin
+    @testset verbose=true "src/equations/projectednse.jl                               " begin
         (; g, modes, a, b) = alloc_projected_2d_fixture()
         base = (zeros(size(g, 1)), nothing)
         eq = construct_equations(g, 100.0, base, CartesianPrimitive2D(); flags=FFTW.ESTIMATE, dealias=true)

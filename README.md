@@ -1,5 +1,7 @@
 # NSEBase.jl
 
+[![codecov](https://codecov.io/gh/Davide-Lasagna-s-Lab/NSEBase.jl/branch/dev/graph/badge.svg)](https://codecov.io/gh/Davide-Lasagna-s-Lab/NSEBase.jl)
+
 **NSEBase** is a Julia package that provides the shared spectral-field infrastructure
 for Navier-Stokes solvers targeting wall-bounded flows.  It defines the grid
 interface, all field types, FFT transforms, spectral derivative operators,
@@ -36,22 +38,23 @@ rhs_lin = obj(similar(a), a, b)
 
 ## Documentation
 
-Full documentation — including a concepts & conventions guide and the
-complete API reference — lives in [`docs/`](docs/).
+The [online documentation](https://Davide-Lasagna-s-Lab.github.io/NSEBase.jl/dev/)
+contains the concepts and conventions guide together with the complete API
+reference.
 
 ## Extending NSEBase
 
 Implement a new grid by subtyping
-`AbstractGrid{T, D, AXES, FFT_DIMS_ORDER, DECOMPOSITION}` and defining four
-required methods. Use `Undecomposed` for a grid stored on one domain, or
-`Decomposed{DIMS}` when storage is partitioned along the dimensions in `DIMS`.
+`AbstractGrid{T, D, AXES, FFT_DIMS_ORDER}` and defining the required interface
+methods.
 
 | Method | Purpose |
 |--------|---------|
 | `Base.size(grid)` | Physical-space array size |
 | `points(grid; dealias)` | Collocation coordinate arrays |
-| `wavenumber_scale(grid, dim)` | `2π/L` for spatial, `1` for temporal |
+| `wavenumber_scale(grid, dim)` | `2π/L` for a periodic coordinate of period `L` |
 | `weights(grid)` | Quadrature weights for inhomogeneous dimensions |
+| `derivative_matrix(grid, dim, Val(order), mode)` | Inhomogeneous first- and second-derivative operators |
 
 See the [Concepts & Conventions](docs/src/guide.md) page for the full interface
 contract and the assumptions NSEBase makes about grid geometry.

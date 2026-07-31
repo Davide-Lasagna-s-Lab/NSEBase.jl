@@ -28,31 +28,26 @@
 
 Inner product of two spectral fields on the same grid.
 
-In terms of the physical field `u(j, z, t)`, this computes the quadrature-weighted
-domain average over the full 4D domain:
+The exact discrete sum is
 
 ```math
 \\langle u, v \\rangle =
-  \\frac{1}{V} \\int w(\\mathbf{j})\\, u(\\mathbf{j}, \\mathbf{z})\\,
-  v(\\mathbf{j}, \\mathbf{z})\\, d\\mathbf{j}\\, d\\mathbf{z}
+  \\sum_{\\mathbf{k}} \\sum_{\\mathbf{j}} c_{k_1}\\, w_{\\mathbf{j}}\\,
+  \\operatorname{Re}\\!\\left(
+    \\overline{u_{\\mathbf{k},\\mathbf{j}}}\\,
+    v_{\\mathbf{k},\\mathbf{j}}
+  \\right),
 ```
 
-where `j` are the inhomogeneous coordinates, `z` are the periodic coordinates,
-`w(j)` are the quadrature weights returned by [`weights`](@ref), and `V` is the
-product of the periods in the homogeneous directions.
+where `k` indexes the stored Fourier modes, `j` indexes the inhomogeneous grid,
+and `w_j` is returned by [`weights`](@ref). The Hermitian multiplier
+`c_{k_1}` is `1` for the zero rfft wavenumber and `2` otherwise because each
+stored nonzero rfft mode represents both its positive- and negative-wavenumber
+contributions.
 
-In spectral space this is:
-
-```math
-\\langle u, v \\rangle =
-  \\sum_{\\mathbf{k}} c_{k_1}\\, w(\\mathbf{j})\\,
-  \\operatorname{Re}\\bigl(\\bar{u}_{\\mathbf{k},\\mathbf{j}}\\, v_{\\mathbf{k},\\mathbf{j}}\\bigr)
-```
-
-where `c_{k_1}` is `1` for the zero rfft wavenumber and `2` otherwise (rfft
-Hermitian symmetry: each stored non-DC mode represents both the `+k` and `-k`
-contributions).  The forward FFT normalization by `1/V` combined with Parseval
-gives the domain-averaged inner product.
+The FFT normalization makes the homogeneous contribution a domain average. The
+inhomogeneous contribution is the quadrature integral or average represented by
+the grid's weights; NSEBase does not impose an additional normalization on it.
 """
 function LinearAlgebra.dot(u::FTField{G}, v::FTField{G}) where {FFT_DIMS_ORDER, G<:AbstractGrid{<:Any,<:Any,<:Any,FFT_DIMS_ORDER}}
     return _dot(parent(u), parent(v), weights(grid(u)), Val(FFT_DIMS_ORDER))

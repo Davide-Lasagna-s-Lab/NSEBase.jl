@@ -54,10 +54,8 @@ Concrete grid packages must implement:
   `fft_storage_dims(grid)`.
 - `weights(grid)` returning quadrature weights for the inhomogeneous
   dimensions.
-- `_inhomogeneous_dd!(out, u, Val(dim), mode=Forward())` for first derivatives
-  along each non-Fourier storage dimension.
-- `inhomogeneous_laplacian!(out, u, mode=Forward())` for the sum of spatial
-  second derivatives along non-Fourier dimensions.
+- `derivative_matrix(grid, storage_dim, Val(order), mode)` for first- and
+  second-derivative operators along each non-Fourier storage dimension.
 - `Base.convert(::Type{S}, grid)` if fields should support changing scalar
    precision via `similar(field, S)`.
 
@@ -66,13 +64,6 @@ Concrete grid packages must implement:
 Implement `growto(grid, target_size)` if the package supports changing the
 homogeneous resolution.  Implementing grid growth is also required for
 `FFT(field, target_size)` and `IFFT(ftfield, target_size)`.
-
-Implement `derivative_matrix(grid, storage_dim, Val(order), mode)` when a
-decomposed-grid wrapper needs to retrieve local first- and second-derivative
-stencils from its serial parent. The `mode` argument is an `OperatorMode` tag
-(`Forward()` or `AdjointDiscrete()`) that participates in dispatch: forward
-and adjoint operators may have different concrete types, and the tag keeps the
-accessor type stable without any runtime branch.
 
 # Provided defaults (override only if needed)
 
@@ -315,6 +306,8 @@ wrappers for absent coordinates become no-ops.
 For `AXES = (2, 1, 3, nothing)`, `storage_dim(grid, :x) == 2`,
 `storage_dim(grid, :y) == 1`, and `storage_dim(grid, :t) === nothing`.
 """
+function storage_dim end
+
 # `where {T<:Real, D}` matches the constraint on the abstract type's
 # first parameter explicitly; without it Julia (1.12+) sees the literal
 # `Val{:x}` methods as ambiguous with the catch-all `Val{DIM}` fallback
@@ -467,8 +460,8 @@ points(grid::AbstractGrid; dealias=false) = throw(NotImplementedError(grid))
     wavenumber_scale(grid::AbstractGrid, dim::Int) -> Real
 
 Return the physical wavenumber scaling factor for homogeneous dimension `dim`.
-For a spatial direction with period `L` the factor is `2π/L`; for a unit-period
-temporal direction, return `1`.
+For any periodic coordinate with period `L`, including a transformed time
+coordinate, the factor is `2π/L`.
 
 Downstream packages must extend this for each dimension in `fft_storage_dims(grid)`.
 """

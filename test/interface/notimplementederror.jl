@@ -1,4 +1,4 @@
-@testset "NotImplementedError                                                 " begin
+@testset verbose=true "NotImplementedError                                         " begin
     # unimplemented method based on abstract type
     f1(a::Number) = throw(NSEBase.NotImplementedError(a))
 

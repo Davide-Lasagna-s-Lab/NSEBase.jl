@@ -17,7 +17,8 @@ const MPIExt = Base.get_extension(NSEBase, :MPIExt)
 
 MPI.Initialized() || MPI.Init()
 
-include("../../mock_channel_grid.jl")
+include("../../support/rectangular_fixtures.jl")
+using .TestRectangularFixtures: channel_grid
 
 nranks = MPI.Comm_size(MPI.COMM_WORLD)
 rank   = MPI.Comm_rank(MPI.COMM_WORLD)
@@ -26,31 +27,31 @@ const Ny = 16; const Nx = 7; const Nz = 9; const Nt = 5
 const NHALO = 1
 
 base_comm = MPI.Comm_dup(MPI.COMM_WORLD)
-g_parent = MockChannelGrid(Ny, Nx, Nz, Nt)
+g_parent = channel_grid(; Nx, Ny, Nz, Nt)
 g        = distributed(g_parent, base_comm;
                         decomposed_physical_dims=(:y,), nprocesses=(nranks,), nhalo=(NHALO,))
 
-@testset "Field allocation picks HaloArray storage when nhalo > 0             " begin
+@testset verbose=true "Field allocation picks HaloArray storage when nhalo > 0     " begin
     u = NSEBase.Field(g)
     @test parent(u) isa HaloArrays.HaloArray
     @test HaloArrays.nhalo(parent(u)) == MPIExt.nhalo(g)
     @test all(parent(u) .== 0)
 end
 
-@testset "FTField allocation picks HaloArray storage when nhalo > 0           " begin
+@testset verbose=true "FTField allocation picks HaloArray storage when nhalo > 0   " begin
     uhat = NSEBase.FTField(g)
     @test parent(uhat) isa HaloArrays.HaloArray
     @test HaloArrays.nhalo(parent(uhat)) == MPIExt.nhalo(g)
     @test all(parent(uhat) .== 0)
 end
 
-@testset "VectorField allocation propagates halo policy                       " begin
+@testset verbose=true "VectorField allocation propagates halo policy               " begin
     q = NSEBase.VectorField(g, NSEBase.FTField; N=3)
     @test length(q) == 3
     @test all(n -> parent(q[n]) isa HaloArrays.HaloArray, 1:3)
 end
 
-@testset "init_requests! on Field / FTField                                   " begin
+@testset verbose=true "init_requests! on Field / FTField                           " begin
     u    = NSEBase.Field(g)
     uhat = NSEBase.FTField(g)
 
@@ -61,7 +62,7 @@ end
     @test MPIExt.wait_requests!(reqs_uhat) === nothing
 end
 
-@testset "init_requests! on VectorField returns nested request tuple          " begin
+@testset verbose=true "init_requests! on VectorField returns nested request tuple  " begin
     q = NSEBase.VectorField(g, NSEBase.FTField; N=2)
     reqs = MPIExt.init_requests!(q)
     @test reqs isa Tuple && length(reqs) == 2
@@ -69,7 +70,7 @@ end
 end
 
 if nranks > 1
-    @testset "halo requests propagates owned values to neighbouring ranks         " begin
+    @testset verbose=true "halo requests propagates owned values to neighbouring ranks " begin
         # Tag each rank's owned interior with its rank number; the lower and
         # upper halo cells should contain the neighbours' values after exchange.
         u = NSEBase.Field(g)

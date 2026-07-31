@@ -30,17 +30,42 @@
 """
     CartesianPrimitive3DNSE{T, FFT, S, P, BF}
 
-Nonlinear Navier-Stokes operator for three-component Cartesian flows.
+Nonlinear, pressure-free Navier–Stokes right-hand side for a three-component
+Cartesian state `q = (u, v, w)`, ordered as the physical `x`, `y`, and `z`
+velocity components. With `∇ = (∂ₓ, ∂ᵧ, ∂ᶻ)`, the operator evaluates
 
-Evaluates `out = Δu/Re − (u·∇)u + force(out, u, Forward())` in spectral space,
-using dealiased physical-space products for the nonlinear term.
+```math
+\\mathcal{N}(\\boldsymbol{q}) = \\frac{1}{\\mathrm{Re}}\\,\\Delta\\boldsymbol{q}
+    - (\\boldsymbol{q}\\!\\cdot\\!\\nabla)\\boldsymbol{q}
+    + \\mathcal{F}_{\\mathrm{F}}(\\boldsymbol{q}).
+```
+
+The pressure gradient is not formed here. In [`ProjectedNSE`](@ref), projection
+onto a divergence-free supplied basis removes the pressure contribution.
+Nonlinear products are evaluated in the physical-space cache and transformed
+back to spectral space; constructors created through
+[`construct_equations`](@ref) control whether that cache is dealiased.
+
+``\\mathcal{F}_{\\mathrm{F}}`` denotes the additive in-place action
+`force(out, q, Forward())`, performed after the viscous and advective terms.
+[`NoForce`](@ref) makes it zero. A custom force must add its contribution to
+`out`, leave `q` unchanged, and implement any required state dependence itself.
+
+# Call contract
+
+Call the operator as `eq(t, q, out)`. The arguments `q` and `out` must be
+distinct `VectorField{3, <:FTField}` values compatible with the grid and FFT
+plans used to construct `eq`; aliasing `out` with `q` is unsupported. The time
+argument is accepted for solver compatibility but is not used. The call
+overwrites `out`, returns that same object, and treats `q` as read-only. Internal
+caches are mutated, so one operator instance is not reentrant or safe for
+concurrent calls.
 
 # Fields
-- `Re`: Reynolds number
-- `plans`: `FFTPlans` for physical↔spectral transforms
-- `scache`: spectral-space scratch `VectorField`s (3 entries of 3 components)
-- `pcache`: physical-space scratch `VectorField`s (4 entries of 3 components)
-- `force`: body-force callable with signature `(out, u, mode)`
+- `Re`: Reynolds number; it must be nonzero.
+- `plans`: [`FFTPlans`](@ref) for physical↔spectral transforms.
+- `scache`, `pcache`: mutable spectral- and physical-space scratch fields.
+- `force`: additive callable with signature `(out, q, mode) -> out`.
 """
 mutable struct CartesianPrimitive3DNSE{T, FFT, S, P, BF}
               Re::T
@@ -65,17 +90,76 @@ end
 """
     CartesianPrimitive3DLNSE{MODE, T, FFT, S, P, BF}
 
-Linearised Navier-Stokes operator for three-component Cartesian flows,
-parameterised on `MODE <: Mode` to select between the forward linearisation,
-continuous adjoint, and discrete adjoint.
+Linearised, pressure-free Navier–Stokes operator for three-component Cartesian
+flows. The base state `U = (U₁, U₂, U₃)` and perturbation or adjoint state
+`v = (v₁, v₂, v₃)` use physical `(x, y, z)` component order.
 
-The three-argument call `eq(t, u, v, out)` first caches the physical base-flow
-gradients from `u`, then delegates to the two-argument form `eq(t, v, out)`.
-The two-argument form applies the chosen linearised operator to `v`.
+For `MODE == Forward`, the implemented linearisation is
+
+```math
+\\mathcal{L}_{\\boldsymbol{U}}\\boldsymbol{v}
+  = \\frac{1}{\\mathrm{Re}}\\,\\Delta\\boldsymbol{v}
+    - (\\boldsymbol{U}\\!\\cdot\\!\\nabla)\\boldsymbol{v}
+    - (\\boldsymbol{v}\\!\\cdot\\!\\nabla)\\boldsymbol{U}
+    + \\mathcal{F}_{\\mathrm{F}}(\\boldsymbol{v}).
+```
+
+For `MODE == AdjointContinuous`, integration by parts is performed before
+discretisation:
+
+```math
+\\mathcal{L}^{\\dagger}_{\\boldsymbol{U}}\\boldsymbol{v}
+  = \\frac{1}{\\mathrm{Re}}\\,\\Delta\\boldsymbol{v}
+    + (\\boldsymbol{U}\\!\\cdot\\!\\nabla)\\boldsymbol{v}
+    - (\\nabla\\boldsymbol{U})^{\\mathsf{T}}\\boldsymbol{v}
+    + \\mathcal{F}_{\\mathrm{AC}}(\\boldsymbol{v}).
+```
+
+This continuous-adjoint identity assumes a solenoidal base velocity and
+boundary conditions for which the integration-by-parts boundary terms vanish.
+The implementation deliberately uses forward derivative operators for this
+mode.
+
+For `MODE == AdjointDiscrete`, let ``D_{j,h}^{+}`` and ``\\Delta_h^{+}`` denote the
+discrete adjoints supplied by the grid. Component `n = 1, 2, 3` is evaluated as
+
+```math
+[\\mathcal{L}^{+}_{\\boldsymbol{U},h}\\boldsymbol{v}]_n
+  = \\frac{1}{\\mathrm{Re}}\\,\\Delta_h^{+}v_n
+    - \\sum_{j=1}^{3} D_{j,h}^{+}(U_j v_n)
+    - \\sum_{m=1}^{3} v_m\\,D_{n,h}U_m
+    + [\\mathcal{F}_{\\mathrm{AD}}(\\boldsymbol{v})]_n.
+```
+
+Thus the discrete mode transposes the actual derivative-and-multiplication
+sequence; it is not obtained by substituting discrete derivatives into the
+continuous formula. Its adjoint identity requires each grid
+[`derivative_matrix`](@ref) to return the correct `AdjointDiscrete()` operator.
+
+In every mode, ``\\mathcal{F}`` is the contribution made by
+`force(out, v, mode)` after the fluid terms. NSEBase does not automatically
+linearise or transpose a custom force: the callable must dispatch on the mode
+tag and add the corresponding forward or adjoint action to `out`.
+
+# Call contract
+
+`eq(t, U, v, out)` caches `U` and its forward spatial derivatives, applies the
+selected operator to `v`, overwrites `out`, and returns `out`. The shorter call
+`eq(t, v, out)` reuses the existing base-state cache and is valid only after a
+four-argument call or after a nonlinear operator sharing these caches has been
+evaluated at that base state. The time argument is unused.
+
+All field arguments must be grid-compatible `VectorField{3, <:FTField}` values,
+and `out` must not alias `v`. Calls mutate the internal caches, so an instance
+is neither reentrant nor safe for concurrent use. `MODE` must be `Forward`,
+`AdjointContinuous`, or
+`AdjointDiscrete`; other `Mode` subtypes can be stored by the constructor but
+have no call method. [`construct_equations`](@ref) intentionally accepts only
+the two adjoint modes, whereas the direct grid constructor can create all three.
 
 # Fields
-- `Re`: Reynolds number
-- `plans`, `scache`, `pcache`, `force`: same as [`CartesianPrimitive3DNSE`](@ref)
+- `Re`: Reynolds number; it must be nonzero.
+- `plans`, `scache`, `pcache`, `force`: as for [`CartesianPrimitive3DNSE`](@ref).
 """
 mutable struct CartesianPrimitive3DLNSE{MODE, T, FFT, S, P, BF}
               Re::T

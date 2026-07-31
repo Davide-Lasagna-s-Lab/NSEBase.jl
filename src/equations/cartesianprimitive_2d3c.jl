@@ -28,12 +28,39 @@
 """
     CartesianPrimitive2D3CNSE{T, FFT, S, P, BF}
 
-Nonlinear Navier-Stokes operator for 2D-3C Cartesian flows.
+Nonlinear, pressure-free Navier–Stokes right-hand side for a two-dimensional,
+three-component state `q = (u, v, w)`. Components one and two are the physical
+`x`- and `y`-velocity, while component three is the out-of-plane velocity. With
+`∇∥ = (∂ₓ, ∂ᵧ)`, component `n = 1, 2, 3` is
 
-Evaluates `out = Δu/Re − (u_in·∇)u + force(out, u, Forward())` in spectral
-space, where the advecting velocity `u_in = (u, v)` contains only the
-in-plane components and the Laplacian is two-dimensional for all three
-velocity components.
+```math
+[\\mathcal{N}(\\boldsymbol{q})]_n
+  = \\frac{1}{\\mathrm{Re}}\\,\\Delta_{\\parallel}q_n
+    - \\sum_{j=1}^{2} q_j\\,\\partial_j q_n
+    + [\\mathcal{F}_{\\mathrm{F}}(\\boldsymbol{q})]_n.
+```
+
+Thus only `(u, v)` advects, whereas `w` is advected as a scalar-like velocity
+component and does not itself advect any state component. The pressure gradient
+is not formed here; [`ProjectedNSE`](@ref) removes it when projecting onto a
+divergence-free supplied basis. Products are evaluated in the physical-space
+cache and transformed back to spectral space, with dealiasing controlled by
+[`construct_equations`](@ref).
+
+``\\mathcal{F}_{\\mathrm{F}}`` denotes the additive in-place action
+`force(out, q, Forward())`, performed after the viscous and advective terms.
+[`NoForce`](@ref) makes it zero. The force callable may act on any of the three
+components; it must add to `out` and leave `q` unchanged.
+
+# Call contract
+
+Call the operator as `eq(t, q, out)`. The arguments `q` and `out` must be
+distinct `VectorField{3, <:FTField}` values compatible with the grid and FFT
+plans used to construct `eq`; aliasing `out` with `q` is unsupported. The time
+argument is accepted for solver compatibility but is not used. The call
+overwrites `out`, returns that same object, and treats `q` as read-only. Internal
+caches are mutated, so one operator instance is not reentrant or safe for
+concurrent calls. `Re` must be nonzero.
 """
 mutable struct CartesianPrimitive2D3CNSE{T, FFT, S, P, BF}
               Re::T
@@ -58,13 +85,76 @@ end
 """
     CartesianPrimitive2D3CLNSE{MODE, T, FFT, S, P, BF}
 
-Linearised Navier-Stokes operator for 2D-3C Cartesian flows, parameterised
-on `MODE <: Mode`.
+Linearised, pressure-free Navier–Stokes operator for 2D-3C Cartesian flows. The
+base state `U = (U₁, U₂, U₃)` and perturbation or adjoint state
+`v = (v₁, v₂, v₃)` use in-plane `(x, y)` components first and the
+out-of-plane component third.
 
-Identical structure to [`CartesianPrimitive2DLNSE`](@ref) with three velocity
-components instead of two.  In all linearised variants, only the in-plane
-perturbation components V[1] and V[2] contribute to the base-flow advection
-term; V[3] (the out-of-plane perturbation) is advected but does not advect.
+For `MODE == Forward`, component `n = 1, 2, 3` is
+
+```math
+[\\mathcal{L}_{\\boldsymbol{U}}\\boldsymbol{v}]_n
+  = \\frac{1}{\\mathrm{Re}}\\,\\Delta_{\\parallel}v_n
+    - \\sum_{j=1}^{2} U_j\\,\\partial_j v_n
+    - \\sum_{j=1}^{2} v_j\\,\\partial_j U_n
+    + [\\mathcal{F}_{\\mathrm{F}}(\\boldsymbol{v})]_n.
+```
+
+For `MODE == AdjointContinuous`, integration by parts is performed before
+discretisation:
+
+```math
+[\\mathcal{L}^{\\dagger}_{\\boldsymbol{U}}\\boldsymbol{v}]_n
+  = \\frac{1}{\\mathrm{Re}}\\,\\Delta_{\\parallel}v_n
+    + \\sum_{j=1}^{2} U_j\\,\\partial_j v_n
+    - \\mathbf{1}_{n\\leq 2}\\sum_{m=1}^{3} v_m\\,\\partial_n U_m
+    + [\\mathcal{F}_{\\mathrm{AC}}(\\boldsymbol{v})]_n.
+```
+
+The indicator makes the cross-gradient contribution zero in component three:
+an out-of-plane perturbation is advected but never acts as an advecting
+velocity. This identity assumes `∂ₓU₁ + ∂ᵧU₂ = 0` and boundary conditions for
+which the integration-by-parts boundary terms vanish. Forward derivatives are
+used deliberately in this mode.
+
+For `MODE == AdjointDiscrete`, let ``D_{j,h}^{+}`` and
+``\\Delta_{\\parallel,h}^{+}`` denote the discrete adjoints supplied by the grid:
+
+```math
+[\\mathcal{L}^{+}_{\\boldsymbol{U},h}\\boldsymbol{v}]_n
+  = \\frac{1}{\\mathrm{Re}}\\,\\Delta_{\\parallel,h}^{+}v_n
+    - \\sum_{j=1}^{2}D_{j,h}^{+}(U_j v_n)
+    - \\mathbf{1}_{n\\leq 2}\\sum_{m=1}^{3}v_m\\,D_{n,h}U_m
+    + [\\mathcal{F}_{\\mathrm{AD}}(\\boldsymbol{v})]_n,
+  \\qquad n=1,2,3.
+```
+
+This transposes the implemented derivative-and-multiplication sequence rather
+than discretising the continuous-adjoint formula. Its adjoint identity requires
+each grid [`derivative_matrix`](@ref) to provide the correct
+`AdjointDiscrete()` operator.
+
+In every mode, ``\\mathcal{F}`` is the contribution made by
+`force(out, v, mode)` after the fluid terms. NSEBase does not automatically
+linearise or transpose a custom force: the callable must dispatch on the mode
+tag and add the corresponding forward or adjoint action to `out`.
+
+# Call contract
+
+`eq(t, U, v, out)` caches `U` and its forward spatial derivatives, applies the
+selected operator to `v`, overwrites `out`, and returns `out`. The shorter call
+`eq(t, v, out)` reuses the existing base-state cache and is valid only after a
+four-argument call or after a nonlinear operator sharing these caches has been
+evaluated at that base state. The time argument is unused.
+
+All field arguments must be grid-compatible `VectorField{3, <:FTField}` values,
+and `out` must not alias `v`. Calls mutate the internal caches, so an instance
+is neither reentrant nor safe for concurrent use. `MODE` must be `Forward`,
+`AdjointContinuous`, or
+`AdjointDiscrete`; other `Mode` subtypes can be stored by the constructor but
+have no call method. [`construct_equations`](@ref) intentionally accepts only
+the two adjoint modes, whereas the direct grid constructor can create all three.
+`Re` must be nonzero.
 """
 mutable struct CartesianPrimitive2D3CLNSE{MODE, T, FFT, S, P, BF}
               Re::T

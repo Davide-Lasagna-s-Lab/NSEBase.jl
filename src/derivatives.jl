@@ -18,10 +18,22 @@
 # `NotImplementedError` for those, and downstream packages must extend it
 # with a grid-specific method (typically a matrix–vector multiply).
 #
-# The full Laplacian combines `_inhomogeneous_laplacian!` (provided by
-# downstream) with `_add_homogeneous_laplacian!` (provided here), which
+# The full Laplacian combines `_inhomogeneous_laplacian!` (assembled here from
+# downstream derivative matrices) with `_add_homogeneous_laplacian!`, which
 # subtracts the spatial ‖k‖² · u contribution from each spectral coefficient.
 
+"""
+    derivative_matrix(grid, storage_dim, ::Val{ORDER}, mode)
+
+Return the discrete derivative operator of order `ORDER` for an inhomogeneous
+storage dimension. NSEBase requests orders `1` and `2` from [`dd!`](@ref) and
+[`laplacian!`](@ref), respectively.
+
+`mode` is an [`OperatorMode`](@ref): `Forward()` requests the forward operator,
+while `AdjointDiscrete()` requests its discrete adjoint. Downstream grid
+packages should return a concrete operator type for each mode so dispatch stays
+type-stable. The fallback throws `NotImplementedError`.
+"""
 derivative_matrix(g::AbstractGrid, ::Integer, ::Val, ::OperatorMode) = throw(NotImplementedError(g))
 
 """
@@ -180,7 +192,7 @@ _add_homogeneous_laplacian!(out::VectorField{N}, u::VectorField{N}) where {N} =
     (for n in 1:N; _add_homogeneous_laplacian!(out[n], u[n]); end; return out)
 
 """
-    inhomogeneous_laplacian!(out::FTField, u::FTField, mode=Forward()) -> out
+    _inhomogeneous_laplacian!(out::FTField, u::FTField, mode=Forward()) -> out
 
 Apply the inhomogeneous (non-FFT) part of the Laplacian of `u` to `out`.
 
