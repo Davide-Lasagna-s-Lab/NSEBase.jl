@@ -1,5 +1,5 @@
-@testset "CUDA utilities                                                      " begin
-    @testset "_linear_to_cart" begin
+@testset verbose=true "CUDA utilities                                              " begin
+    @testset verbose=true "_linear_to_cart                                             " begin
         # 1D
         @test CUDAExt._linear_to_cart(1i32, (5i32,)) == CartesianIndex(1)
         @test CUDAExt._linear_to_cart(3i32, (5i32,)) == CartesianIndex(3)
@@ -72,7 +72,7 @@
         @test CUDAExt._linear_to_cart(116i32, (5i32, 4i32, 3i32, 2i32)) == CartesianIndex(1, 4, 3, 2)
     end
 
-    @testset "show_tuning_info!" begin
+    @testset verbose=true "show_tuning_info!                                           " begin
         @test CUDAExt.TUNING_INFO[] == false
         NSEBase.show_tuning_info!(true)
         @test CUDAExt.TUNING_INFO[] == true
@@ -80,7 +80,7 @@
         @test CUDAExt.TUNING_INFO[] == false
     end
 
-    @testset "set_tuning_samples!" begin
+    @testset verbose=true "set_tuning_samples!                                         " begin
         @test CUDAExt.TUNING_SAMPLES[] == 5
         NSEBase.set_tuning_samples!(10)
         @test CUDAExt.TUNING_SAMPLES[] == 10
@@ -93,7 +93,7 @@
     dummy_kernel1(x, y, z) = nothing
     dummy_kernel2(x, y)    = nothing
 
-    @testset "_get_launch_params" begin
+    @testset verbose=true "_get_launch_params                                          " begin
         # initialises as empty
         @test isempty(CUDAExt.LAUNCH_PARAMS)
 

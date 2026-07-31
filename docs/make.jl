@@ -7,6 +7,7 @@ makedocs(
     format   = Documenter.HTML(
         prettyurls  = get(ENV, "CI", nothing) == "true",
         canonical   = "https://Davide-Lasagna-s-Lab.github.io/NSEBase.jl/stable",
+        mathengine  = Documenter.MathJax3(),
     ),
     pages = [
         "Home"                    => "index.md",
@@ -18,6 +19,7 @@ makedocs(
 )
 
 deploydocs(
-    repo   = "github.com/Davide-Lasagna-s-Lab/NSEBase.jl.git",
-    target = "build",
+    repo      = "github.com/Davide-Lasagna-s-Lab/NSEBase.jl.git",
+    target    = "build",
+    devbranch = "dev",
 )

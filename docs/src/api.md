@@ -4,25 +4,32 @@
 
 ```@docs
 AbstractGrid
-GridDecomposition
-Undecomposed
-Decomposed
-decomposition_dims
-ndecomposed_dims
-fft_dims
-spatial_fft_dims
-inhomogeneous_dims
-spatial_inhomogeneous_dims
+storage_dim
+physical_dim
+physical_to_storage_dim
 to_storage_order
+rfft_storage_dim
+rfft_physical_dim
+fft_storage_dims
+fft_physical_dims
+spatial_fft_storage_dims
+spatial_fft_physical_dims
+inhomogeneous_storage_dims
+inhomogeneous_physical_dims
+spatial_inhomogeneous_storage_dims
+spatial_inhomogeneous_physical_dims
 transform_size
 fft_norm
 growto
 points
 wavenumber_scale
 weights
-distributed (requires MPI)
-CUDA.cu (requires CUDA)
+NSEBase.derivative_matrix
 ```
+
+Distributed-grid construction and GPU adaptation are supplied by NSEBase's MPI
+and CUDA extensions, respectively; load the corresponding packages before using
+those extension APIs.
 
 ## Wavenumber indexing
 
@@ -54,11 +61,11 @@ IFFT
 ## Derivatives
 
 ```@docs
+dd!
 ddx!
-ddx_1!
-ddx_2!
-ddx_3!
-ddx_4!
+ddy!
+ddz!
+ddt!
 laplacian!
 ```
 
@@ -106,6 +113,8 @@ add_base_flow!
 ```@docs
 CartesianPrimitive3D
 CartesianPrimitive2D
+CartesianPrimitive2D3C
+CartesianPrimitive3DBoussinesq
 PolarPrimitive
 ncomp
 cache_length
@@ -121,6 +130,10 @@ CartesianPrimitive3DNSE
 CartesianPrimitive3DLNSE
 CartesianPrimitive2DNSE
 CartesianPrimitive2DLNSE
+CartesianPrimitive2D3CNSE
+CartesianPrimitive2D3CLNSE
+CartesianPrimitive3DBoussinesqNSE
+CartesianPrimitive3DBoussinesqLNSE
 ProjectedNSE
 ```
 
@@ -128,6 +141,7 @@ ProjectedNSE
 
 ```@docs
 Mode
+OperatorMode
 Forward
 AdjointContinuous
 AdjointDiscrete

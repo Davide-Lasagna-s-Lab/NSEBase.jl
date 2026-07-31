@@ -18,7 +18,8 @@ using NSEBase,
 
 MPI.Initialized() || MPI.Init()
 
-include("../../mock_channel_grid.jl")
+include("../../support/rectangular_fixtures.jl")
+using .TestRectangularFixtures: channel_grid
 
 nranks = MPI.Comm_size(MPI.COMM_WORLD)
 rank   = MPI.Comm_rank(MPI.COMM_WORLD)
@@ -27,7 +28,7 @@ const Ny = 16; const Nx = 7; const Nz = 9; const Nt = 5
 const NHALO = 1
 
 base_comm = MPI.Comm_dup(MPI.COMM_WORLD)
-g = distributed(MockChannelGrid(Ny, Nx, Nz, Nt), base_comm;
+g = distributed(channel_grid(; Nx, Ny, Nz, Nt), base_comm;
                 decomposed_physical_dims=(:y,), nprocesses=(nranks,), nhalo=(NHALO,))
 
 # Build a non-trivial physical-space field whose interior values are seeded
@@ -39,7 +40,7 @@ function build_seeded_field(g, dealias)
     return u
 end
 
-@testset "FFTPlans round-trip on halo-backed FTField                          " begin
+@testset verbose=true "FFTPlans round-trip on halo-backed FTField                  " begin
     plans = NSEBase.FFTPlans(g; dealias=false, flags=NSEBase.FFTW.ESTIMATE)
 
     u    = build_seeded_field(g, false)
@@ -52,7 +53,7 @@ end
     @test parent(v) ≈ parent(u)
 end
 
-@testset "Allocating FFT / IFFT helpers match FFTPlans                        " begin
+@testset verbose=true "Allocating FFT / IFFT helpers match FFTPlans                " begin
     u = build_seeded_field(g, false)
 
     plans = NSEBase.FFTPlans(g; dealias=false, flags=NSEBase.FFTW.ESTIMATE)
@@ -66,7 +67,7 @@ end
     @test parent(v_alloc) ≈ parent(u)
 end
 
-@testset "Dealiased FFTPlans round-trip preserves the spectral field          " begin
+@testset verbose=true "Dealiased FFTPlans round-trip preserves the spectral field  " begin
     plans_lo = NSEBase.FFTPlans(g; dealias=false, flags=NSEBase.FFTW.ESTIMATE)
     plans_hi = NSEBase.FFTPlans(g; dealias=true,  flags=NSEBase.FFTW.ESTIMATE)
 

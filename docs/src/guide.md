@@ -7,8 +7,8 @@ correctly and for implementing a new downstream grid.
 ## The grid interface
 
 Everything in NSEBase is parameterised on a **grid** — a concrete subtype of
-`AbstractGrid{T, D, AXES, FFT_DIMS_ORDER, DECOMPOSITION}`.  The five compile-time type parameters
-encode all structural information about the domain:
+`AbstractGrid{T, D, AXES, FFT_DIMS_ORDER}`. The four compile-time type parameters
+encode the structural information about the domain:
 
 | Parameter | Meaning |
 |-----------|---------|
@@ -23,17 +23,20 @@ runtime dispatch and no runtime allocation in the hot paths.
 
 ### Required methods
 
-A concrete grid should implement exactly five methods:
+A concrete grid supplies the following interface methods:
 
 ```julia
 Base.size(grid)                                                             # → NTuple{D, Int}
 points(grid; dealias=false)                                                 # → one array per dimension
-wavenumber_scale(grid, dim::Int)                                            # → Real (2π/L for spatial, 1 for temporal)
+wavenumber_scale(grid, dim::Int)                                            # → Real (2π/L)
 weights(grid)                                                               # → AbstractArray (quadrature weights)
 derivative_matrix(grid, storage_dim::Int, ::Val{ORDER}, mode::OperatorMode) # -> AbstractArray (differentiation operator for inhomogeneous directions)
 ```
 
-`weights` must have one axis per entry in `inhomogeneous_dims(grid)` in ascending array-dimension order, and `derivative_matrix` should be defined for all `storage_dim ∉ FFT_DIMS_ORDER`.
+`weights` has one axis per entry in `inhomogeneous_storage_dims(grid)`, in
+ascending storage-dimension order. A grid with inhomogeneous directions defines
+`derivative_matrix` for orders one and two in each such spatial direction and
+for the supported [`OperatorMode`](@ref) tags.
 
 ### Homogeneous vs. inhomogeneous dimensions
 
@@ -45,8 +48,8 @@ NSEBase draws a sharp distinction between two kinds of dimensions:
   by `im · n · wavenumber_scale`.
 - **Inhomogeneous** dimensions — the complement of `FFT_DIMS_ORDER` in `1:D`.
   These are non-periodic (e.g. the wall-normal direction in channel flow).
-  NSEBase provides no derivative for them; downstream packages must extend `ddx!`
-  with their own matrix-multiply or spectral-element method.
+  NSEBase applies the operators returned by the grid's `derivative_matrix`
+  implementation.
 
 ---
 
@@ -118,32 +121,39 @@ wavenumber integers, handling the conjugate-symmetry lookup for the rfft axis.
 
 ### Physical wavenumber scale
 
-The actual physical wavenumber associated with integer mode `n` in an
-`FFT_DIMS_ORDER[j]` dimension is
+The physical wavenumber associated with integer mode `n` in storage dimension
+`d` is
 
-```
-k_physical = n × wavenumber_scale(grid, FFT_DIMS_ORDER[j])
+```math
+k_n = n\,\kappa_d,
+\qquad
+\kappa_d = \operatorname{wavenumber\_scale}(g, d).
 ```
 
-For a spatial dimension with period `L` the convention is `wavenumber_scale = 2π/L`.
-For a temporal direction with unit period the convention is `wavenumber_scale = 1`.
+For every periodic coordinate with period ``L``, including a transformed time
+coordinate, the convention is ``\kappa_d = 2\pi/L``.
 
 Downstream grids must implement `wavenumber_scale` for every dimension in
-`fft_dims(grid)`.
+`fft_storage_dims(grid)`.
 
 ---
 
 ## Derivative convention
 
-`dd!(out, u, Val{STORAGE_DIM})` computes the in-place spectral derivative along array
-dimension `STORAGE_DIM ∈ FFT_DIMS_ORDER`:
+`dd!(out, u, Val(STORAGE_DIM), mode)` computes the in-place derivative along
+storage dimension `STORAGE_DIM`. For a Fourier direction, its action on a
+coefficient with signed integer wavenumber `n` is
 
-```
-out[k] = +im · n · wavenumber_scale(grid, DIM) · u[k]     (adjoint=false)
-out[k] = -im · n · wavenumber_scale(grid, DIM) · u[k]     (adjoint=true)
+```math
+\widehat{(D u)}_n = i\,n\,\kappa_d\,\hat{u}_n,
+\qquad
+\widehat{(D^{*} u)}_n = -i\,n\,\kappa_d\,\hat{u}_n,
 ```
 
-The `adjoint=true` form is the L² adjoint of the spectral derivative operator. For the case that `STORAGE_DIM ∉ FFT_DIMS_ORDER` the direction trying to differentiated is inhomogeneous (non-periodic). For this to work the user is required to have implemented the `derivative_matrix` method, which will fetch the differentiation operator being used and then use it for the differentiation via `LinearAlgebra.mul!`.
+where ``\kappa_d = \operatorname{wavenumber\_scale}(g, d)``. Pass `Forward()`
+for ``D`` (the default) or `AdjointDiscrete()` for ``D^*``. For an inhomogeneous
+direction, NSEBase obtains the corresponding first-derivative matrix from the
+grid and applies it with `LinearAlgebra.mul!`.
 
 Four named wrappers pick the array dimension from `AXES`:
 
@@ -161,12 +171,15 @@ no-op.
 
 ## Inner product and norm conventions
 
-The L² inner product is defined as
+For spectral scalar fields, the discrete inner product is
 
 ```math
 \langle u, v \rangle
-  = \frac{1}{2} \sum_{\mathbf{k}} c_{k_1}\, w(\mathbf{j})\,
-    \Re\bigl(\bar{u}_{\mathbf{k},\mathbf{j}}\, v_{\mathbf{k},\mathbf{j}}\bigr),
+  = \sum_{\mathbf{k}} \sum_{\mathbf{j}} c_{k_1}\, w_{\mathbf{j}}\,
+    \operatorname{Re}\!\left(
+      \overline{u_{\mathbf{k},\mathbf{j}}}\,
+      v_{\mathbf{k},\mathbf{j}}
+    \right),
 ```
 
 where:
@@ -175,10 +188,12 @@ where:
   indices **j**.
 - `c_{k₁}` is **1** for the zero rfft wavenumber and **2** for all others,
   accounting for Hermitian symmetry.
-- `w(j)` are the quadrature weights returned by `weights(grid)`.
-- The `1/2` factor combined with the `c_{k₁}` multiplier ensures equivalence with
-  the continuous L² norm: the rfft discards the negative-wavenumber half of the
-  spectrum, which carries equal energy.
+- `w_j` are the quadrature weights returned by `weights(grid)`.
+
+The Hermitian multiplier restores the negative-wavenumber contribution omitted
+by the real FFT. FFT normalization makes the homogeneous part a domain average;
+the normalization of each inhomogeneous direction is determined by the grid's
+quadrature weights.
 
 `dot(u, v)` implements this for `FTField`, `VectorField{<:FTField}`, and
 `ProjectedField`.
@@ -187,12 +202,12 @@ where:
 
 ## Phase shifts
 
-A continuous shift by displacement `s` in a homogeneous direction is an **exact**
+A continuous shift by displacement ``s`` in a homogeneous direction is an **exact**
 spectral operation — no interpolation is needed.  The phase factor applied to mode
-`n` is
+``n`` is
 
-```
-exp(im · n · s · wavenumber_scale(g, dim))
+```math
+\exp\!\left(i\,n\,s\,\kappa_d\right).
 ```
 
 `shift!(u, shifts)` applies the product of phase factors over all homogeneous

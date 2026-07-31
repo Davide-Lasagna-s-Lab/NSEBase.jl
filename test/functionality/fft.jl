@@ -12,7 +12,7 @@ Base.setindex!(a::FFTDataWrapper, v, i::Int) = (a.data[i] = v)
 
 NSEBase._fft_data(a::FFTDataWrapper) = a.data
 
-@testset "FFTPlans constructor                                                " begin
+@testset verbose=true "FFTPlans constructor                                        " begin
     for T in (Float32, Float64)
         # 1D, no dealiasing: cache is the standard spectral shape, norm = 1/N
         f = FFTPlans((8,), (1,), T, dealias=false, flags=ESTIMATE)
@@ -68,8 +68,8 @@ NSEBase._fft_data(a::FFTDataWrapper) = a.data
     end
 end
 
-@testset "Transform utilities                                                 " begin
-    @testset "get_padded_size                " begin
+@testset verbose=true "Transform utilities                                         " begin
+    @testset verbose=true "get_padded_size                                             " begin
         # single transformed dimension
         @test NSEBase.get_padded_size((4,), (1,)) == (7,)
         @test NSEBase.get_padded_size((6,), (1,)) == (9,)
@@ -95,7 +95,7 @@ end
         end
     end
 
-    @testset "_get_transform_size               " begin
+    @testset verbose=true "_get_transform_size                                         " begin
         # 1D: first (and only) dimension is halved + 1
         @test NSEBase._get_transform_size((4,), 1) == (3,)
         @test NSEBase._get_transform_size((6,), 1) == (4,)
@@ -111,7 +111,7 @@ end
         @test NSEBase._get_transform_size((4, 6, 8), 3) == (4, 6, 5)
     end
 
-    @testset "_apply_mask!                      " begin
+    @testset verbose=true "_apply_mask!                                                " begin
         for sz in ((5,), (5, 6), (3, 4, 5))
             cache = randn(ComplexF64, sz...)
             NSEBase._apply_mask!(cache)
@@ -119,7 +119,7 @@ end
         end
     end
 
-    @testset "_copy_to/from_padded!, 1D         " begin
+    @testset verbose=true "_copy_to/from_padded!, 1D                                   " begin
         # NTuple{1}: only the rfft dim is transformed
         M, M_pad = 8, NSEBase.get_padded_size((8,), (1,))[1]
         M_spec, M_spec_pad = M ÷ 2 + 1, M_pad ÷ 2 + 1
@@ -140,7 +140,7 @@ end
         @test u2 ≈ u
     end
 
-    @testset "_copy_to/from_padded!, 2D         " begin
+    @testset verbose=true "_copy_to/from_padded!, 2D                                   " begin
         # NTuple{2}: rfft dim + one full-spectrum dim
         M, N   = 8, 6
         M_pad, N_pad = NSEBase.get_padded_size((M, N), (1, 2))
@@ -168,7 +168,7 @@ end
         end
     end
 
-    @testset "_copy_to/from_padded!, 3D         " begin
+    @testset verbose=true "_copy_to/from_padded!, 3D                                   " begin
         # NTuple{3}: rfft dim + two full-spectrum dims
         L, M, N  = 4, 6, 8
         L_pad, M_pad, N_pad = NSEBase.get_padded_size((L, M, N), (1, 2, 3))
@@ -185,7 +185,7 @@ end
         @test u2 ≈ u
     end
 
-    @testset "_add_from_padded!, 1D             " begin
+    @testset verbose=true "_add_from_padded!, 1D                                       " begin
         M, M_pad = 8, NSEBase.get_padded_size((8,), (1,))[1]
         M_spec, M_spec_pad = M ÷ 2 + 1, M_pad ÷ 2 + 1
 
@@ -197,7 +197,7 @@ end
         @test accum ≈ accum0 .+ cache[1:M_spec]
     end
 
-    @testset "_add_from_padded!, 2D             " begin
+    @testset verbose=true "_add_from_padded!, 2D                                       " begin
         M, N   = 8, 6
         M_pad, N_pad = NSEBase.get_padded_size((M, N), (1, 2))
         M_spec = M ÷ 2 + 1
@@ -220,8 +220,8 @@ end
     end
 end
 
-@testset "FFTPlans execution                                                  " begin
-    @testset "forward transform, 1D             " begin
+@testset verbose=true "FFTPlans execution                                          " begin
+    @testset verbose=true "forward transform, 1D                                       " begin
         N = 16
         u = randn(Float64, N)
         û = zeros(ComplexF64, N ÷ 2 + 1)
@@ -247,7 +247,7 @@ end
         @test û4 ≈ 2 .* û
     end
 
-    @testset "forward transform, 2D, order=(1,) " begin
+    @testset verbose=true "forward transform, 2D, order=(1,)                           " begin
         M, N = 8, 6
         u = randn(Float64, M, N)
         û = zeros(ComplexF64, M ÷ 2 + 1, N)
@@ -258,7 +258,7 @@ end
         @test û ≈ FFTW.rfft(u, [1]) ./ M
     end
 
-    @testset "forward transform, 2D, order=(1,2)" begin
+    @testset verbose=true "forward transform, 2D, order=(1,2)                          " begin
         M, N = 8, 6
         u = randn(Float64, M, N)
         û = zeros(ComplexF64, M ÷ 2 + 1, N)
@@ -273,7 +273,7 @@ end
         @test û2 ≈ 2 .* û
     end
 
-    @testset "forward transform, 3D             " begin
+    @testset verbose=true "forward transform, 3D                                       " begin
         L, M, N = 4, 6, 8
         u = randn(Float64, L, M, N)
         û = zeros(ComplexF64, L ÷ 2 + 1, M, N)
@@ -283,7 +283,7 @@ end
         @test û ≈ FFTW.rfft(u, [1, 2, 3]) ./ (L * M * N)
     end
 
-    @testset "forward transform, 1D, dealiased  " begin
+    @testset verbose=true "forward transform, 1D, dealiased                            " begin
         N = 8
         N_pad = NSEBase.get_padded_size((N,), (1,))[1]   # 13
         u_pad = randn(Float64, N_pad)
@@ -298,7 +298,7 @@ end
         @test û ≈ ref[1:N ÷ 2 + 1]
     end
 
-    @testset "forward transform, 2D, dealiased  " begin
+    @testset verbose=true "forward transform, 2D, dealiased                            " begin
         M, N = 8, 6
         M_pad, N_pad = NSEBase.get_padded_size((M, N), (1, 2))
         u_pad = randn(Float64, M_pad, N_pad)
@@ -313,7 +313,7 @@ end
         @test û ≈ hcat(ref[1:M÷2+1, 1:N_pos], ref[1:M÷2+1, N_pad-N_neg+1:N_pad])
     end
 
-    @testset "backward transform round-trip, 1D " begin
+    @testset verbose=true "backward transform round-trip, 1D                           " begin
         for N in (8, 16)
             u  = randn(Float64, N)
             û  = zeros(ComplexF64, N ÷ 2 + 1)
@@ -325,7 +325,7 @@ end
         end
     end
 
-    @testset "backward transform round-trip, 2D " begin
+    @testset verbose=true "backward transform round-trip, 2D                           " begin
         M, N = 8, 6
         u  = randn(Float64, M, N)
         û  = zeros(ComplexF64, M ÷ 2 + 1, N)
@@ -336,7 +336,7 @@ end
         @test u2 ≈ u
     end
 
-    @testset "backward transform round-trip, 3D                                 " begin
+    @testset verbose=true "backward transform round-trip, 3D                           " begin
         L, M, N = 4, 6, 8
         u  = randn(Float64, L, M, N)
         û  = zeros(ComplexF64, L ÷ 2 + 1, M, N)
@@ -347,7 +347,7 @@ end
         @test u2 ≈ u
     end
 
-    @testset "backward round-trip, 1D dealiased " begin
+    @testset verbose=true "backward round-trip, 1D dealiased                           " begin
         # Only band-limited inputs survive the forward truncation.  Start from a
         # resolved spectral array, backward-transform to get the padded physical
         # field, then forward-transform back and verify we recover the original.
@@ -368,7 +368,7 @@ end
         @test û_out ≈ û_init
     end
 
-    @testset "safe backward preserves û         " begin
+    @testset verbose=true "safe backward preserves û                                   " begin
         N = 16
         u  = randn(Float64, N)
         û  = zeros(ComplexF64, N ÷ 2 + 1)
@@ -382,7 +382,7 @@ end
         @test u2 ≈ u
     end
 
-    @testset "unsafe+use_cache preserves û      " begin
+    @testset verbose=true "unsafe+use_cache preserves û                                " begin
         N = 16
         u  = randn(Float64, N)
         û  = zeros(ComplexF64, N ÷ 2 + 1)
@@ -396,7 +396,7 @@ end
         @test u2 ≈ u
     end
 
-    @testset "unsafe backward gives same result " begin
+    @testset verbose=true "unsafe backward gives same result                           " begin
         N = 16
         u  = randn(Float64, N)
         û  = zeros(ComplexF64, N ÷ 2 + 1)
@@ -410,7 +410,7 @@ end
         @test u_unsafe ≈ u_safe
     end
 
-    @testset "dealiasing eliminates aliasing    " begin
+    @testset verbose=true "dealiasing eliminates aliasing                              " begin
         # u = sin(3x), N=8 resolved modes, padded to 13.
         # u² = (1 - cos(6x))/2 has mode 6, which lies beyond the resolved range
         # (modes 0..4 for N=8).  With dealiasing the padded transform captures mode
@@ -450,52 +450,36 @@ end
         @test abs(û_sq_no[3])  >  0.1               # mode 2 contaminated by aliased mode 6
     end
 
-    @testset "top-level execution on fake   " begin
-        # construct grid
-        Nx = 16; Ny = 11
-        L = 10*rand()
-        g = FakeGrid(rand(Float64, Nx), Ny, L)
+    @testset verbose=true "Field-wrapper execution                                     " begin
+        g = line_grid(Nb=11, Nh=9, scale=2)
 
-        # create plans
         plans  = FFTPlans(g, dealias=false, flags=FFTW.ESTIMATE)
         plansd = FFTPlans(g, dealias=true,  flags=FFTW.ESTIMATE)
 
-        # random signal
-        U  = FTField(g, randn(ComplexF64, Nx, (Ny >> 1) + 1))
+        U  = test_ftfield(g; seed=41)
         u  = Field(g, dealias=false)
         ud = Field(g, dealias=true)
-        Uv = VectorField(FTField(g, randn(ComplexF64, Nx, (Ny >> 1) + 1)),
-                        FTField(g, randn(ComplexF64, Nx, (Ny >> 1) + 1)),
-                        FTField(g, randn(ComplexF64, Nx, (Ny >> 1) + 1)))
+        Uv = VectorField(ntuple(component -> test_ftfield(g; seed=41 + component), 3)...)
         uv = VectorField(g, Field)
 
-        # test transforms
         @test  plans(    FTField(g),  plans(u,  U))           ≈   U
         @test plansd(    FTField(g), plansd(ud, U))           ≈   U
         @test plansd(       copy(U), plansd(ud, U), add=true) ≈ 2*U
         @test  plans(VectorField(g),  plans(uv, Uv))           ≈ Uv
 
-        # test allocation
         funf(plan, A, B) = @allocated plan(A, B)
         funb(plan, B, A) = @allocated plan(B, A, add=false)
-        # funf(plansd, ud, U) # run first to avoid initial allocation
-        # funb(plansd, U, ud)
         @test funf(plans,  u,  U) == 0
-        # @test funf(plansd, ud, U) == 0
         @test funb(plans,  U,  u) == 0
-        # @test funb(plansd, U, ud) == 0
 
-        # test constructing transforms
         @test FFT(plans(similar(u), U)) ≈ U
         @test IFFT(U) == plans(similar(u), U)
         @test FFT(plans(similar(uv), Uv)) ≈ Uv
         @test IFFT(Uv) == plans(similar(uv), Uv)
     end
 
-    @testset "field transforms use _fft_data " begin
-        Nx = 5
-        Ny = 8
-        g = FakeGrid(rand(Float64, Nx), Ny, 2π)
+    @testset verbose=true "Custom parent arrays use _fft_data                          " begin
+        g = line_grid(Nb=9, Nh=9)
         raw = randn(Float64, size(g))
 
         u = Field(g, FFTDataWrapper(copy(raw)))

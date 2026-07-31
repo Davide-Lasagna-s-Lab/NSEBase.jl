@@ -1,4 +1,4 @@
-# Physical-space scalar field wrapping a raw Julia array and an AbstractGrid.
+# Physical-space scalar fields and their AbstractArray interface.
 #
 # A `Field` is the physical-space counterpart of `FTField`: it stores real values
 # at the collocation points defined by `points(grid)`.  The type tracks which
@@ -9,21 +9,35 @@
 # `FieldType` style defined in broadcasting.jl, so `u .* v`, `@. f(u)`, etc.
 # all work element-wise.  The constructor accepting a `Function` evaluates the
 # function at every grid point via broadcasting, making it easy to initialise
-# analytical initial conditions.
+# analytical initial conditions. Constructors intentionally leave grid/data
+# compatibility beyond scalar type and rank to the caller.
 
 """
-    Field{G} where {G<:AbstractGrid}
+    Field{G, A, T, D} <: AbstractArray{T, D}
 
-Physical-space scalar field on a concrete sub-type of `AbstractGrid`.
+Physical-space scalar field on an [`AbstractGrid`](@ref).
 
-Values are stored at the collocation points returned by `points(grid)`.
-The type parameter `G` encodes the grid geometry, scalar type `T`, array
-dimensionality `D`, axis layout `AXES`, and FFT dimension order
-`FFT_DIMS_ORDER` — all without any runtime overhead.
+`Field` is a thin array wrapper: its array shape and axes are exactly those of
+`data`, and scalar indexing reads and writes `data` directly. A field created
+from a function normally has the shape of the arrays returned by
+`points(grid)`. The data constructor requires `data` to have the same rank `D`
+as `grid`, but it does not compare their sizes or axes; callers that provide
+storage directly are responsible for that compatibility.
+
+# Type parameters
+
+- `G`: concrete grid type
+- `A`: concrete parent-array type
+- `T`: grid scalar type and field element type
+- `D`: rank shared by the grid and parent array
 
 # Fields
-- `grid`: the grid on which the field is defined
-- `data`: the underlying `AbstractArray` holding real values at each collocation point
+
+- `grid`: the grid associated with the field
+- `data`: the parent array holding the collocation values
+
+The fields are exposed through [`grid`](@ref) and `parent`. `parent(u)` aliases
+the stored array; mutating either object changes the same values.
 """
 struct Field{G<:AbstractGrid, A<:AbstractArray, T, D} <: AbstractArray{T, D}
     grid::G
@@ -36,8 +50,16 @@ end
 """
     Field(grid::AbstractGrid, data::AbstractArray)
 
-Construct a `Field` from `grid` and a pre-existing array `data`.  If the
-element type of `data` does not match `T` of the grid, the array is converted.
+Construct a `Field` from `grid` and pre-existing storage `data`.
+
+If `data` already has element type `T`, where `T` is the grid scalar type, and
+the same rank as `grid`, it is stored directly without copying. Otherwise,
+`T.(data)` converts the values by broadcasting and the resulting array is
+stored. For ordinary Julia arrays that conversion allocates new storage.
+
+The constructor does not check that `size(data)` agrees with the grid's
+collocation layout. In particular, `size(Field(grid, data)) == size(data)`;
+the caller must provide compatible axes and sizes.
 """
 Field(grid::AbstractGrid{T}, data::AbstractArray) where {T} = Field(grid, T.(data))
 
@@ -46,75 +68,118 @@ Field(grid::AbstractGrid{T}, data::AbstractArray) where {T} = Field(grid, T.(dat
 """
     Field(grid::AbstractGrid, func::Function; dealias=false)
 
-Construct a `Field` by evaluating `func` at every collocation point.
+Construct a physical field by evaluating `func` at every collocation point.
 
-`func` must accept one argument per grid dimension (in array-dimension order)
-and return a scalar.  The coordinate arrays are obtained via `points(grid;
-dealias=dealias)`, so setting `dealias=true` constructs a field on the padded
-(dealiased) physical grid — the right choice when computing nonlinear products
-that will be transformed back to spectral space.
+The call is equivalent to
+
+```julia
+Field(grid, T.(func.(points(grid; dealias=dealias)...)))
+```
+
+where `T` is the grid scalar type. Consequently, `func` receives one argument
+per array dimension in the storage order returned by `points`; this is not a
+promise of physical `x, y, z` order. Its return values must be convertible to
+`T`. The broadcast allocates the parent array.
+
+With `dealias=true`, `points` supplies the padded collocation layout used for
+dealiased nonlinear products.
 """
 Field(grid::AbstractGrid{T}, func::Function; dealias=false) where {T} = Field(grid, T.(func.(points(grid, dealias=dealias)...)))
 
 """
     Field(grid::AbstractGrid; dealias=false)
 
-Construct a zero-initialised `Field` on `grid`.  Setting `dealias=true` uses
-the padded grid size, matching the layout expected by `FFTPlans` with dealiasing.
+Construct a zero-valued physical field on `grid`.
+
+The parent shape is determined by `points(grid; dealias=dealias)`. Setting
+`dealias=true` therefore uses the padded physical layout expected by dealiased
+transform plans.
 """
 Field(grid::AbstractGrid{T}                ; dealias=false) where {T} = Field(grid, (pts...)->zero(T); dealias=dealias)
 
-# ---------------------------------- #
-# AbstractArray interface             #
-# ---------------------------------- #
+# -----------------------------------------------------------------------------
+# AbstractArray interface
+# -----------------------------------------------------------------------------
+
+"""
+    IndexStyle(::Type{<:Field}) -> IndexLinear()
+
+Declare linear indexing as the native indexing style of `Field`.
+"""
 Base.IndexStyle(::Type{<:Field}) = Base.IndexLinear()
 
 """
     parent(u::Field) -> AbstractArray
 
-Return the underlying data array of `u`.  Prefer `parent(u)` over `u.data` in
-library code so that the abstraction boundary is maintained.
+Return the exact array stored by `u`; no copy is made.
 """
 Base.parent(u::Field) = u.data
 
+"""
+    eltype(u::Field) -> Type
+
+Return the scalar type of `grid(u)`, which is also the element type of
+`parent(u)`.
+"""
 Base.eltype(::Field{<:AbstractGrid{T}}) where {T} = T
 
 """
     similar(u::Field[, ::Type{S}]) -> Field
 
-Allocate a new `Field` of the same shape as `u`, optionally with element type
-`S`.  If `S` differs from `T` the grid is also converted to scalar type `S`
-via `convert(S, grid(u))`.
+Allocate a zero-valued field using `zero(parent(u))` as its storage.
+
+The result therefore inherits the parent's shape and allocation behavior. If
+`S == T`, the result references the same grid object as `u`; otherwise it uses
+`convert(S, grid(u))`, so the grid and field precision change together. The
+new parent does not alias `parent(u)` for ordinary array implementations.
 """
 Base.similar(u::Field{<:AbstractGrid{T}}, ::Type{S}=T) where {T, S} =
     Field(S == T ? grid(u) : convert(S, grid(u)), zero(parent(u)))
 
+"""
+    size(u::Field) -> Tuple
+
+Return `size(parent(u))`. The result is determined by the stored array, not by
+a separate query of the grid.
+"""
 Base.size(u::Field) = Base.size(parent(u))
 
 """
     copy(u::Field) -> Field
 
-Return a deep copy of `u` sharing the same grid but with an independent data
-array.
+Copy the values of `u` into a newly allocated parent array.
+
+The result references the same grid object and, for ordinary arrays, does not
+alias `parent(u)`.
 """
 Base.copy(u::Field) = (v = Base.similar(u); parent(v) .= parent(u); return v)
 
 """
     zero(u::Field) -> Field
 
-Return a zero-valued `Field` on the same grid as `u`.
+Return a zero-valued field with the same grid, shape, and scalar type as `u`.
 """
 Base.zero(u::Field{<:AbstractGrid{T}}) where {T} = (v = Base.similar(u); parent(v) .= zero(T); return v)
 
-# Linear indexing — required by IndexLinear.  Bounds checking is delegated to
-# the underlying array; @propagate_inbounds propagates any @inbounds annotation
-# from the call site into this method body.
+"""
+    u[i]
+
+Read `parent(u)[i]`. Bounds and supported single-index forms are those of the
+parent array.
+"""
 Base.@propagate_inbounds function Base.getindex(u::Field, i)
     @boundscheck checkbounds(parent(u), i)
     @inbounds v = parent(u)[i]
     return v
 end
 
+"""
+    u[i] = value
+
+Assign `value` to `parent(u)[i]` and return `value`, following Julia's array
+assignment convention. The parent may convert the value before storing it, so
+the returned object need not be identical to the subsequently read value.
+"""
 Base.@propagate_inbounds function Base.setindex!(u::Field, v, i)
     @boundscheck checkbounds(parent(u), i)
     @inbounds parent(u)[i] = v
@@ -124,6 +189,6 @@ end
 """
     grid(u::Field) -> AbstractGrid
 
-Return the grid on which `u` is defined.
+Return the exact grid object stored by `u`.
 """
 grid(u::Field) = u.grid

@@ -1,47 +1,51 @@
 using Test
 
 using FFTW
-using HCubature
 using LinearAlgebra
 using NSEBase
+using Random
+using ReSolverRectangularGrids
 
-# Shared test fixtures: `fake.jl` defines `FakeGrid` (a 2-D grid with one
-# inhomogeneous and one rfft dimension), `test_grids.jl` defines
-# `TripleGrid` (a 3-D grid with one inhomogeneous, one rfft and one signed
-# FFT dimension) for tests that need multiple homogeneous directions.
-include("fake.jl")
-include("test_grids.jl")
-include("mock_channel_grid.jl")
+include("support/rectangular_fixtures.jl")
+include("support/field_fixtures.jl")
+using .TestRectangularFixtures
 
-# Generic interface / utility tests — exercise every public function in
-# NSEBase against the documented contract, not its implementation.
-include("test_notimplementederror.jl")
-include("test_abstractgrid.jl")
-include("test_wavenumbervector.jl")
-include("test_broadcasting.jl")
-include("test_field.jl")
-include("test_ftfield.jl")
-include("test_vectorfield.jl")
-include("test_projectedfield.jl")
-include("test_fields.jl")
-include("test_fftplans.jl")
-include("test_derivatives.jl")
-include("test_axis_utils.jl")
-include("test_shifts.jl")
-include("test_norms.jl")
-include("test_weighting.jl")
-include("test_galerkin.jl")
-include("test_io.jl")
+@testset verbose=true "NSEBase                                                     " begin
+    # These tests exercise NSEBase's public storage and container contracts.
+    # Concrete-grid accuracy belongs to ReSolverRectangularGrids and is not
+    # duplicated here.
+    @testset verbose=true "Public interface contracts                                  " begin
+        include("interface/notimplementederror.jl")
+        include("interface/abstractgrid.jl")
+        include("interface/wavenumbervector.jl")
+        include("interface/axis_utils.jl")
+        include("interface/broadcasting.jl")
+        include("interface/field.jl")
+        include("interface/ftfield.jl")
+        include("interface/vectorfield.jl")
+        include("interface/projectedfield.jl")
+    end
 
-# Integration tests for the bundled equations module.
-include("test_operators.jl")
+    @testset verbose=true "Reusable numerical functionality                            " begin
+        include("functionality/spectral_sanitation.jl")
+        include("functionality/fft.jl")
+        include("functionality/derivatives.jl")
+        include("functionality/shifts.jl")
+        include("functionality/norms.jl")
+        include("functionality/weighting.jl")
+        include("functionality/galerkin.jl")
+        include("functionality/io.jl")
+        include("functionality/equations.jl")
+    end
 
-# Allocation tests — check that no unexpected allocations occur
-include("test_allocations.jl")
+    @testset verbose=true "Allocation and performance contracts                        " begin
+        include("performance/allocations.jl")
+    end
 
-# Extension integration tests. These launch MPI subprocesses so each test file
-# runs with the requested Cartesian communicator size.
-include("ext/MPIExt/runtests.jl")
-
-# Extension integration tests for CUDA specialisations
-include("ext/CUDAExt/runtests.jl")
+    @testset verbose=true "Package extensions                                          " begin
+        # MPI tests run each program in a fresh subprocess and check its exit
+        # status; CUDA tests are skipped explicitly when no device is present.
+        include("ext/MPIExt/runtests.jl")
+        include("ext/CUDAExt/runtests.jl")
+    end
+end

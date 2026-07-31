@@ -3,16 +3,17 @@ Adapt = "79e6a3ab-5dfb-504d-930d-738a2a938a0e"
 CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
 FDGrids = "28eb41cd-435a-4ede-8bdb-f2685fc03e8c"
 FFTW = "7a1cc6ca-52ef-59f5-83cd-3a7055c09341"
-HCubature = "19dc6840-f33b-545b-b366-655c7e3ffd49"
 HaloArrays = "fb8acbf3-7450-4a92-9b90-d90d6800475e"
 JLD2 = "033835bb-8acc-5ee8-8aae-3f567f8a3819"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 MPI = "da04e1cc-30fd-572f-bb4f-1f8673147195"
 NSEBase = "9778a910-ce4d-423e-92be-12991f0cf10c"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
+ReSolverRectangularGrids = "8ecd8e18-116c-4e5c-b653-b60669b5c0ee"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [sources]
-FDGrids = {path = "../../FDGrids.jl"}
-HaloArrays = {path = "../../HaloArrays.jl"}
+FDGrids = {url = "https://github.com/Davide-Lasagna-s-Lab/FDGrids.jl.git", rev = "v0.4.0"}
+HaloArrays = {url = "https://github.com/Davide-Lasagna-s-Lab/HaloArrays.jl.git", rev = "b0a0e6e0a1c80ffdf780042600fe82e53097d4c3"}
 NSEBase = {path = ".."}
+ReSolverRectangularGrids = {url = "https://github.com/Davide-Lasagna-s-Lab/ReSolver-RectangularGrids.jl.git", rev = "7fcf21b9e0ff3e73a39edb2bd310a231f1af890f"}

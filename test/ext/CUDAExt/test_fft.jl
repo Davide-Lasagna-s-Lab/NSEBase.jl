@@ -1,6 +1,6 @@
-@testset "CUDA FFT plans                                                      " begin
-    @testset "transform utilities       " begin
-        @testset "_apply_mask!                      " begin
+@testset verbose=true "CUDA FFT plans                                              " begin
+    @testset verbose=true "Transform utilities                                         " begin
+        @testset verbose=true "_apply_mask!                                                " begin
             for sz in ((5,), (5, 6), (3, 4, 5))
                 cache = CUDA.randn(ComplexF64, sz...)
                 NSEBase._apply_mask!(cache)
@@ -8,7 +8,7 @@
             end
         end
 
-        @testset "_copy_to/from_padded!, 1D         " begin
+        @testset verbose=true "_copy_to/from_padded!, 1D                                   " begin
             # NTuple{1}: only the rfft dim is transformed
             M, M_pad = 8, NSEBase.get_padded_size((8,), (1,))[1]
             M_spec, M_spec_pad = M ÷ 2 + 1, M_pad ÷ 2 + 1
@@ -29,7 +29,7 @@
             @test Array(u2) ≈ Array(u)
         end
 
-        @testset "_copy_to/from_padded!, 2D         " begin
+        @testset verbose=true "_copy_to/from_padded!, 2D                                   " begin
             # NTuple{2}: rfft dim + one full-spectrum dim
             M, N   = 8, 6
             M_pad, N_pad = NSEBase.get_padded_size((M, N), (1, 2))
@@ -57,7 +57,7 @@
             end
         end
 
-        @testset "_copy_to/from_padded!, 3D         " begin
+        @testset verbose=true "_copy_to/from_padded!, 3D                                   " begin
             # NTuple{3}: rfft dim + two full-spectrum dims
             L, M, N  = 4, 6, 8
             L_pad, M_pad, N_pad = NSEBase.get_padded_size((L, M, N), (1, 2, 3))
@@ -74,7 +74,7 @@
             @test Array(u2) ≈ Array(u)
         end
 
-        @testset "_add_from_padded!, 1D             " begin
+        @testset verbose=true "_add_from_padded!, 1D                                       " begin
             M, M_pad = 8, NSEBase.get_padded_size((8,), (1,))[1]
             M_spec, M_spec_pad = M ÷ 2 + 1, M_pad ÷ 2 + 1
 
@@ -86,7 +86,7 @@
             @test Array(accum) ≈ Array(accum0) .+ Array(cache)[1:M_spec]
         end
 
-        @testset "_add_from_padded!, 2D             " begin
+        @testset verbose=true "_add_from_padded!, 2D                                       " begin
             M, N   = 8, 6
             M_pad, N_pad = NSEBase.get_padded_size((M, N), (1, 2))
             M_spec = M ÷ 2 + 1
@@ -109,7 +109,7 @@
         end
     end
 
-    @testset "plan construction        " begin
+    @testset verbose=true "Plan construction                                           " begin
         for T in [Float64, Float32]
             # 1D: cache is the standard spectral shape, norm = 1/N, fixed threads
             p = CUDAExt._make_cufft_plans((8,), (1,), T)
@@ -132,15 +132,18 @@
             @test size(p.cache) == (4, 9, 13)
         end
 
-        # grid constructor
+        # Production-grid constructor.
+        g = CUDA_CHANNEL_GRID
         gd = CUDA.cu(g)
         p = FFTPlans(gd)
-        @test p.norm == Float32(1/(23*23*23))
-        @test size(p.cache) == (16, 12, 23, 23)
+        padded_size = NSEBase.get_padded_size(size(g), fft_storage_dims(g))
+        expected_norm = inv(prod(padded_size[dim] for dim in fft_storage_dims(g)))
+        @test p.norm == Float32(expected_norm)
+        @test size(p.cache) == NSEBase._get_transform_size(padded_size, rfft_storage_dim(g))
         @test p.backend == cuFFT
     end
 
-    @testset "transform execution       " begin
+    @testset verbose=true "Transform execution                                         " begin
         # construct plans
         sz = (4, 6, 8)
         odr = (1, 2, 3)
