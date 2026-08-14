@@ -30,7 +30,7 @@
 #                                      `inhomogeneous_storage_dims(grid)`)
 #   axes  Ninh + 2 … Ninh + 1 + Nhom : homogeneous-dimension sizes, listed
 #                                      in `FFT_DIMS_ORDER` order — i.e. the
-#                                      **rfft** axis `FFT_DIMS_ORDER[1]` is
+#                                      rfft axis `FFT_DIMS_ORDER[1]` is
 #                                      first and runs over the half-spectrum
 #                                      `1 : (size÷2) + 1`, followed by the
 #                                      signed-FFT axes `FFT_DIMS_ORDER[2:end]`
@@ -123,8 +123,8 @@ implementation.  See also [`project`](@ref) for the allocating form.
 """
 function project!(a::ProjectedField{G},
                   u::VectorField{N, <:FTField{G}},
-                   ::LoopGalerkin=LoopGalerkin()) where {N, G<:AbstractGrid{T}} where {T}
-    #  sanitize the input
+                   ::LoopGalerkin=LoopGalerkin()) where {T, N, G<:AbstractGrid{T}}
+    # sanitize the input
     fill!(parent(a), zero(eltype(a)))
     @inbounds for n in 1:N
         _project_component!(parent(a), parent(u[n]), modes(a)[n], weights(grid(u)), Val(fft_storage_dims(grid(u))))
@@ -151,11 +151,11 @@ function _project_component!(    a::AbstractArray,
                                 ws::AbstractArray,
                                   ::Val{FFT_DIMS_ORDER}) where {FFT_DIMS_ORDER}
     Nm = size(a, 1)
-    for Ih in CartesianIndices(homogeneous_axes(u, Val(FFT_DIMS_ORDER)))
+    @inbounds for Ih in CartesianIndices(homogeneous_axes(u, Val(FFT_DIMS_ORDER)))
         for Iinh in CartesianIndices(inhomogeneous_axes(u, Val(FFT_DIMS_ORDER)))
             wuj = ws[Iinh] * u[combine_indices(Val(FFT_DIMS_ORDER), Iinh, Ih)...]
             for m in 1:Nm
-                @inbounds a[m, Ih] += dot(modes[m, Iinh, Ih], wuj)
+                a[m, Ih] += dot(modes[m, Iinh, Ih], wuj)
             end
         end
     end
@@ -197,7 +197,7 @@ implementation.  See also [`expand`](@ref) for the allocating form.
 function expand!(u::VectorField{N, <:FTField{G}},
                  a::ProjectedField{G},
                  ::LoopGalerkin=LoopGalerkin()
-                 ) where {N, G<:AbstractGrid{T}} where {T}
+                 ) where {T, N, G<:AbstractGrid{T}}
     pa = parent(a)
     g  = grid(u)
     Nm = size(pa, 1)
@@ -238,8 +238,8 @@ expand(a::ProjectedField, alg=LoopGalerkin()) =
 
 function project!(a::ProjectedField{G},
                   u::VectorField{N, <:FTField{G}},
-                  ::GemmGalerkin) where {N, G<:AbstractGrid{T}} where {T}
-    a .= zero(Complex{T})
+                  ::GemmGalerkin) where {T, N, G<:AbstractGrid{T}}
+    a      .= zero(Complex{T})
     g       = grid(u)
     inh_sz  = map(d -> size(g, d), inhomogeneous_storage_dims(g))
     Ninh    = prod(inh_sz)
@@ -248,7 +248,7 @@ function project!(a::ProjectedField{G},
     Nm, NkH = size(pa)
     wv      = reshape(weights(g), Ninh)                   # (Ninh,)
 
-    for n in 1:N
+    @inbounds for n in 1:N
         modes3 = reshape(modes(a)[n], Nm, Ninh, :)        # (Nm, Ninh, NkH)
         size(modes3, 3) == NkH ||
             throw(DimensionMismatch("modes must have $(NkH) homogeneous slices, got $(size(modes3, 3))"))
@@ -266,10 +266,9 @@ function project!(a::ProjectedField{G},
     return a
 end
 
-# ! why no @inbounds?
 function expand!(u::VectorField{N, <:FTField{G}},
                  a::ProjectedField{G},
-                 ::GemmGalerkin) where {N, G<:AbstractGrid{T}} where {T}
+                 ::GemmGalerkin) where {T, N, G<:AbstractGrid{T}}
     u      .= zero(Complex{T})
     g       = grid(a)
     inh_sz  = map(d -> size(g, d), inhomogeneous_storage_dims(g))
@@ -277,7 +276,7 @@ function expand!(u::VectorField{N, <:FTField{G}},
     pa      = reshape(parent(a), size(parent(a), 1), :)   # (Nm, NkH)
     Nm, NkH = size(pa)
 
-    for n in 1:N
+    @inbounds for n in 1:N
         modes3 = reshape(modes(a)[n], Nm, Ninh, :)        # (Nm, Ninh, NkH)
         size(modes3, 3) == NkH ||
             throw(DimensionMismatch("modes must have $(NkH) homogeneous slices, got $(size(modes3, 3))"))

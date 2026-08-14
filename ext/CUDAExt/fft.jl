@@ -1,50 +1,11 @@
 # Specialised constructor for FFTPlans using cuFFT for the backend.
 
-"""
-    FFTPlans(g::GPUGrid, kwargs...)
+struct cuFFTStyle <: NSEBase.FFTPlanStyle end
 
-Construct `NSEBase.FFTPlans` using cuFFT as the backend library
-for the plans, and use `CuArray` for any cache arrays.
-
-The keyword arguments `flags` and `timelimit` are no supported
-by cuFFT so passing them have no effect in this case.
-"""
-NSEBase.FFTPlans(g::GPUGrid{T}; kwargs...) where {T} =
-    _make_cufft_plans(NSEBase._fft_size(g), NSEBase.fft_storage_dims(g), T; kwargs...)
-
-function _make_cufft_plans(size::Dims{D},
-                          order::NTuple{H, Int},
-                               ::Type{T}=Float32;
-                        dealias::Bool                =true,
-                    padded_size::Union{Nothing, Dims}=nothing,
-                    kwargs...) where {D, H, T}
-    all(1 ≤ d ≤ D for d in order) || throw(ArgumentError("order indices must be in 1:$D, got $order"))
-    allunique(order)              || throw(ArgumentError("order indices must be unique, got $order"))
-    padded_size !== nothing && !dealias &&
-            throw(ArgumentError("cannot set padded_size with dealias=false"))
-
-    grid_size = if !isnothing(padded_size)
-        length(padded_size) == D ||
-            throw(ArgumentError("padded_size must have $D elements, got $(length(padded_size))"))
-        all(padded_size[d] >= size[d] for d in order) ||
-            throw(ArgumentError("padded_size must be ≥ size along each transformed dimension"))
-        padded_size
-    elseif dealias
-        NSEBase.get_padded_size(size, order)
-    else
-        size
-    end
-
-    computed_dealias = any(grid_size[d] != size[d] for d in order)
-    spectral_array = CUDA.zeros(Complex{T}, NSEBase._get_transform_size(grid_size, order[1]))
-    physical_array = CUDA.zeros(T, grid_size)
-    norm           = 1/prod(grid_size[i] for i in order)
-
-    plan  = cuFFT.plan_rfft( physical_array,                      order)
-    iplan = cuFFT.plan_brfft(spectral_array, grid_size[order[1]], order)
-
-    return NSEBase.FFTPlans{computed_dealias, D, T, order}(plan, iplan, spectral_array, T(norm), cuFFT)
-end
+# use cuFFT for the backend
+FFTPlanStyle(::Type{<:GPUGrid}) = cuFFTStyle()
+array_constructor(::cuFFTStyle) = CUDA.zeros
+transform_backend(::cuFFTStyle) = cuFFT
 
 """
     _loopblk!(dest::CuArray, ar, src::CuArray, br, ::Val{VADD})

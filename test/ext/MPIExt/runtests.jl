@@ -9,10 +9,8 @@
 # (multi-rank halo exchange + correctness). Adjust the `nprocs` entries
 # below to widen or narrow the matrix.
 
-using MPI, Test
-
 # Each entry: (test file, descriptive name, number of MPI ranks).
-const TEST_FILES = [
+const TEST_FILES_MPI = [
     ("test_abstractgrid.jl",   "DecomposedGrid interface (single rank)",  1),
     ("test_abstractgrid.jl",   "DecomposedGrid interface (4 ranks)",      4),
     ("test_haloarrays.jl",     "Halo storage and exchange (single rank)", 1),
@@ -26,12 +24,7 @@ const TEST_FILES = [
     ("test_galerkin.jl",       "Galerkin projection (4 ranks)",           4),
 ]
 
-test_project = dirname(Base.active_project())
-cmd(file, nprocs) = addenv(
-    `$(mpiexec()) -n $nprocs $(Base.julia_cmd()) --project=$test_project --startup-file=no $(joinpath(@__DIR__, file))`,
-)
-
-@testset "$(rpad("$name", 68))" for (file, name, nprocs) in TEST_FILES
+@testset "$(rpad("$name", 68))" for (file, name, nprocs) in TEST_FILES_MPI
     p = run(ignorestatus(cmd(file, nprocs)))
     @test success(p)
 end

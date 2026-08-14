@@ -99,6 +99,15 @@ struct DecomposedGrid{T,
     # initialised by broadcasting, and re-slicing the parent's stored
     # coordinate vector per call would allocate.
     inh_points :: P
+
+    DecomposedGrid{DDIMS, NHALO, S}(gp::GP,
+                               weights::W,
+                            inh_points::P,
+                                  comm::COMM) where {
+                        T, D, AXES, FFT_DIMS_ORDER,
+                        DDIMS, NHALO, S,
+                        GP<:NSEBase.AbstractGrid{T, D, AXES, FFT_DIMS_ORDER}, W, P, COMM} =
+        new{T, D, AXES, FFT_DIMS_ORDER, DDIMS, NHALO, S, GP, W, P, COMM}(gp, comm, weights, inh_points)
 end
 
 """
@@ -156,11 +165,11 @@ dg = distributed(g, MPI.COMM_WORLD;
                  nhalo=(1,))
 ```
 """
-function NSEBase.distributed(               g::NSEBase.AbstractGrid{T, D, AXES, FFT_DIMS_ORDER},
+function NSEBase.distributed(               g::NSEBase.AbstractGrid{T, D},
                                          comm::COMM;
                      decomposed_physical_dims::NTuple{K, Symbol},
                                    nprocesses::NTuple{K, Int},
-                                        nhalo::NTuple{K, Int}) where {T, D, AXES, FFT_DIMS_ORDER, K, COMM<:MPI.Comm}
+                                        nhalo::NTuple{K, Int}) where {T, D, K, COMM<:MPI.Comm}
     # --------------------------------------------------------------------- #
     # Validation
     # --------------------------------------------------------------------- #
@@ -249,14 +258,10 @@ function NSEBase.distributed(               g::NSEBase.AbstractGrid{T, D, AXES, 
     # --------------------------------------------------------------------- #
     # Wrapper construction
     # --------------------------------------------------------------------- #
-
-    return DecomposedGrid{T, D, AXES, FFT_DIMS_ORDER,
-                           decomposed_storage_dims, nhalo_full, local_size, typeof(g),
-                           typeof(local_weights),
-                           typeof(local_inh_points),
-                           COMM}(g, full_cart_comm,
-                                 local_weights,
-                                 local_inh_points)
+    return DecomposedGrid{decomposed_storage_dims, nhalo_full, local_size}(g,
+                                                                           local_weights,
+                                                                           local_inh_points,
+                                                                           full_cart_comm)
 end
 
 # ------------------------------------------------------------------ #

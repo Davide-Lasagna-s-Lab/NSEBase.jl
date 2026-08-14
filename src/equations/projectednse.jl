@@ -40,7 +40,7 @@ struct ProjectedNSE{EQ, LEQ, B, N, S1, S2}
 end
 
 ProjectedNSE(grid::AbstractGrid, N::Int, nl, ln, base) =
-    ProjectedNSE{N}(nl, ln, base, ntuple(_->VectorField(grid, FTField, N=N), 2))
+    ProjectedNSE{N}(nl, ln, base, ntuple(_->VectorField(grid, FTField, N=N), Val(2)))
 
 """
     (eq::ProjectedNSE)(out::ProjectedField, a::ProjectedField) -> out

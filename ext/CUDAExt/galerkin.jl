@@ -54,7 +54,7 @@ project!(a, u, ProjectShared(a, u))
 ```
 """
 struct ProjectShared{WS_SZ} <: ProjectMethod
-    ProjectShared(a::GPUProjectedField, ::GPUVectorField) =
+    ProjectShared(a::NSEBase.ProjectedField, ::NSEBase.VectorField) =
         new{map(Int32, size(NSEBase.weights(NSEBase.grid(a))))}()
 end
 
@@ -94,7 +94,7 @@ autotuning if these types have not been seen before. Results are cached in
 
     project_method(a, u) -> cached_method or autotune_project(a, u)
 """
-function project_method(a::GPUProjectedField, u::GPUVectorField)
+function project_method(a, u)
     get!(PROJECT_METHODS, (typeof(a), typeof(u))) do
         autotune_project(a, u)
     end
@@ -163,7 +163,7 @@ end
 
 See also: [`reset_project_cache!`](@ref)
 """
-function NSEBase.initialise_project!(a::GPUProjectedField, u::GPUVectorField)
+function NSEBase.initialise_project!(a, u)
     project_method(a, u)
     return nothing
 end
@@ -187,7 +187,7 @@ reset_project_cache!(a, u) # clear only the method cached for `(typeof(a), typeo
 See also: [`initialise_project!`](@ref)
 """
 NSEBase.reset_project_cache!() = empty!(PROJECT_METHODS)
-NSEBase.reset_project_cache!(::P, ::V) where {P<:GPUProjectedField, V<:GPUVectorField} = delete!(PROJECT_METHODS, (P, V))
+NSEBase.reset_project_cache!(::P, ::V) where {P, V} = delete!(PROJECT_METHODS, (P, V))
 
 
 # ---------------------------- #
@@ -224,7 +224,7 @@ project!(a, u) # autotune optimal method and cache for later use, returns `a`
 
 See also: [`initialise_project!`](@ref), [`ProjectLoop`](@ref),
 [`ProjectShared`](@ref)
-"""
+""" # TODO: define GPUVectorFTField for this dispatch, this permits Field types to be passed
 NSEBase.project!(a::GPUProjectedField,
                  u::GPUVectorField) = NSEBase.project!(a, u, project_method(a, u))
 
@@ -253,9 +253,7 @@ method = ProjectLoop(a, u)
 project!(a, u, method)
 ```
 """
-NSEBase.project!(a::GPUProjectedField,
-                 u::GPUVectorField,
-            method::ProjectMethod) = _project!(a, u, method)
+NSEBase.project!(a, u, method::ProjectMethod) = _project!(a, u, method)
 
 """
     _project!(a::GPUProjectedField, u::GPUVectorField, ::ProjectLoop) -> a
@@ -263,7 +261,7 @@ NSEBase.project!(a::GPUProjectedField,
 Compute Galerkin projection of `u` onto modes stored in `a` using
 [_project_loop_kernel!](@ref).
 """
-function _project!(a::GPUProjectedField, u::GPUVectorField, ::ProjectLoop)
+function _project!(a, u, ::ProjectLoop)
     sz    = map(Int32, size(a))
     nelem = Int32(prod(sz))
 
@@ -280,7 +278,7 @@ end
 Compute Galerkin projection of `u` onto modes stored in `a` using
 [_project_shared_kernel!](@ref).
 """
-function _project!(a::GPUProjectedField, u::GPUVectorField, ::ProjectShared{WS_SZ}) where {WS_SZ}
+function _project!(a, u, ::ProjectShared{WS_SZ}) where {WS_SZ}
     sz    = map(Int32, size(a))
     nelem = Int32(prod(sz))
 
@@ -302,9 +300,9 @@ end
 GPU kernel: compute projection for each element of `a` on each thread using loops,
 which are statically unrolled.
 """
-function _project_loop_kernel!(a::GPUProjectedField,
+function _project_loop_kernel!(a::NSEBase.ProjectedField,
                            modes::NTuple,
-                               u::GPUVectorField{N},
+                               u::NSEBase.VectorField{N},
                               ws::CuDeviceArray,
                               sz::NTuple,
                            nelem::Int32) where {N}
@@ -341,9 +339,9 @@ GPU kernel: compute projection for each element of `a` on each thread using loop
 which are statically unrolled. The quadrature weights are assigned to static shared
 memory to try to optimise global memory reads.
 """
-function _project_shared_kernel!(a::GPUProjectedField,
+function _project_shared_kernel!(a::NSEBase.ProjectedField,
                              modes::NTuple,
-                                 u::GPUVectorField{N},
+                                 u::NSEBase.VectorField{N},
                                 ws::CuDeviceArray,
                                 sz::NTuple,
                              nelem::Int32,
@@ -383,9 +381,9 @@ function _project_shared_kernel!(a::GPUProjectedField,
     return nothing
 end
 
-function _project_tiled_kernel!(a::GPUProjectedField,
+function _project_tiled_kernel!(a::NSEBase.ProjectedField,
                             modes::NTuple,
-                                u::GPUVectorField{N},
+                                u::NSEBase.VectorField{N},
                                ws::CuDeviceArray,
                                sz::NTuple,
                             nelem::Int32,
@@ -443,9 +441,9 @@ function _project_tiled_kernel!(a::GPUProjectedField,
     return nothing
 end
 
-function _project_tree_kernel!(a::GPUProjectedField,
+function _project_tree_kernel!(a::NSEBase.ProjectedField,
                            modes::NTuple,
-                               u::GPUVectorField{N},
+                               u::NSEBase.VectorField{N},
                               ws::CuDeviceArray,
                               sz::NTuple,
                            nelem::Int32,
@@ -545,7 +543,7 @@ autotuning if these types have not been seen before. Results are cached in
 
     expand_method(u, a) -> cached_method or autotune_expand(u, a)
 """
-function expand_method(u::GPUVectorField, a::GPUProjectedField)
+function expand_method(u, a)
     get!(EXPAND_METHODS, (typeof(u), typeof(a))) do
         autotune_expand(u, a)
     end
@@ -638,7 +636,7 @@ reset_expand_cache!(u, a) # clear only the method cached for (typeof(u), typeof(
 See also: [`initialise_expand!`](@ref)
 """
 NSEBase.reset_expand_cache!() = empty!(EXPAND_METHODS)
-NSEBase.reset_expand_cache!(::V, ::P) where {V<:GPUVectorField, P<:GPUProjectedField} = delete!(EXPAND_METHODS, (V, P))
+NSEBase.reset_expand_cache!(::V, ::P) where {V, P} = delete!(EXPAND_METHODS, (V, P))
 
 
 # --------------------------- #
@@ -703,7 +701,7 @@ method = ExpandModal(u, a)
 expand!(u, a, method)
 ```
 """
-NSEBase.expand!(u::GPUVectorField, a::GPUProjectedField, method::ExpandMethod) =
+NSEBase.expand!(u, a, method::ExpandMethod) =
     _expand!(u, a, method)
 
 """
@@ -718,7 +716,7 @@ or [_expand_modal_2_kernel](@ref). With `over_vector=true` the vector field
 component is included in the parallel execution of the kernel, and
 `over_vector=false` means that the kernel loops the vector field components.
 """
-function _expand!(u::GPUVectorField{N}, a::GPUProjectedField, ::ExpandModal{true}) where {N}
+function _expand!(u::NSEBase.VectorField{N}, a, ::ExpandModal{true}) where {N}
     sz               = map(Int32, size(u[1]))
     nelem::Int32     = prod(sz)
     nelem_vec::Int32 = N*nelem
@@ -730,7 +728,7 @@ function _expand!(u::GPUVectorField{N}, a::GPUProjectedField, ::ExpandModal{true
     return u
 end
 
-function _expand!(u::GPUVectorField, a::GPUProjectedField, ::ExpandModal{false})
+function _expand!(u, a, ::ExpandModal{false})
     sz           = map(Int32, size(u[1]))
     nelem::Int32 = prod(sz)
 
@@ -751,7 +749,7 @@ GPU kernel: compute the expansion of the coefficients `a` into a vectorfield `u`
 parallelising over the vector field components `N` in addition to the individual
 field elements of `u`.
 """
-function _expand_modal_1_kernel!(u::GPUVectorField, a, modes, sz, nelem, nelem_vec)
+function _expand_modal_1_kernel!(u, a, modes, sz, nelem, nelem_vec)
     idx = (blockIdx().x - 1i32)*blockDim().x + threadIdx().x
     idx > nelem_vec && return nothing
 
@@ -776,7 +774,7 @@ end
 GPU kernel: compute the expansion of the coefficients `a` into a vectorfield `u`,
 treating each vector field component of `u` serially on each thread.
 """
-function _expand_modal_2_kernel!(u::GPUVectorField{N}, a, modes, sz, nelem) where {N}
+function _expand_modal_2_kernel!(u::NSEBase.VectorField{N}, a, modes, sz, nelem) where {N}
     idx = (blockIdx().x - 1i32)*blockDim().x + threadIdx().x
     idx > nelem && return nothing
 
