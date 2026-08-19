@@ -71,6 +71,10 @@
 # loop so each wavenumber is touched once per component.  The default is
 # `LoopGalerkin()`.
 
+# ! It would be good to unify the methods used for the sequential, MPI, and CUDA
+# ! galerkin methods into a single framework, possibly using traits, that will
+# ! allow for high code re-usability in the extensions.
+
 """
     LoopGalerkin()
 

@@ -87,7 +87,7 @@
         # Grow to a larger grid: (Nx, Nz) → (16, 11)
         v = NSEBase.growto(u, (16, 11))
 
-        @test size(grid(v)) == (Ny, 16, 11)
+        @test size(NSEBase.grid(v)) == (Ny, 16, 11)
         @test size(parent(v)) == (Ny, 9, 11)   # rfft: (16>>1)+1=9, Nz stays 11
 
         # Exactness: every source wavenumber is copied to the same signed
@@ -102,7 +102,7 @@
         # zero.  This also catches the old bug where source k=(1,-1) was copied
         # to target k=(1,4) by reusing storage indices instead of wavenumbers.
         for Ih in CartesianIndices(NSEBase.homogeneous_axes(v)), j in 1:Ny
-            k = NSEBase.to_wavenumber_vector(grid(v), Ih)
+            k = NSEBase.to_wavenumber_vector(NSEBase.grid(v), Ih)
             in_source = 0 <= k[1] <= (Nx >> 1) && abs(k[2]) <= (Nz >> 1)
             @test in_source ? v[k, j] == u[k, j] : iszero(v[k, j])
         end

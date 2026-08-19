@@ -18,7 +18,7 @@
         out = @. 2f - h / 3
 
         @test out isa Field
-        @test grid(out) === g
+        @test NSEBase.grid(out) === g
         @test parent(out) ≈ 2 .* parent(f) .- parent(h) ./ 3
 
         û = FTField(g, randn(ComplexF64, Nx, (Ny >> 1) + 1))
@@ -26,7 +26,7 @@
         ŵ = @. û + 0.25v̂
 
         @test ŵ isa FTField
-        @test grid(ŵ) === g
+        @test NSEBase.grid(ŵ) === g
         @test parent(ŵ) ≈ parent(û) .+ 0.25 .* parent(v̂)
     end
 
@@ -40,7 +40,7 @@
         w = @. 3u - v
         @test w isa VectorField{3, <:FTField}
         for n in 1:3
-            @test grid(w[n]) === g
+            @test NSEBase.grid(w[n]) === g
             @test parent(w[n]) ≈ 3 .* parent(u[n]) .- parent(v[n])
         end
     end

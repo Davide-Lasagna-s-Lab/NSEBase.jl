@@ -134,7 +134,7 @@ end
         @test allocs_after_warmup(() -> FTField(g)) > 0
         @test allocs_after_warmup(() -> FTField(g, randn(ComplexF64, size(parent(u))))) > 0
         @test allocs_after_warmup(() -> parent(u)) == 0
-        @test allocs_after_warmup(() -> grid(u)) == 0
+        @test allocs_after_warmup(() -> NSEBase.grid(u)) == 0
         @test allocs_after_warmup(() -> size(u)) == 0
         @test allocs_after_warmup(() -> eltype(u)) == 0
         @test allocs_after_warmup(() -> u[1]) == 0
@@ -162,7 +162,7 @@ end
         @test allocs_after_warmup(() -> Field(g, (y, x) -> y + sin(x))) > 0
         @test allocs_after_warmup(() -> Field(g, parent(u))) == 0
         @test allocs_after_warmup(() -> parent(u)) == 0
-        @test allocs_after_warmup(() -> grid(u)) == 0
+        @test allocs_after_warmup(() -> NSEBase.grid(u)) == 0
         @test allocs_after_warmup(() -> size(u)) == 0
         @test allocs_after_warmup(() -> eltype(u)) == 0
         @test allocs_after_warmup(() -> u[1]) == 0
@@ -179,7 +179,7 @@ end
         @test allocs_after_warmup(() -> VectorField(g, FTField; N=2)) > 0
         @test allocs_after_warmup(() -> VectorField(g, (y, x) -> y, (y, x) -> sin(x))) > 0
         @test allocs_after_warmup(() -> parent(q)) == 0
-        @test allocs_after_warmup(() -> grid(q)) == 0
+        @test allocs_after_warmup(() -> NSEBase.grid(q)) == 0
         @test allocs_after_warmup(() -> q[1]) == 0
         @test allocs_after_warmup(() -> size(q)) == 0
         @test allocs_after_warmup(() -> eltype(q)) == 0
@@ -200,7 +200,7 @@ end
         cache = similar(dealias_plans.cache)
         compact = similar(parent(uhat))
 
-        @test allocs_after_warmup(() -> FFTPlans(size(u), NSEBase.fft_storage_dims(grid(u)), Float64; dealias=false, flags=FFTW.ESTIMATE)) > 0
+        @test allocs_after_warmup(() -> FFTPlans(size(u), NSEBase.fft_storage_dims(NSEBase.grid(u)), Float64; dealias=false, flags=FFTW.ESTIMATE)) > 0
         @test allocs_after_warmup(() -> NSEBase.get_padded_size((5, 8), (2,))) == 0
         @test allocs_after_warmup(() -> NSEBase._get_transform_size((5, 8), 2)) == 0
         @test allocs_after_warmup(() -> NSEBase._loopblk!(compact, axes(compact), compact, axes(compact), Val(false))) == 0
@@ -226,7 +226,7 @@ end
         @test allocs_after_warmup(() -> ProjectedField(g, modes[1])) > 0
         @test allocs_after_warmup(() -> ProjectedField(FTField(g), modes)) > 0
         @test allocs_after_warmup(() -> parent(a)) == 0
-        @test allocs_after_warmup(() -> grid(a)) == 0
+        @test allocs_after_warmup(() -> NSEBase.grid(a)) == 0
         @test allocs_after_warmup(() -> NSEBase.modes(a)) == 0
         @test allocs_after_warmup(() -> size(a)) == 0
         @test allocs_after_warmup(() -> eltype(a)) == 0
@@ -264,7 +264,7 @@ end
         @test allocs_after_warmup(() -> shift!(q, (0.13, -0.21))) == 0
         @test allocs_after_warmup(() -> shift!(a, (0.13, -0.21))) == 0
         @test allocs_after_warmup(() -> shift(u, (0.13, -0.21))) > 0
-        @test allocs_after_warmup(() -> NSEBase._shift_phase(grid(u), (0.13, -0.21), WaveNumberVector(1, -1))) == 0
+        @test allocs_after_warmup(() -> NSEBase._shift_phase(NSEBase.grid(u), (0.13, -0.21), WaveNumberVector(1, -1))) == 0
     end
 
     @testset "src/norms.jl" begin

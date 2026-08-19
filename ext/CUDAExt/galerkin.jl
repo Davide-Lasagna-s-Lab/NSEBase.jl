@@ -753,6 +753,7 @@ function _expand_modal_1_kernel!(u, a, modes, sz, nelem, nelem_vec)
     idx = (blockIdx().x - 1i32)*blockDim().x + threadIdx().x
     idx > nelem_vec && return nothing
 
+    # TODO: what's the performance like if `n` is indexed from the back? So it increments slowest?
     n  ::Int32 = (idx - 1i32)÷nelem + 1i32
     rem::Int32 = (idx - 1i32)%nelem + 1i32
     I = _linear_to_cart(rem, sz)

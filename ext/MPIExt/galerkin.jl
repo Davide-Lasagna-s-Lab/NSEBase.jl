@@ -11,16 +11,18 @@ Each rank holds only a local slab of the inhomogeneous dimension, so
 recovering the correct global projection.
 """
 function NSEBase.project!(a::DecomposedProjectedField,
-                          u::DecomposedFTVectorField{N}) where {N}
+                          u::DecomposedFTVectorField)
+    # ! get rid of the commented stuff
+    # fill!(parent(a), zero(eltype(a)))
+    # for n in 1:N
+    #     NSEBase._project_component!(parent(a),
+    #                                 parent(u[n]),
+    #                                 NSEBase.modes(a)[n],
+    #                                 NSEBase.weights(NSEBase.grid(u)),
+    #                                 Val(NSEBase.fft_storage_dims(NSEBase.grid(u))))
+    # end
 
-    fill!(parent(a), zero(eltype(a)))
-    for n in 1:N
-        NSEBase._project_component!(parent(a),
-                                    parent(u[n]),
-                                    NSEBase.modes(a)[n],
-                                    NSEBase.weights(NSEBase.grid(u)),
-                                    Val(NSEBase.fft_storage_dims(NSEBase.grid(u))))
-    end
+    NSEBase.project!(a, u, NSEBase.LoopGalerkin())
 
     # Sum the per-rank partial projections into the global modal coefficients
     MPI.Allreduce!(parent(a), MPI.SUM, comm(NSEBase.grid(u)))

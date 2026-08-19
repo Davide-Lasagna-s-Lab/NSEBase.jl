@@ -1,11 +1,12 @@
 # Specialised constructor for FFTPlans using cuFFT for the backend.
 
+# FFT style to use
 struct cuFFTStyle <: NSEBase.FFTPlanStyle end
-
-# use cuFFT for the backend
-FFTPlanStyle(::Type{<:GPUGrid}) = cuFFTStyle()
-array_constructor(::cuFFTStyle) = CUDA.zeros
-transform_backend(::cuFFTStyle) = cuFFT
+NSEBase.FFTPlanStyle(::Type{<:GPUGrid})                          = cuFFTStyle()
+NSEBase.array_constructor(::cuFFTStyle)                          = CUDA.zeros
+NSEBase.transform_backend(::cuFFTStyle)                          = cuFFT
+NSEBase.construct_plan(::cuFFTStyle, args...; kwargs...)         = cuFFT.plan_rfft(args...)
+NSEBase.construct_inverse_plan(::cuFFTStyle, args...; kwargs...) = cuFFT.plan_brfft(args...)
 
 """
     _loopblk!(dest::CuArray, ar, src::CuArray, br, ::Val{VADD})

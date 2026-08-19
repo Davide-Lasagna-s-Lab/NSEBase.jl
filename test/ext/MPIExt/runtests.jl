@@ -9,19 +9,22 @@
 # (multi-rank halo exchange + correctness). Adjust the `nprocs` entries
 # below to widen or narrow the matrix.
 
+using MPIPreferences
+MPIPreferences.use_jll_binary("OpenMPI_jll")
+
 # Each entry: (test file, descriptive name, number of MPI ranks).
 const TEST_FILES_MPI = [
-    ("test_abstractgrid.jl",   "DecomposedGrid interface (single rank)",  1),
-    ("test_abstractgrid.jl",   "DecomposedGrid interface (4 ranks)",      4),
-    ("test_haloarrays.jl",     "Halo storage and exchange (single rank)", 1),
-    ("test_haloarrays.jl",     "Halo storage and exchange (4 ranks)",     4),
-    ("test_distributed.jl",    "DecomposedGrid wrapper (single rank)",    1),
-    ("test_distributed.jl",    "DecomposedGrid wrapper (4 ranks)",        4),
-    ("test_ftfield.jl",        "FTField constructors (4 ranks)",          4),
-    ("test_field.jl",          "Field constructors (4 ranks)",            4),
-    ("test_fft.jl",            "FFTPlans and round-trip (4 ranks)",       4),
-    ("test_derivatives.jl",    "Symbol-dispatched derivatives (4 ranks)", 4),
-    ("test_galerkin.jl",       "Galerkin projection (4 ranks)",           4),
+    ("ext/MPIExt/test_abstractgrid.jl",   "DecomposedGrid interface (single rank)",  1),
+    ("ext/MPIExt/test_abstractgrid.jl",   "DecomposedGrid interface (4 ranks)",      4),
+    ("ext/MPIExt/test_haloarrays.jl",     "Halo storage and exchange (single rank)", 1),
+    ("ext/MPIExt/test_haloarrays.jl",     "Halo storage and exchange (4 ranks)",     4),
+    ("ext/MPIExt/test_distributed.jl",    "DecomposedGrid wrapper (single rank)",    1),
+    ("ext/MPIExt/test_distributed.jl",    "DecomposedGrid wrapper (4 ranks)",        4),
+    ("ext/MPIExt/test_ftfield.jl",        "FTField constructors (4 ranks)",          4),
+    ("ext/MPIExt/test_field.jl",          "Field constructors (4 ranks)",            4),
+    ("ext/MPIExt/test_fft.jl",            "FFTPlans and round-trip (4 ranks)",       4),
+    ("ext/MPIExt/test_derivatives.jl",    "Symbol-dispatched derivatives (4 ranks)", 4),
+    ("ext/MPIExt/test_galerkin.jl",       "Galerkin projection (4 ranks)",           4),
 ]
 
 @testset "$(rpad("$name", 68))" for (file, name, nprocs) in TEST_FILES_MPI

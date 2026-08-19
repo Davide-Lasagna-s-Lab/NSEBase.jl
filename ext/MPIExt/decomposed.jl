@@ -99,16 +99,14 @@ struct DecomposedGrid{T,
     # initialised by broadcasting, and re-slicing the parent's stored
     # coordinate vector per call would allocate.
     inh_points :: P
-
-    DecomposedGrid{DDIMS, NHALO, S}(gp::GP,
-                               weights::W,
-                            inh_points::P,
-                                  comm::COMM) where {
-                        T, D, AXES, FFT_DIMS_ORDER,
-                        DDIMS, NHALO, S,
-                        GP<:NSEBase.AbstractGrid{T, D, AXES, FFT_DIMS_ORDER}, W, P, COMM} =
-        new{T, D, AXES, FFT_DIMS_ORDER, DDIMS, NHALO, S, GP, W, P, COMM}(gp, comm, weights, inh_points)
 end
+
+DecomposedGrid(gp::GP,
+               DDIMS, NHALO, LOCAL_SIZE,
+               weights::W, inh_points::P,
+               comm::COMM) where {
+        T, D, AXES, FFT_DIMS_ORDER, GP<:NSEBase.AbstractGrid{T, D, AXES, FFT_DIMS_ORDER}, W, P, COMM} =
+    DecomposedGrid{T, D, AXES, FFT_DIMS_ORDER, DDIMS, NHALO, LOCAL_SIZE, GP, W, P, COMM}(gp, comm, weights, inh_points)
 
 """
     distributed(g::NSEBase.AbstractGrid, comm::MPI.Comm;
@@ -258,10 +256,10 @@ function NSEBase.distributed(               g::NSEBase.AbstractGrid{T, D},
     # --------------------------------------------------------------------- #
     # Wrapper construction
     # --------------------------------------------------------------------- #
-    return DecomposedGrid{decomposed_storage_dims, nhalo_full, local_size}(g,
-                                                                           local_weights,
-                                                                           local_inh_points,
-                                                                           full_cart_comm)
+    return DecomposedGrid(g,
+                          decomposed_storage_dims, nhalo_full, local_size,
+                          local_weights, local_inh_points,
+                          full_cart_comm)
 end
 
 # ------------------------------------------------------------------ #

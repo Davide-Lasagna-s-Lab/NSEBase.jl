@@ -42,9 +42,11 @@ abstract type FFTPlanStyle end
 struct FFTWStyle <: FFTPlanStyle end
 
 # default style, using FFTW as backend for transforms
-FFTPlanStyle(::Type{<:AbstractGrid}) = FFTWStyle()
-array_constructor(::FFTWStyle) = Base.zeros
-transform_backend(::FFTWStyle) = FFTW
+FFTPlanStyle(::Type{<:AbstractGrid})                    = FFTWStyle()
+array_constructor(::FFTWStyle)                          = Base.zeros
+transform_backend(::FFTWStyle)                          = FFTW
+construct_plan(::FFTWStyle, args...; kwargs...)         = FFTW.plan_rfft(args...; kwargs...)
+construct_inverse_plan(::FFTWStyle, args...; kwargs...) = FFTW.plan_brfft(args...; kwargs...)
 
 
 # ---------------- #
@@ -145,13 +147,14 @@ function FFTPlans(style::FFTPlanStyle,
     physical_array   = (array_constructor(style))(        T,                      grid_size           )
     norm             = 1/prod(grid_size[i] for i in order)
 
-    plan  = transform_backend(style).plan_rfft( physical_array,                      order, flags=flags, timelimit=timelimit)
-    iplan = transform_backend(style).plan_brfft(spectral_array, grid_size[order[1]], order, flags=flags, timelimit=timelimit)
+    plan  =         construct_plan(style, physical_array                     , order; flags=flags, timelimit=timelimit)
+    iplan = construct_inverse_plan(style, spectral_array, grid_size[order[1]], order; flags=flags, timelimit=timelimit)
 
     return FFTPlans{computed_dealias, D, T, order}(plan, iplan, spectral_array, T(norm), transform_backend(style))
 end
+FFTPlans(size, order, ::Type{T}; kwargs...) where {T} = FFTPlans(FFTWStyle(), size, order, T; kwargs...)
 
-FFTPlans(g::AbstractGrid{T}; kwargs...) where {T} = FFTPlans(FFTPlanStyle(g), _fft_size(g), fft_storage_dims(g), T; kwargs...)
+FFTPlans(g::G; kwargs...) where {T, G<:AbstractGrid{T}} = FFTPlans(FFTPlanStyle(G), _fft_size(g), fft_storage_dims(g), T; kwargs...)
 
 FFTPlans(u::FTField; kwargs...)                   = FFTPlans(grid(u); kwargs...)
 FFTPlans(u::Field; kwargs...)                     = FFTPlans(grid(u); kwargs...)

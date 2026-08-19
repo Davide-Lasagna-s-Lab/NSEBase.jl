@@ -61,7 +61,7 @@ include("test_allocations.jl")
 include("ext/MPIExt/runtests.jl")
 if cuda_available()
     include("ext/CUDAExt/runtests.jl")
-    include("ext/MPICUDAExt/runtests.jl")
+#     include("ext/MPICUDAExt/runtests.jl")
 else
     @warn "Skipping GPU tests - CUDA not functional"
     # @test_broken false

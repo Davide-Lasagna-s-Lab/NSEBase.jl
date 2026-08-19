@@ -25,7 +25,7 @@ NSEBase.add_base_flow!(u::VectorField{N, <:FTField{FakeGrid}}, base) where {N} =
 # field dot methods #
 # ----------------- #
 function LinearAlgebra.dot(u::FTField{FakeGrid}, v::FTField{FakeGrid})
-    Nx, Ny = size(grid(u))
+    Nx, Ny = size(NSEBase.grid(u))
     sum = 0.0
     for nx in 1:Nx
         sum += real(dot(u[nx, 1], v[nx, 1]))

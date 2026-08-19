@@ -112,22 +112,22 @@
     @testset "plan construction        " begin
         for T in [Float64, Float32]
             # 1D: cache is the standard spectral shape, norm = 1/N, fixed threads
-            p = NSEBase.FFTPlans(CUDAExt.cuFFTStyle, (8,), (1,), T)
+            p = NSEBase.FFTPlans(CUDAExt.cuFFTStyle(), (8,), (1,), T)
             @test p.norm ≈ T(1/13)
             @test size(p.cache) == (7,)
 
             # 2D, rfft dim only: dim-2 untransformed, norm = 1/M, fixed threads
-            p = NSEBase.FFTPlans(CUDAExt.cuFFTStyle, (8, 6), (1,), T)
+            p = NSEBase.FFTPlans(CUDAExt.cuFFTStyle(), (8, 6), (1,), T)
             @test p.norm == T(1/13)
             @test size(p.cache) == (7, 6)
 
             # 2D, both dims transformed: norm = 1/(M*N), fixed threads
-            p = NSEBase.FFTPlans(CUDAExt.cuFFTStyle, (8, 6), (1, 2), T)
+            p = NSEBase.FFTPlans(CUDAExt.cuFFTStyle(), (8, 6), (1, 2), T)
             @test p.norm == T(1/(13*9))
             @test size(p.cache) == (7, 9)
 
             # 3D, all dims transformed
-            p = NSEBase.FFTPlans(CUDAExt.cuFFTStyle, (4, 6, 8), (1, 2, 3), T)
+            p = NSEBase.FFTPlans(CUDAExt.cuFFTStyle(), (4, 6, 8), (1, 2, 3), T)
             @test p.norm == T(1/(7*9*13))
             @test size(p.cache) == (4, 9, 13)
         end
@@ -144,7 +144,7 @@
         # construct plans
         sz = (4, 6, 8)
         odr = (1, 2, 3)
-        p = NSEBase.FFTPlans(CUDAExt.cuFFTStyle, sz, odr, Float32)
+        p = NSEBase.FFTPlans(CUDAExt.cuFFTStyle(), sz, odr, Float32)
 
         # construct fields to be transformed
         pad_sz = NSEBase.get_padded_size(sz, odr)
