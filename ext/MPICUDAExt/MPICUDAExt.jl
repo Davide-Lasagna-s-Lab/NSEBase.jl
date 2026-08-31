@@ -44,14 +44,14 @@ function CUDA.cu(g::MPIExt.DecomposedGrid{T, D, AXES, FFT_DIMS_ORDER, DDIMS, NHA
 end
 
 NSEBase.FTField(g::DecomposedGPUGrid{T}) where {T} =
-    NSEBase.FTField(g, CUDA.cu(HaloArrays.HaloArray{Complex{T}}(comm(g),
-                                                                local_transform_size(g),
-                                                                nhalo(g); economic=true)))
+    NSEBase.FTField(g, CUDA.cu(HaloArrays.HaloArray{Complex{T}}(MPIExt.comm(g),
+                                                                MPIExt.local_transform_size(g),
+                                                                MPIExt.nhalo(g); economic=true)))
 
 NSEBase.Field(g::DecomposedGPUGrid{T}; dealias::Bool=false) where {T} =
-    NSEBase.Field(g, CUDA.cu(HaloArrays.HaloArray{T}(comm(g),
-                                                     local_physical_size(g; dealias),
-                                                     nhalo(g); economic=true)))
+    NSEBase.Field(g, CUDA.cu(HaloArrays.HaloArray{T}(MPIExt.comm(g),
+                                                     MPIExt.local_physical_size(g; dealias=dealias),
+                                                     MPIExt.nhalo(g); economic=true)))
 
 
 function NSEBase.project!(a::NSEBase.ProjectedField{G}, u::NSEBase.VectorField{N, <:NSEBase.FTField{G}}) where {N, G<:DecomposedGPUGrid}
@@ -69,5 +69,4 @@ end
 
 # TODO: test derivatives
 # TODO: test galerkin methods
-# TODO: test FFT plans (construction and execution)
 # TODO: test operators are consistent (produce the same result as the CPU decomposed operator)

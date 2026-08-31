@@ -4,10 +4,11 @@ import MPI
 import FDGrids
 import CUDA
 import Adapt
+import HaloArrays
 
 using NSEBase
 
-MPICUDAExt = Base.get_extension(NSEBase, :MPICUDAExt)
+const MPICUDAExt = Base.get_extension(NSEBase, :MPICUDAExt)
 
 include("../../mock_channel_grid.jl")
 
@@ -24,7 +25,7 @@ const NHALO = 1
 
 # construct grid
 gp = MockChannelGrid(Ny, Nx, Nz, Nt)
-g  = distributed(gp, comm; decomposed_physical_dims=(:y),
+g  = distributed(gp, comm; decomposed_physical_dims=(:y,),
                            nprocesses              =(nranks,),
                            nhalo                   =(NHALO,))
 
@@ -32,24 +33,33 @@ Ny_local = Ny ÷ nranks
 y_offset = rank * Ny_local
 
 @testset "Decomposed CUDA grid                                                " begin
-    gd = @test_nothrow CUDA.cu(g)
-    @test gd isa MPICUDAExt.DecomposedGPUGrid{Float32, 4, (2, 1, 3, 4), (2, 3, 4), (1,), (1,), (16, 7, 9, 5), <:GPUGrid}
+    gd = @test_nowarn CUDA.cu(g)
+    @test gd isa MPICUDAExt.DecomposedGPUGrid{Float32, 4, (2, 1, 3, 4), (2, 3, 4), (1,), (1, 0, 0, 0), (Ny_local, 7, 9, 5)}
 
-    gd_adapt = @test_nothrow Adapt.adapt(CUDA.KernelAdaptor(), gd)
-    @test gd_adapt isa MPICUDAExt.DecomposedDeviceGrid{Float32, 4, (2, 1, 3, 4), (2, 3, 4), (1,), (1,), (16, 7, 9, 5), <:GPUGrid}
-    @test gd_adapt.D₁ isa DiffMatrix{Float32, 3, true, <:CuArray}
-    @test gd_adapt.D₂ isa DiffMatrix{Float32, 3, true, <:CuArray}
+    gd_adapt = @test_nowarn Adapt.adapt(CUDA.KernelAdaptor(), gd)
+    @test gd_adapt isa MPICUDAExt.DecomposedDeviceGrid{Float32, 4, (2, 1, 3, 4), (2, 3, 4), (1,), (1, 0, 0, 0), (Ny_local, 7, 9, 5)}
+    @test gd_adapt.parent.parent.D₁ isa FDGrids.DiffMatrix{Float32, 3, true, <:CUDA.CuDeviceArray}
+    @test gd_adapt.parent.parent.D₂ isa FDGrids.DiffMatrix{Float32, 3, true, <:CUDA.CuDeviceArray}
     @test isbits(gd_adapt)
 end
 
 @testset "Decomosed fields                                                    " begin
+    # construct device grid
+    gd = CUDA.cu(g)
+
     @testset "FTField" begin
-        # constructor
-        # adaptation/CUDA.cu of normal decomposed fields
+        ud = FTField(gd)
+        @test ud isa FTField{<:MPICUDAExt.DecomposedGPUGrid{Float32}, <:HaloArrays.HaloArray{ComplexF32}}
+        @test size(ud) == (Ny_local, (Nx >> 1) + 1, Nz, Nt)
+        @test typeof(CUDA.cu(FTField(g))) == typeof(ud)
+        @test isbits(Adapt.adapt(CUDA.KernelAdaptor(), ud))
     end
 
     @testset "Field" begin
-        # constructor
-        # adaptation/CUDA.cu of normal decomposed fields
+        ud = Field(gd)
+        @test ud isa Field{<:MPICUDAExt.DecomposedGPUGrid{Float32}, <:HaloArrays.HaloArray{Float32}}
+        @test size(ud) == (Ny_local, Nx, Nz, Nt)
+        @test typeof(CUDA.cu(Field(g))) == typeof(ud)
+        @test isbits(Adapt.adapt(CUDA.KernelAdaptor(), ud))
     end
 end

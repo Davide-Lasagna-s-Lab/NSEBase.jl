@@ -47,6 +47,8 @@ end
 # ------------------------------ #
 adapt_structure(to, u::NSEBase.FTField) =
     NSEBase.FTField(adapt_structure(to, NSEBase.grid(u)), adapt_structure(to, parent(u)))
+adapt_structure(to, u::NSEBase.Field) =
+    NSEBase.Field(adapt_structure(to, NSEBase.grid(u)), adapt_structure(to, parent(u)))
 adapt_structure(to, u::NSEBase.VectorField{N}) where {N} =
     NSEBase.VectorField(ntuple(n -> adapt_structure(to, u[n]), Val(N))...)
 function adapt_structure(to, a::NSEBase.ProjectedField)

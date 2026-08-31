@@ -48,6 +48,7 @@ Return the underlying grid wrapped by `g`.
 Base.parent(g::GPUGrid) = g.parent
 
 Base.size(g::GPUGrid) = size(parent(g))
+NSEBase.points(g::GPUGrid; dealias::Bool=false) = CUDA.cu.(NSEBase.points(parent(g); dealias=dealias))
 NSEBase.weights(g::GPUGrid) = NSEBase.weights(parent(g))
 NSEBase.wavenumber_scale(g::GPUGrid, dim::Int) = NSEBase.wavenumber_scale(parent(g), dim)
 

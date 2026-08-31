@@ -11,11 +11,11 @@
 
 # Each entry: (test file, descriptive name, number of MPI ranks).
 const TEST_FILES_MPICUDA = [
-    ("test_gridandfields.jl",   "Decomposed CUDA grid                                                ",  1),
-    # ("test_gridandfields.jl",   "Decomposed CUDA grid                                                ",  4),
+    ("ext/MPICUDAExt/test_gridandfields.jl",   "Decomposed CUDA grid                                              ", 4),
+    ("ext/MPICUDAExt/test_fft.jl",             "Decomposed cuFFT                                                  ", 4),
 ]
 
-@testset "$(rpad("$name", 68))" for (file, name, nprocs) in TEST_FILES
+@testset "$(rpad("$name", 68))" for (file, name, nprocs) in TEST_FILES_MPICUDA
     p = run(ignorestatus(cmd(file, nprocs)))
     @test success(p)
 end
