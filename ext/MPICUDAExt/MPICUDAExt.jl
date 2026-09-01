@@ -66,7 +66,3 @@ NSEBase.expand!(u::NSEBase.VectorField{N, <:NSEBase.FTField{G}}, a::NSEBase.Proj
     NSEBase.expand!(u, a, CUDAExt.expand_method(u, a))
 
 end
-
-# TODO: test derivatives
-# TODO: test galerkin methods
-# TODO: test operators are consistent (produce the same result as the CPU decomposed operator)

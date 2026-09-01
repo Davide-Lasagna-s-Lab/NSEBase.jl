@@ -3,7 +3,6 @@ using Test
 import MPI
 import FDGrids
 import CUDA
-import HaloArrays
 
 using NSEBase
 

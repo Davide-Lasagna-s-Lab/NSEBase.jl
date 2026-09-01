@@ -55,12 +55,12 @@ base_comm = MPI.Comm_dup(MPI.COMM_WORLD)
 # Wavenumber scales chosen so that x has period 1/2 (k_x = 2π gives spectral
 # coefficients at integer wavenumbers) and z has period 2π/5.8 to match
 # `cos(4π*x)` and `cos(5.8*z)` factors in the analytic test field.
-g_parent = MockChannelGrid(Ny, Nx, Nz, Nt; stencil_width=5, α=2π, β=5.8)
+g_parent = MockChannelGrid(Ny, Nx, Nz, Nt; stencil_width=5, α=α_test, β=β_test)
 g = distributed(g_parent, base_comm;
                 decomposed_physical_dims=(:y,), nprocesses=(nranks,), nhalo=(NHALO,))
 
 # Pre-build FFT plans and reusable physical/spectral fields.
-plans = NSEBase.FFTPlans(g; dealias=false, flags=NSEBase.FFTW.ESTIMATE)
+plans  = NSEBase.FFTPlans(g; dealias=false, flags=NSEBase.FFTW.ESTIMATE)
 u_phys = NSEBase.Field(g, u_fun)
 u      = NSEBase.FTField(g); plans(u, u_phys)
 
