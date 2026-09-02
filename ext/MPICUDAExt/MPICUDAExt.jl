@@ -53,16 +53,29 @@ NSEBase.Field(g::DecomposedGPUGrid{T}; dealias::Bool=false) where {T} =
                                                      MPIExt.local_physical_size(g; dealias=dealias),
                                                      MPIExt.nhalo(g); economic=true)))
 
+function NSEBase.ProjectedField(grid::DecomposedGPUGrid{T}, modes) where {T}
+    Nm = size(modes[1], 1)
+    return NSEBase.ProjectedField(grid,
+                                  CUDA.zeros(Complex{T}, Nm,
+                                        NSEBase.transform_size(grid)[collect(NSEBase.fft_storage_dims(grid))]...),
+                                  modes)
+end
 
-function NSEBase.project!(a::NSEBase.ProjectedField{G}, u::NSEBase.VectorField{N, <:NSEBase.FTField{G}}) where {N, G<:DecomposedGPUGrid}
-    NSEBase.project!(a, u, CUDAExt.project_method(a, u))
+
+function NSEBase.project!(a::NSEBase.ProjectedField{G},
+                          u::NSEBase.VectorField{N, <:NSEBase.FTField{G}},
+                     method::CUDAExt.ProjectMethod=CUDAExt.project_method(a, u)) where {N, G<:DecomposedGPUGrid}
+    CUDAExt._project!(a, u, method)
 
     # Sum the per-rank partial projections into the global modal coefficients
-    MPI.Allreduce!(parent(a), MPI.SUM, comm(NSEBase.grid(u)))
+    CUDA.synchronize() # make sure computation is finished on all processes
+    MPI.Allreduce!(parent(a), MPI.SUM, MPIExt.comm(NSEBase.grid(u)))
     return a
 end
 
-NSEBase.expand!(u::NSEBase.VectorField{N, <:NSEBase.FTField{G}}, a::NSEBase.ProjectedField{G}) where {N, G<:DecomposedGPUGrid} =
-    NSEBase.expand!(u, a, CUDAExt.expand_method(u, a))
+NSEBase.expand!(u::NSEBase.VectorField{N, <:NSEBase.FTField{G}},
+                a::NSEBase.ProjectedField{G},
+           method::CUDAExt.ExpandMethod=CUDAExt.expand_method(u, a)) where {N, G<:DecomposedGPUGrid} =
+    CUDAExt._expand!(u, a, method)
 
 end

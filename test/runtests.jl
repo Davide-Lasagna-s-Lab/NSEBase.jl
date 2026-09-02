@@ -60,8 +60,12 @@ include("test_allocations.jl")
 # test extensions
 include("ext/MPIExt/runtests.jl")
 if cuda_available()
-    include("ext/CUDAExt/runtests.jl")
-#     include("ext/MPICUDAExt/runtests.jl")
+    MPI.Init()
+    if MPI.has_cuda()
+        include("ext/MPICUDAExt/runtests.jl")
+    else
+        rank == 0 && @warn "Skipping MPI+CUDA tests - MPI backend is not CUDA aware"
+    end
 else
     @warn "Skipping GPU tests - CUDA not functional"
     # @test_broken false

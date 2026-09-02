@@ -44,6 +44,7 @@ g = CUDA.cu(distributed(gp, comm; decomposed_physical_dims=(:y,),
                                   nprocesses              =(nranks,),
                                   nhalo                   =(NHALO,)))
 
+# FIXME: The field isn't decomposed!
 @testset "Decomposed CUDA derivative                                          " begin
     # construct the fields
     u = CUDA.cu(FFT(NSEBase.Field(gp, u_fun)))

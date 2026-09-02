@@ -12,7 +12,7 @@ recovering the correct global projection.
 """
 function NSEBase.project!(a::DecomposedProjectedField,
                           u::DecomposedFTVectorField)
-    # ! get rid of the commented stuff
+    # ! get rid of the commented stuff if I can
     # fill!(parent(a), zero(eltype(a)))
     # for n in 1:N
     #     NSEBase._project_component!(parent(a),
