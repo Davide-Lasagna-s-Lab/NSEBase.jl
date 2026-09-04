@@ -38,7 +38,7 @@ end
 Adapt.adapt_structure(to, g::GPUGrid) = GPUGrid(adapt_structure(to, parent(g)))
 
 CUDA.cu(g::NSEBase.AbstractGrid) = GPUGrid(adapt_structure(CuArray{Float32}, g))
-Adapt.adapt_structure(to, g::NSEBase.AbstractGrid) = throw(NSEBase.NotImplementedError(g))
+Adapt.adapt_structure(to, g::NSEBase.AbstractGrid) = throw(NSEBase.NotImplementedError(to, g))
 
 """
     parent(g::GPUGrid) -> NSEBase.AbstractGrid
@@ -48,6 +48,7 @@ Return the underlying grid wrapped by `g`.
 Base.parent(g::GPUGrid) = g.parent
 
 Base.size(g::GPUGrid) = size(parent(g))
+NSEBase.points(g::GPUGrid; dealias::Bool=false) = CUDA.cu.(NSEBase.points(parent(g); dealias=dealias))
 NSEBase.weights(g::GPUGrid) = NSEBase.weights(parent(g))
 NSEBase.wavenumber_scale(g::GPUGrid, dim::Int) = NSEBase.wavenumber_scale(parent(g), dim)
 

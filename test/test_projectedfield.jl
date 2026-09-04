@@ -21,7 +21,7 @@
         Ψ = _projected_modes(g, Nm)
 
         a = ProjectedField(g, Ψ)
-        @test grid(a) === g
+        @test NSEBase.grid(a) === g
         @test modes(a) === Ψ
         @test size(a) == (Nm, (Nx >> 1) + 1, Nz)
         @test all(iszero, parent(a))
@@ -126,7 +126,7 @@
 
         b = copy(a)
         @test b[1, 2, 1] == a[1, 2, 1]
-        @test grid(b) === grid(a)
+        @test NSEBase.grid(b) === NSEBase.grid(a)
         @test modes(b) === modes(a)
         # Independence: modifying a does not affect b
         a[1, 2, 1] = 99 + 0im
@@ -134,7 +134,7 @@
 
         z = zero(a)
         @test all(iszero, parent(z))
-        @test grid(z) === grid(a)
+        @test NSEBase.grid(z) === NSEBase.grid(a)
         @test modes(z) === modes(a)
     end
 

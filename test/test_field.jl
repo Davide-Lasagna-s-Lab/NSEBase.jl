@@ -14,7 +14,7 @@
         fun(x, y) = 1 + 2x - cos(y)
         u = Field(g, fun)
 
-        @test grid(u) === g
+        @test NSEBase.grid(u) === g
         @test size(u) == size(g)
         @test parent(u) ≈ fun.(xpts, ypts)
     end
@@ -28,17 +28,17 @@
         v = copy(u)
         @test v isa Field
         @test v !== u
-        @test grid(v) === g
+        @test NSEBase.grid(v) === g
         @test parent(v) == parent(u)
 
         z = zero(u)
         @test z isa Field
-        @test grid(z) === g
+        @test NSEBase.grid(z) === g
         @test all(iszero, parent(z))
 
         s = similar(u)
         @test s isa Field
-        @test grid(s) === g
+        @test NSEBase.grid(s) === g
         @test size(s) == size(u)
     end
 end

@@ -79,7 +79,7 @@ function dd!(out::F, u::F, ::Val{STORAGE_DIM},
 
     isnothing(STORAGE_DIM) && return out
     STORAGE_DIM ∉ FFT_DIMS_ORDER ? _inhomogeneous_dd!(out, u, Val(STORAGE_DIM), mode) :
-                                       _spectral_dd!(out, u, Val(STORAGE_DIM), mode)
+                                        _spectral_dd!(out, u, Val(STORAGE_DIM), mode)
 
     return out
 end

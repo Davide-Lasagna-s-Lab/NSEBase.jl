@@ -25,7 +25,7 @@
 
 
 # ------------------------------------------- #
-# Re-export FFTW planner flags and time limit  #
+# Re-export FFTW planner flags and time limit #
 # ------------------------------------------- #
 const ESTIMATE     = FFTW.ESTIMATE
 const EXHAUSTIVE   = FFTW.EXHAUSTIVE
@@ -33,6 +33,20 @@ const MEASURE      = FFTW.MEASURE
 const PATIENT      = FFTW.PATIENT
 const WISDOM_ONLY  = FFTW.WISDOM_ONLY
 const NO_TIMELIMIT = FFTW.NO_TIMELIMIT
+
+
+# ---–---------------------------------------- #
+# backend trait system (useful for extensions) #
+# ---–---------------------------------------- #
+abstract type FFTPlanStyle end
+struct FFTWStyle <: FFTPlanStyle end
+
+# default style, using FFTW as backend for transforms
+FFTPlanStyle(::Type{<:AbstractGrid})                    = FFTWStyle()
+array_constructor(::FFTWStyle)                          = Base.zeros
+transform_backend(::FFTWStyle)                          = FFTW
+construct_plan(::FFTWStyle, args...; kwargs...)         = FFTW.plan_rfft(args...; kwargs...)
+construct_inverse_plan(::FFTWStyle, args...; kwargs...) = FFTW.plan_brfft(args...; kwargs...)
 
 
 # ---------------- #
@@ -103,13 +117,14 @@ struct FFTPlans{DEALIAS, D, T, FFT_DIMS_ORDER, PLAN, IPLAN, CA}
         new{DEALIAS, D, T, FFT_DIMS_ORDER, PLAN, IPLAN, CA}(plan, iplan, cache, norm, backend)
 end
 
-function FFTPlans(size::Dims{D},
-                 order::NTuple{H, Int},
-                      ::Type{T}=Float64;
-               dealias::Bool                =true,
-           padded_size::Union{Nothing, Dims}=nothing,
-                 flags::UInt32              =EXHAUSTIVE,
-             timelimit::Real                =NO_TIMELIMIT) where {D, H, T}
+function FFTPlans(style::FFTPlanStyle,
+                   size::Dims{D},
+                  order::NTuple{H, Int},
+                       ::Type{T}=Float64;
+                dealias::Bool                =true,
+            padded_size::Union{Nothing, Dims}=nothing,
+                  flags::UInt32              =EXHAUSTIVE,
+              timelimit::Real                =NO_TIMELIMIT) where {D, H, T}
     all(1 ≤ d ≤ D for d in order) || throw(ArgumentError("order indices must be in 1:$D, got $order"))
     allunique(order)              || throw(ArgumentError("order indices must be unique, got $order"))
     padded_size !== nothing && !dealias &&
@@ -128,17 +143,18 @@ function FFTPlans(size::Dims{D},
     end
 
     computed_dealias = any(grid_size[d] != size[d] for d in order)
-    spectral_array   = zeros(Complex{T}, _get_transform_size(grid_size, order[1]))
-    physical_array   = zeros(T, grid_size)
+    spectral_array   = (array_constructor(style))(Complex{T}, _get_transform_size(grid_size, order[1]))
+    physical_array   = (array_constructor(style))(        T,                      grid_size           )
     norm             = 1/prod(grid_size[i] for i in order)
 
-    plan  = FFTW.plan_rfft( physical_array,                      order, flags=flags, timelimit=timelimit)
-    iplan = FFTW.plan_brfft(spectral_array, grid_size[order[1]], order, flags=flags, timelimit=timelimit)
+    plan  =         construct_plan(style, physical_array                     , order; flags=flags, timelimit=timelimit)
+    iplan = construct_inverse_plan(style, spectral_array, grid_size[order[1]], order; flags=flags, timelimit=timelimit)
 
-    return FFTPlans{computed_dealias, D, T, order}(plan, iplan, spectral_array, T(norm), FFTW)
+    return FFTPlans{computed_dealias, D, T, order}(plan, iplan, spectral_array, T(norm), transform_backend(style))
 end
+FFTPlans(size, order, ::Type{T}; kwargs...) where {T} = FFTPlans(FFTWStyle(), size, order, T; kwargs...)
 
-FFTPlans(g::AbstractGrid{T}; kwargs...) where {T} = FFTPlans(_fft_size(g), fft_storage_dims(g), T; kwargs...)
+FFTPlans(g::G; kwargs...) where {T, G<:AbstractGrid{T}} = FFTPlans(FFTPlanStyle(G), _fft_size(g), fft_storage_dims(g), T; kwargs...)
 
 FFTPlans(u::FTField; kwargs...)                   = FFTPlans(grid(u); kwargs...)
 FFTPlans(u::Field; kwargs...)                     = FFTPlans(grid(u); kwargs...)

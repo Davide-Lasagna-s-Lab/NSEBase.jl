@@ -3,7 +3,25 @@ using Test
 using FFTW
 using HCubature
 using LinearAlgebra
+using CUDA
+using MPI
 using NSEBase
+using FDGrids
+
+# run MPI test file in it's own Julia instance
+test_project = dirname(Base.active_project())
+cmd(file, nprocs) = addenv(
+    `$(mpiexec()) -n $nprocs --oversubscribe $(Base.julia_cmd()) --project=$test_project --startup-file=no $(joinpath(@__DIR__, file))`,
+)
+
+# utility function to check if CUDA.jl functions on this system
+function cuda_available()
+    try
+        CUDA.functional()
+    catch
+        false
+    end
+end
 
 # Shared test fixtures: `fake.jl` defines `FakeGrid` (a 2-D grid with one
 # inhomogeneous and one rfft dimension), `test_grids.jl` defines
@@ -39,9 +57,16 @@ include("test_operators.jl")
 # Allocation tests — check that no unexpected allocations occur
 include("test_allocations.jl")
 
-# Extension integration tests. These launch MPI subprocesses so each test file
-# runs with the requested Cartesian communicator size.
+# test extensions
 include("ext/MPIExt/runtests.jl")
-
-# Extension integration tests for CUDA specialisations
-include("ext/CUDAExt/runtests.jl")
+if cuda_available()
+    include("ext/CUDAExt/runtests.jl")
+    MPI.Init()
+    if MPI.has_cuda()
+        include("ext/MPICUDAExt/runtests.jl")
+    else
+        rank == 0 && @warn "Skipping MPI+CUDA tests - MPI backend is not CUDA aware"
+    end
+else
+    @warn "Skipping GPU tests - CUDA not functional"
+end

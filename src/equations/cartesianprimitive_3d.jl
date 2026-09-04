@@ -47,7 +47,7 @@ mutable struct CartesianPrimitive3DNSE{T, FFT, S, P, BF}
      const plans::FFT
     const scache::Vector{VectorField{3, S}}
     const pcache::Vector{VectorField{3, P}}
-    const  force::BF
+     const force::BF
 end
 
 function CartesianPrimitive3DNSE(g::G, Re;
@@ -82,7 +82,7 @@ mutable struct CartesianPrimitive3DLNSE{MODE, T, FFT, S, P, BF}
      const plans::FFT
     const scache::Vector{VectorField{3, S}}
     const pcache::Vector{VectorField{3, P}}
-    const  force::BF
+     const force::BF
 
     CartesianPrimitive3DLNSE{MODE}(Re::T,
                                 plans::FFT,

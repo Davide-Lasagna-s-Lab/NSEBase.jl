@@ -379,4 +379,14 @@ op = CartesianPrimitive3DNSE(g_dist, Re)
 
 The variable `nhalo` is used to tell the fields how much to pad the local arrays to accomodate data from neighbouring processes required to compute derivatives. This functionality is enabled via [HaloArrays.jl](https://github.com/Davide-Lasagna-s-Lab/HaloArrays.jl). Note that it is required to use [FDGrids.jl](https://github.com/Davide-Lasagna-s-Lab/FDGrids.jl) for the differentiation over the decomposed directions as the package implements the (somewhat fiddly) methods to compute derivatives using finite-differences with arbitrary stencil widths and thus order of accuracy. See the package for extra details.
 
+It is possible to use both MPI and CUDA together to achieve massively parallel computations, simply by applying the the `CUDA.cu` method directly to the `DecomposedGrid` in the same way as you would any subtype of `AbstractGrid` as discussed above.
+
+```julia
+g_dist = distributed(g_parent, comm;
+                        decomposed_physical_dims=(:y), nprocesses=(np,), nhalo=(2,))
+g_device = CUDA.cu(g_dist)
+```
+
+This results in a set of decomposed grid objects, one for each MPI process, where the data and any fields/plans constructed from it (using `FTField(g_device)`, `FFTPlans(g_device)`, etc.) is stored on the primary device for that process (set with `CUDA.device!`).
+
 ---
