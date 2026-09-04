@@ -68,5 +68,4 @@ if cuda_available()
     end
 else
     @warn "Skipping GPU tests - CUDA not functional"
-    # @test_broken false
 end

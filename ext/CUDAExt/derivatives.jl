@@ -33,8 +33,8 @@ function _cuda_spectral_dd!(out, u, ::Val{STORAGE_DIM}, ::Val{RFFT_DIM}, mode::N
     return out
 end
 
-function _spectral_dd_kernel!(out::CuDeviceArray,
-                                u::CuDeviceArray,
+function _spectral_dd_kernel!(out,
+                                u,
                                sz::NTuple,          nelem::Int32,
                         _ddx_sign::ComplexF32, _ddx_scale::Float32,
                                  ::Val{DIM},
@@ -68,8 +68,10 @@ direction of the array.
 end
 
 
-function NSEBase._add_homogeneous_laplacian!(out::GPUFTField,
-                                               u::GPUFTField)
+NSEBase._add_homogeneous_laplacian!(out::F, u::F) where {F<:GPUField} =
+    _cuda_add_homogeneous_laplacian!(out, u)
+
+function _cuda_add_homogeneous_laplacian!(out, u)
     # kernel arguments
     sz     = Int32.(size(u))
     nelem  = Int32(prod(sz))
@@ -88,8 +90,8 @@ function NSEBase._add_homogeneous_laplacian!(out::GPUFTField,
     return out
 end
 
-function _add_homogeneous_laplacian_kernel!(out::CuDeviceArray,
-                                              u::CuDeviceArray,
+function _add_homogeneous_laplacian_kernel!(out,
+                                              u,
                                              sz::NTuple, nelem::Int32,
                                          scales::NTuple,
                                                ::Val{SPATIAL_FFT_DIMS_ORDER},

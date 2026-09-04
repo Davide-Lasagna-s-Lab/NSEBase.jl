@@ -37,27 +37,24 @@ lapl_fun(y, x, z, t)   = d2udx2_fun(y, x, z, t) +
 const Ny = 32; const Nx = 7; const Nz = 9; const Nt = 5
 const NHALO = 2  # 5-point stencil -> half-width 2
 
-gp = MockChannelGrid(Ny, Nx, Nz, Nt; stencil_width=5,
-                                     α=α_test,
-                                     β=β_test)
-g = CUDA.cu(distributed(gp, comm; decomposed_physical_dims=(:y,),
-                                  nprocesses              =(nranks,),
-                                  nhalo                   =(NHALO,)))
+gp = distributed(MockChannelGrid(Ny, Nx, Nz, Nt; stencil_width=5, α=α_test, β=β_test), comm; decomposed_physical_dims=(:y,),
+                                                                                             nprocesses              =(nranks,),
+                                                                                             nhalo                   =(NHALO,))
+g = CUDA.cu(gp)
 
-# FIXME: The field isn't decomposed!
 @testset "Decomposed CUDA derivative                                          " begin
     # construct the fields
     u = CUDA.cu(FFT(NSEBase.Field(gp, u_fun)))
 
     @testset "Spectral derivative directions" begin
-        @test Array(parent(parent(NSEBase.ddx!(similar(u), u)))) ≈ Array(parent(parent(FFT(Field(gp, dudx_fun)))))
-        @test Array(parent(parent(NSEBase.ddz!(similar(u), u)))) ≈ Array(parent(parent(FFT(Field(gp, dudz_fun)))))
-        @test Array(parent(parent(NSEBase.ddt!(similar(u), u)))) ≈ Array(parent(parent(FFT(Field(gp, dudt_fun)))))
+        @test Array(parent(parent(NSEBase.ddx!(similar(u), u)))) ≈ parent(parent(FFT(Field(gp, dudx_fun))))
+        @test Array(parent(parent(NSEBase.ddz!(similar(u), u)))) ≈ parent(parent(FFT(Field(gp, dudz_fun))))
+        @test Array(parent(parent(NSEBase.ddt!(similar(u), u)))) ≈ parent(parent(FFT(Field(gp, dudt_fun))))
     end
     @testset "Non-spectral derivatives" begin
-        @test Array(parent(parent(NSEBase.ddy!(similar(u), u)))) ≈ Array(parent(parent(FFT(Field(gp, dudy_fun)))))
+        @test Array(parent(parent(NSEBase.ddy!(similar(u), u)))) ≈ parent(parent(FFT(Field(gp, dudy_fun))))
     end
     @testset "Laplacian operator" begin
-        @test Array(parent(parent(NSEBase.laplacian!(similar(u), u)))) ≈ Array(parent(parent(FFT(Field(gp, lapl_fun)))))
+        @test Array(parent(parent(NSEBase.laplacian!(similar(u), u)))) ≈ parent(parent(FFT(Field(gp, lapl_fun))))
     end
 end

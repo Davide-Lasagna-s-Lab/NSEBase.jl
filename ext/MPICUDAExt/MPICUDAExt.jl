@@ -12,8 +12,10 @@ import CUDA,
 const MPIExt  = Base.get_extension(NSEBase, :MPIExt)
 const CUDAExt = Base.get_extension(NSEBase, :CUDAExt)
 
+
 const DecomposedGPUGrid{T, D, AXES, FFT_DIMS_ORDER, DDIMS, NHALO, S} = MPIExt.DecomposedGrid{T, D, AXES, FFT_DIMS_ORDER, DDIMS, NHALO, S, GP} where {GP<:CUDAExt.GPUGrid}
 NSEBase.FFTPlanStyle(::Type{<:DecomposedGPUGrid}) = CUDAExt.cuFFTStyle()
+
 
 struct DecomposedDeviceGrid{T, D, AXES, FFT_DIMS_ORDER, DDIMS, NHALO, S, GP, W, P} <: NSEBase.AbstractGrid{T, D, AXES, FFT_DIMS_ORDER}
         parent::GP
@@ -29,6 +31,7 @@ struct DecomposedDeviceGrid{T, D, AXES, FFT_DIMS_ORDER, DDIMS, NHALO, S, GP, W, 
         new{T, D, AXES, FFT_DIMS_ORDER, DDIMS, NHALO, S, GP, W, P}(gp, weights, inh_points)
 end
 
+
 function Adapt.adapt_structure(to, g::DecomposedGPUGrid{T, D, AXES, FFT_DIMS_ORDER, DDIMS, NHALO, S}) where {T, D, AXES, FFT_DIMS_ORDER, DDIMS, NHALO, S}
     g_d          = Adapt.adapt_structure(to, parent(g))
     ws_d         = Adapt.adapt_structure(to, NSEBase.weights(g))
@@ -42,6 +45,7 @@ function CUDA.cu(g::MPIExt.DecomposedGrid{T, D, AXES, FFT_DIMS_ORDER, DDIMS, NHA
     inh_points_d = CUDA.cu(g.inh_points)
     return MPIExt.DecomposedGrid(g_d, DDIMS, NHALO, S, ws_d, inh_points_d, g.comm)
 end
+
 
 NSEBase.FTField(g::DecomposedGPUGrid{T}) where {T} =
     NSEBase.FTField(g, CUDA.cu(HaloArrays.HaloArray{Complex{T}}(MPIExt.comm(g),
@@ -60,6 +64,19 @@ function NSEBase.ProjectedField(grid::DecomposedGPUGrid{T}, modes) where {T}
                                         NSEBase.transform_size(grid)[collect(NSEBase.fft_storage_dims(grid))]...),
                                   modes)
 end
+
+
+NSEBase._spectral_dd!(out::F,
+                        u::F,
+                         ::Val{STORAGE_DIM},
+                     mode::NSEBase.OperatorMode=NSEBase.Forward()) where {
+                    STORAGE_DIM,
+                    G<:DecomposedGPUGrid,
+                    F<:Union{NSEBase.FTField{G}, NSEBase.ProjectedField{G}}} =
+    CUDAExt._cuda_spectral_dd!(out, u, Val(STORAGE_DIM), Val(NSEBase.rfft_storage_dim(NSEBase.grid(u))), mode)
+
+NSEBase._add_homogeneous_laplacian!(out::F, u::F) where {F<:NSEBase.FTField{<:DecomposedGPUGrid}} =
+    CUDAExt._cuda_add_homogeneous_laplacian!(out, u)
 
 
 function NSEBase.project!(a::NSEBase.ProjectedField{G},

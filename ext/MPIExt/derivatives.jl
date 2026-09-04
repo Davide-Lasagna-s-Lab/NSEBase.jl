@@ -60,6 +60,9 @@ arrays.
 function interior_laplacian!(out::DecomposedFTField,
                                u::DecomposedFTField,
                             mode::OperatorMode=Forward())
+    # santise input
+    out .= zero(eltype(u))
+
     g = NSEBase.grid(u)
     fd_stor_dims = NSEBase.spatial_inhomogeneous_storage_dims(g)
 
@@ -68,14 +71,16 @@ function interior_laplacian!(out::DecomposedFTField,
               (local_interior_range(g, first_sd),), mode;
               accumulate=Val(false))
 
+    # ! this is more efficient than zero-ing the whole output first, but doesn't
+    # ! play well when using CUDA
     # Zero boundary bands of the first FD direction before accumulating tail
     # dimensions, which span all first-dimension indices including halo bands.
-    let a = parent(out)
-        for rng in local_boundary_ranges(g, first_sd)
-            isempty(rng) && continue
-            fill!(selectdim(a, first_sd, rng), zero(eltype(a)))
-        end
-    end
+    # let a = parent(out)
+    #     for rng in local_boundary_ranges(g, first_sd)
+    #         isempty(rng) && continue
+    #         fill!(selectdim(a, first_sd, rng), zero(eltype(a)))
+    #     end
+    # end
 
     for sd in Base.tail(fd_stor_dims)
         _dd_over!(out, u, g, Val(sd), Val(2),
