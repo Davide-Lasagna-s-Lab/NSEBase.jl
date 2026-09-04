@@ -15,12 +15,10 @@ const TEST_FILES_MPICUDA = [
     ("ext/MPICUDAExt/test_fft.jl",             "Decomposed cuFFT                                                  ", 4),
     ("ext/MPICUDAExt/test_derivatives.jl",     "Decomposed CUDA derivatives                                       ", 4),
     ("ext/MPICUDAExt/test_galerkin.jl",        "Decomposed CUDA galerkin method                                   ", 4),
-    # ("ext/MPICUDAExt/test_operators.jl",       "Decomposed CUDA operators                                         ", 4),
+    ("ext/MPICUDAExt/test_operators.jl",       "Decomposed CUDA operators                                         ", 4),
 ]
 
 @testset "$(rpad("$name", 68))" for (file, name, nprocs) in TEST_FILES_MPICUDA
     p = run(ignorestatus(cmd(file, nprocs)))
     @test success(p)
 end
-
-# TODO: test operators are consistent (produce the same result as the CPU decomposed operator)

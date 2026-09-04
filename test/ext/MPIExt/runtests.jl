@@ -9,9 +9,6 @@
 # (multi-rank halo exchange + correctness). Adjust the `nprocs` entries
 # below to widen or narrow the matrix.
 
-using MPIPreferences
-MPIPreferences.use_jll_binary("OpenMPI_jll")
-
 # Each entry: (test file, descriptive name, number of MPI ranks).
 const TEST_FILES_MPI = [
     ("ext/MPIExt/test_abstractgrid.jl",   "DecomposedGrid interface (single rank)",  1),

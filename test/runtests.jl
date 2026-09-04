@@ -60,6 +60,7 @@ include("test_allocations.jl")
 # test extensions
 include("ext/MPIExt/runtests.jl")
 if cuda_available()
+    include("ext/CUDAExt/runtests.jl")
     MPI.Init()
     if MPI.has_cuda()
         include("ext/MPICUDAExt/runtests.jl")
